@@ -82,6 +82,18 @@ simulados por fecha UTC y medio de pago. El CSV lleva el identificador del
 pedido, la moneda y el importe firmado; no incluye datos de contacto.
 Las operaciones históricas sin fecha se incluyen cuando no hay filtro de fechas.
 
+El usuario `admin` conserva acceso completo. Los perfiles de prueba se
+habilitan al arrancar con una contraseña propia en la variable indicada.
+
+| Usuario | Variable | Acceso |
+| --- | --- | --- |
+| `warehouse` | `MOVILITY_WAREHOUSE_PASSWORD` | Inventario, direcciones de entrega, expediciones y devoluciones físicas |
+| `support` | `MOVILITY_SUPPORT_PASSWORD` | Consulta de pedidos, series y correo postcompra |
+| `finance` | `MOVILITY_FINANCE_PASSWORD` | Conciliación, CSV y reembolsos, sin datos de contacto |
+
+Son perfiles de la demo con autenticación HTTP. El control de cuentas
+individuales, MFA y gestión de sesiones corresponde al piloto comercial.
+
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 

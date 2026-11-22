@@ -46,6 +46,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       ...process.env, PORT: '0', MOVILITY_DB: ':memory:', MOVILITY_ADMIN_PASSWORD: 'local-test',
       CODESPACES: 'true', CODESPACE_NAME: 'movility-test', GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: 'app.github.dev',
       MOVILITY_MEDIA_DIR: media, MOVILITY_PUBLIC_ORIGIN: 'https://movility.example',
+      MOVILITY_WAREHOUSE_PASSWORD: 'warehouse-fixture', MOVILITY_SUPPORT_PASSWORD: 'support-fixture',
+      MOVILITY_FINANCE_PASSWORD: 'finance-fixture',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -66,6 +68,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const [startup] = await once(lines, 'line');
   const base = startup.split(' ')[1];
   const auth = 'Basic ' + Buffer.from('admin:local-test').toString('base64');
+  const roleHeaders = role => ({ Authorization: 'Basic ' + Buffer.from(role + ':' + role + '-fixture').toString('base64') });
   const checkout = '/fr-CH/checkout';
   const get = (path, headers) => fetch(base + path, { headers, redirect: 'manual' });
   const post = (path, fields, headers) => fetch(base + path, {
@@ -119,6 +122,16 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const preview = { Origin: 'https://movility-test-0.app.github.dev' };
   assert.match(await (await post(checkout, failedPayment, preview)).text(), /a échoué/);
   const headers = { Authorization: auth };
+  const warehouse = roleHeaders('warehouse');
+  const support = roleHeaders('support');
+  const finance = roleHeaders('finance');
+  assert.equal((await get('/admin/models', warehouse)).status, 403);
+  assert.equal((await get('/admin/inventory.csv', warehouse)).status, 200);
+  assert.equal((await get('/admin/accounting.csv', warehouse)).status, 403);
+  assert.equal((await get('/admin/inventory.csv', finance)).status, 403);
+  assert.equal((await get('/admin/accounting.csv', finance)).status, 200);
+  assert.equal((await get('/admin/accounting', support)).status, 403);
+  assert.equal((await post('/admin/restock', {}, warehouse)).status, 403);
   const edit = { expectedUnits: '1', expectedPrice: '249900', price: '2599,90', units: '1',
     descriptionDe: 'Neuer Testtext', descriptionFr: 'Description révisée <test>' };
   const panel = await get('/admin', headers);
@@ -151,9 +164,24 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(confirmation, /demo@example\.com/);
   assert.match(confirmation, /599\.90/);
   assert.match(confirmation, new RegExp(orderPath));
+  assert.equal((await get(emailPath('paid'), support)).status, 200);
+  assert.equal((await get(emailPath('paid'), finance)).status, 403);
+  assert.equal((await get(emailPath('paid'), warehouse)).status, 403);
+  const warehouseOrders = await (await get('/admin', warehouse)).text();
+  assert.match(warehouseOrders, /1201 Genève/);
+  assert.doesNotMatch(warehouseOrders, /demo@example\.com|Reembolsar en la simulación|Neto/);
+  const supportOrders = await (await get('/admin', support)).text();
+  assert.match(supportOrders, /demo@example\.com/);
+  assert.doesNotMatch(supportOrders, /1201 Genève|Registrar envío|Reembolsar en la simulación/);
+  const financeOrders = await (await get('/admin', finance)).text();
+  assert.match(financeOrders, /Reembolsar en la simulación/);
+  assert.doesNotMatch(financeOrders, /1201 Genève|demo@example\.com|Registrar envío/);
+  assert.equal((await post(`/admin/${orderId}/refund`, {}, warehouse)).status, 403);
   assert.equal((await post(`/admin/${orderId}/ship`, { tracking: 'CH-DEMO-1' }, headers)).status, 409);
   const firstShip = { tracking: 'CH-DEMO-1', serial_one: 'one-demo-01' };
-  assert.equal((await post(`/admin/${orderId}/ship`, firstShip, headers)).status, 303);
+  assert.equal((await post(`/admin/${orderId}/ship`, firstShip, support)).status, 403);
+  assert.equal((await post(`/admin/${orderId}/ship`, firstShip, finance)).status, 403);
+  assert.equal((await post(`/admin/${orderId}/ship`, firstShip, warehouse)).status, 303);
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, headers)).status, 303);
   assert.match(await (await get(orderPath)).text(), /CH-DEMO-1/);
   for (let i = 0; i < 2; i++) {
@@ -260,7 +288,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(summary, /2 × Movility Alpine/);
   const basketOrderId = basketOrder.split('/').at(-1);
   assert.match(await (await get(`/admin/${basketOrderId}/email/paid`, headers)).text(), /2 × Movility Alpine/);
-  assert.equal((await post(`/admin/${basketOrderId}/refund`, {}, headers)).status, 303);
+  assert.equal((await post(`/admin/${basketOrderId}/refund`, {}, finance)).status, 303);
   assert.equal((await post(`/admin/${basketOrderId}/refund`, {}, headers)).status, 303);
   assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1/);
   assert.match(await (await get('/admin/models', headers)).text(), /Publicado · 2 ud\./);

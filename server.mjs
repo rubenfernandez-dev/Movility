@@ -16,6 +16,7 @@ import { setupInventory, purchasedLines, returnControls, inventoryPage, inventor
 import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
 import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
   readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
+import { adminAuth, adminRouteAllowed, can, roleNames } from './admin-access.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -24,6 +25,8 @@ const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPAC
   ? `${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
   : null;
 const admin = process.env.MOVILITY_ADMIN_PASSWORD || randomBytes(18).toString('base64url');
+const adminRole = adminAuth({ admin, warehouse: process.env.MOVILITY_WAREHOUSE_PASSWORD,
+  support: process.env.MOVILITY_SUPPORT_PASSWORD, finance: process.env.MOVILITY_FINANCE_PASSWORD });
 const dbPath = process.env.MOVILITY_DB || 'data/demo.sqlite';
 if (!process.env.MOVILITY_DB) mkdirSync('data', { recursive: true });
 const db = new DatabaseSync(dbPath);
@@ -149,7 +152,6 @@ const orderReceipts = id => db.prepare('SELECT sku, quantity, restocked FROM ret
 const orderIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const inventoryRows = (sku, limit) => db.prepare(`SELECT * FROM stock_movements
   WHERE (? = '' OR sku = ?) ORDER BY id DESC LIMIT ?`).all(sku, sku, limit);
-const adminHeader = 'Basic ' + Buffer.from('admin:' + admin).toString('base64');
 const noticeKinds = ['paid', 'shipped', 'refunded'];
 
 const storeEmail = (order, kind) => {
@@ -230,7 +232,14 @@ async function form(req, limit = 16384) {
 
 const orderLabels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
 
-function adminView({ error, saved, draft, filter = '' } = {}) {
+function adminView({ role, error, saved, draft, filter = '' }) {
+  const catalogAccess = can(role, 'catalog');
+  const stockAccess = can(role, 'stock');
+  const serialAccess = can(role, 'serials');
+  const shippingAccess = can(role, 'shipping');
+  const addressAccess = can(role, 'address');
+  const supportAccess = can(role, 'support');
+  const financeAccess = can(role, 'finance');
   const model = catalog();
   const units = stock();
   const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city,
@@ -245,28 +254,31 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
     const lines = orderLines(order.id);
-    const serials = shipmentSerials(db, order.id);
+    const serials = serialAccess ? shipmentSerials(db, order.id) : [];
     const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
-    const events = db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id);
+    const events = supportAccess ? db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id) : [];
     const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
     return `<article id="order-${order.id}"><h2>${order.id}</h2>
-      <p>${escapeHtml(productNames)} · ${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
-      ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
-      ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
-      <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
-      ${order.status === 'paid' ? shipmentForm({ ...order, lines }) : ''}
+      <p>${escapeHtml(productNames)} · ${supportAccess ? escapeHtml(order.email) + ' · ' : ''}${order.locale} ·
+        ${financeAccess ? escapeHtml(order.method) + ' · ' + money('es', order.cents) + ' · ' : ''}${orderLabels[order.status]}</p>
+      ${addressAccess && order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
+      ${(shippingAccess || supportAccess) && order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
+      ${supportAccess ? `<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
+      ${shippingAccess && order.status === 'paid' ? shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
-      ${order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
-      ${returnControls({ ...order, lines }, orderReceipts(order.id), serials)}
+      ${financeAccess && order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
+      ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
     </article>`;
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
-    <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
-    <div class="product-actions"><a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>
-      <a class="button secondary" href="/admin/inventory">Movimientos de stock</a>
-      <a class="button secondary" href="/admin/serials">Buscar número de serie</a>
-      <a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a></div>
-    <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
+    <p>Perfil: ${roleNames[role]}</p>
+    <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
+    <div class="product-actions">
+      ${catalogAccess ? '<a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>' : ''}
+      ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
+      ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
+      ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a>' : ''}</div>
+    ${financeAccess ? `<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
     <details class="payment-breakdown"><summary>Desglose por forma de pago</summary>
@@ -274,10 +286,10 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
         <th scope="col">Método</th><th scope="col">Pedidos</th><th scope="col">Neto</th></tr></thead>
         <tbody>${breakdown.map(row => `<tr><th scope="row">${escapeHtml(row.method)}</th><td>${row.quantity}</td>
           <td>${money('es', row.gross - row.refunds)}</td></tr>`).join('')}</tbody></table></div>` : '<p>El desglose aparecerá con el primer pedido.</p>'}
-    </details>
+    </details>` : ''}
     ${error ? `<p class="form-error" role="alert">${error}</p>` : ''}
-    ${saved ? '<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>' : ''}
-    <form class="admin-catalog" method="post" action="/admin/catalog">
+    ${catalogAccess && saved ? '<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>' : ''}
+    ${catalogAccess ? `<form class="admin-catalog" method="post" action="/admin/catalog">
       <fieldset><legend>Catálogo · Movility One</legend>
         <input type="hidden" name="expectedUnits" value="${units}">
         <input type="hidden" name="expectedPrice" value="${model.cents}">
@@ -287,8 +299,8 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
         <label>Descripción en francés<textarea name="descriptionFr" rows="3" maxlength="500" lang="fr-CH">${escapeHtml(draft?.descriptionFr ?? (model.description_fr || copy['fr-CH'].description))}</textarea></label>
         <button>Guardar cambios en la tienda</button>
       </fieldset>
-    </form>
-    ${stock() === 0 ? '<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>' : ''}
+    </form>` : ''}
+    ${catalogAccess && units === 0 ? '<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>' : ''}
     <h2>Pedidos</h2>
     <form class="order-filter" method="get" action="/admin">
       <label>Estado del pedido <select name="status"><option value="">Todos</option>
@@ -375,13 +387,18 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     if (first === 'admin') {
-      if (req.headers.authorization !== adminHeader) {
+      const role = adminRole(req.headers.authorization);
+      if (!role) {
         res.setHeader('WWW-Authenticate', 'Basic realm="Movility local demo", charset="UTF-8"');
         return send(res, 401, 'Authentication required');
       }
+      if (!adminRouteAllowed(role, req.method, path)) {
+        return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
+      }
+      const rolePanel = options => adminView({ ...options, role });
       if (req.method === 'GET' && path === '/admin') {
         const status = searchParams.get('status');
-        return send(res, 200, adminView({ saved: searchParams.get('saved') === 'catalog',
+        return send(res, 200, rolePanel({ saved: searchParams.get('saved') === 'catalog',
           filter: Object.hasOwn(orderLabels, status) ? status : '' }));
       }
       if (req.method === 'GET' && path === '/admin/models') {
@@ -451,7 +468,7 @@ const server = createServer(async (req, res) => {
         const descriptionFr = fields?.get('descriptionFr')?.trim() || '';
         if (!/^\d{1,6}(?:\.\d{1,2})?$/.test(rawPrice) || Number(rawPrice) <= 0 ||
             !/^\d{1,3}$/.test(rawUnits) || descriptionDe.length > 500 || descriptionFr.length > 500) {
-          return send(res, 400, adminView({
+          return send(res, 400, rolePanel({
             error: 'Introduce un precio positivo, un stock de 0 a 999 y descripciones de hasta 500 caracteres.',
             draft: { price: rawPrice, units: rawUnits, descriptionDe, descriptionFr },
           }));
@@ -466,7 +483,7 @@ const server = createServer(async (req, res) => {
           if (delta) recordMovement(coreSKU, delta, 'adjustment');
           return true;
         });
-        return saved ? redirect(res, '/admin?saved=catalog') : send(res, 409, adminView({
+        return saved ? redirect(res, '/admin?saved=catalog') : send(res, 409, rolePanel({
           error: 'El precio o el stock cambió mientras editabas. Revisa los valores actuales y vuelve a guardar.',
         }));
       }
@@ -485,7 +502,7 @@ const server = createServer(async (req, res) => {
         const quantity = Number(rawQuantity);
         const disposition = fields?.get('disposition');
         if (!orderIdPattern.test(receipt) || !serials || !/^[1-9]\d{0,2}$/.test(rawQuantity) || !['restock', 'hold'].includes(disposition)) {
-          return send(res, 400, adminView({ error: 'Indica las unidades o los números de serie recibidos y su estado.' }));
+          return send(res, 400, rolePanel({ error: 'Indica las unidades o los números de serie recibidos y su estado.' }));
         }
         const restocked = Number(disposition === 'restock');
         const received = transaction(() => {
@@ -505,7 +522,7 @@ const server = createServer(async (req, res) => {
           return true;
         });
         return received ? redirect(res, `/admin#order-${second}`)
-          : send(res, 409, adminView({ error: 'Revisa las unidades pendientes y que los números de serie correspondan a este modelo y pedido.' }));
+          : send(res, 409, rolePanel({ error: 'Revisa las unidades pendientes y que los números de serie correspondan a este modelo y pedido.' }));
       }
       if (req.method === 'POST' && /^\/admin\/[0-9a-f-]{36}\/(ship|refund)$/.test(path)) {
         const fields = await form(req, third === 'ship' ? 262144 : undefined);
@@ -532,7 +549,7 @@ const server = createServer(async (req, res) => {
           }
           return 'ok';
         });
-        if (found === 'invalid') return send(res, 409, adminView({
+        if (found === 'invalid') return send(res, 409, rolePanel({
           error: 'Indica un número de serie distinto por unidad. Las series enviadas o en revisión no se pueden volver a asignar.',
         }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
