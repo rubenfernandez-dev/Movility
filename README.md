@@ -50,6 +50,26 @@ intentos. Los avisos nuevos se procesan cada tres segundos por un proveedor
 simulado. Con `MOVILITY_EMAIL_WORKER=manual` se procesan solo desde el
 botón del panel. Los avisos históricos conservan su vista previa.
 
+### Prueba de envío con Resend
+
+Para probar recepción externa con pedidos ficticios, verifica un dominio
+remitente en Resend y configura estas variables en el entorno del servidor.
+
+| Variable | Valor |
+| --- | --- |
+| `MOVILITY_EMAIL_MODE` | `resend-test` |
+| `MOVILITY_RESEND_API_KEY` | Clave de envío de Resend |
+| `MOVILITY_EMAIL_FROM` | Dirección del dominio verificado |
+| `MOVILITY_EMAIL_TEST_TO` | Una única dirección de prueba bajo tu control |
+| `MOVILITY_PUBLIC_ORIGIN` | Origen HTTPS de una tienda de prueba accesible |
+
+Los avisos creados con este modo llevan el prefijo `[TEST]` y solo van
+a la dirección de prueba. Los avisos anteriores en simulación siguen
+siendo locales. Al desactivar el modo se pausa el envío de avisos de Resend
+pendientes. Tras 23 horas desde el primer intento, los reintentos de un
+envío externo quedan bloqueados para revisión. «Aceptado por Resend» indica
+aceptación de la API. La comprobación de recepción se realiza en el buzón.
+
 Consulta [las tareas del proyecto](TAREAS.md) para ver qué está listo y qué
 queda para el piloto suizo y la expansión a la UE.
 

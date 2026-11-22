@@ -46,8 +46,9 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   reintentar fallos y el correo sigue disponible para quien no active push.
   El envío de correos reales depende de una cuenta y un remitente autorizados.
   - [x] Cola de entrega simulada con identidad por aviso, reintentos, recuperación tras interrupción e historial.
-  - [ ] Conectar un proveedor de correo y validar el remitente, la deduplicación por clave y la recepción con direcciones de prueba.
-  - [ ] Diseñar un adaptador de transportista que asocie la referencia de seguimiento y aplique actualizaciones una vez por evento.
+  - [x] Adaptador Resend con modo de prueba, destinatario fijo y deduplicación dentro de la ventana del proveedor.
+  - [ ] Verificar remitente y recepción con cuenta y dirección de prueba autorizadas.
+  - [ ] Adaptador de transportista. El envío conserva su referencia; asociar a ella eventos de tránsito, entrega e incidencia y aplicar cada evento una sola vez.
 - [ ] **5. Pagos suizos.** Conectar TWINT, PayPal y tarjetas en entorno de
   pruebas, verificar notificaciones firmadas y conciliar devoluciones.
   Aceptación: probar cobro, fallo, cancelación y reembolso para los cuatro

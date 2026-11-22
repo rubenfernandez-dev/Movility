@@ -20,9 +20,11 @@ import { adminAuth, adminRouteAllowed, can, roleNames } from './admin-access.mjs
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
 import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
+import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
+const emailTest = emailTestConfig(process.env, siteOrigin);
 const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
 const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
   ? `${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
@@ -131,9 +133,12 @@ setInterval(() => {
   try { purgeFunnel(db); }
   catch (error) { console.error('Could not purge expired analytics journeys', error); }
 }, 3600000).unref();
-const mailProvider = simulatedMailProvider(db);
+const sendSimulated = simulatedMailProvider(db);
+const sendResendTest = resendTestProvider(emailTest);
+const mailProvider = message => message.testTarget ? sendResendTest(message) : sendSimulated(message);
 let mailRun;
-const processMail = () => mailRun ??= deliverBatch(db, transaction, mailProvider).finally(() => { mailRun = null; });
+const processMail = () => mailRun ??= deliverBatch(db, transaction, mailProvider, undefined, 12, Boolean(emailTest))
+  .finally(() => { mailRun = null; });
 if (process.env.MOVILITY_EMAIL_WORKER !== 'manual') {
   setInterval(() => {
     processMail().catch(error => console.error('Could not process mail queue', error));
@@ -180,7 +185,7 @@ const notice = (id, kind) => {
   db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
   const order = orderById(id);
   storeEmail(order, kind);
-  queueEmail(db, id, kind);
+  queueEmail(db, id, kind, undefined, emailTest?.target);
   if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
 transaction(() => {
@@ -335,7 +340,7 @@ function emailView(order, preview) {
   const state = deliveryStatus(db, order.id, preview.kind);
   return page('es', 'Vista previa de correo', `<a href="/admin">Volver a pedidos</a>
     <h1 class="page-title">Vista previa de correo</h1>
-    <p>${state || 'Aviso histórico disponible como vista previa.'} · Proveedor simulado</p>
+    <p>${state || 'Aviso histórico disponible como vista previa.'}</p>
     <p><a href="/admin/mail">Ver cola de correos</a></p>
     <article class="email-preview">
       <p><strong>Para</strong> ${escapeHtml(order.email)}</p>
@@ -447,7 +452,7 @@ const server = createServer(async (req, res) => {
         const state = searchParams.get('result');
         const message = state === 'processed' ? 'Procesamiento de la cola solicitado.'
           : state === 'retried' ? 'Correo programado para reintento.' : '';
-        return send(res, 200, page('es', 'Cola de correos', mailQueuePage(db, role === 'admin', message)));
+        return send(res, 200, page('es', 'Cola de correos', mailQueuePage(db, role === 'admin', message, Boolean(emailTest))));
       }
       if (role === 'admin' && req.method === 'POST' && path === '/admin/mail/process') {
         await processMail();

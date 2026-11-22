@@ -71,3 +71,23 @@ test('expired work reuses the same provider key and ignores a late worker', asyn
   assert.deepEqual(db.prepare('SELECT outcome FROM mail_attempts ORDER BY attempt').all().map(row => row.outcome),
     ['expired', 'accepted']);
 });
+
+test('external jobs are paused in local mode and blocked after the retry window', async (t) => {
+  const { db, transaction } = fixture(t);
+  const target = { from: 'sender@example.com', to: 'test@example.net', origin: 'https://movility.example' };
+  queueEmail(db, 'one', 'paid', 100, target);
+  queueEmail(db, 'one', 'shipped', 100);
+  const simulated = simulatedMailProvider(db);
+  assert.equal(await deliverBatch(db, transaction, simulated, () => 100), 1);
+  const paid = () => db.prepare("SELECT * FROM mail_jobs WHERE kind = 'paid'").get();
+  assert.equal(paid().attempts, 0);
+  const fails = job => {
+    assert.deepEqual(job.testTarget, target);
+    return { status: 'temporary' };
+  };
+  assert.equal(await deliverBatch(db, transaction, fails, () => 100, 12, true), 1);
+  const later = 100 + 23 * 3600;
+  assert.equal(await deliverBatch(db, transaction, fails, () => later, 12, true), 0);
+  assert.equal(paid().blocked_reason, 'window');
+  assert.equal(retryEmail(db, paid().id, later), false);
+});
