@@ -100,6 +100,22 @@ enviada o en revisión no se puede asignar a otro envío. Los pedidos enviados
 antes de activar esta función conservan la recepción por cantidad.
 Usa **Buscar número de serie** para ver los envíos y devoluciones de una unidad.
 
+### Seguimiento de envíos
+
+Tras registrar un envío, el panel de almacén permite simular tránsito,
+entrega o incidencia. El cliente ve el historial en el idioma de la tienda.
+La primera entrega registrada genera un aviso. Los eventos repetidos o
+fuera de orden conservan el historial sin revertir una entrega confirmada.
+
+Para conectar un transportista, un adaptador puede enviar JSON a
+`POST /integrations/carrier/events` con `eventId`, `orderId`, `tracking`,
+`status` (`transit`, `delivered` o `exception`) y `occurredAt` en ISO UTC.
+El adaptador firma los bytes exactos con HMAC-SHA256, usando
+`MOVILITY_CARRIER_SECRET` y anteponiendo los segundos Unix y un punto.
+Envía los segundos en `X-Movility-Timestamp` y el hash en
+`X-Movility-Signature`, con formato `sha256=<hex>`. La solicitud caduca
+a los cinco minutos. Sin secreto configurado, la entrada permanece desactivada.
+
 En **Conciliación de pedidos** puedes filtrar y exportar cobros y reembolsos
 simulados por fecha UTC y medio de pago. El CSV lleva el identificador del
 pedido, la moneda y el importe firmado; no incluye datos de contacto.

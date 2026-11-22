@@ -1,6 +1,7 @@
 import { copy, methods, money, escapeHtml } from './views.mjs';
 import { compareLabel, viewerLink } from './discovery.mjs';
 import { addToCart, cartQuote, coreSKU } from './cart.mjs';
+import { trackingHistory } from './tracking.mjs';
 
 const labels = {
   'de-CH': {
@@ -162,17 +163,20 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
       </dl></aside></div>`;
 }
 
-export function orderPage(locale, order) {
+export function orderPage(locale, order, events = []) {
   const l = labels[locale];
   const t = copy[locale];
+  const delivered = events.some(event => event.event_status === 'delivered');
+  const state = delivered && order.status === 'shipped' ? 'delivered' : order.status;
   const steps = order.status === 'refunded' && !order.tracking ? ['paid', 'refunded']
-    : ['paid', 'shipped', ...(order.status === 'refunded' ? ['refunded'] : [])];
-  return `<section class="confirmation"><p class="eyebrow">${l.progress}</p><h1 class="page-title">${t[order.status]}</h1>
+    : ['paid', 'shipped', ...(delivered ? ['delivered'] : []), ...(order.status === 'refunded' ? ['refunded'] : [])];
+  return `<section class="confirmation"><p class="eyebrow">${l.progress}</p><h1 class="page-title">${t[state]}</h1>
     ${order.lines?.length ? `<ul>${order.lines.map(line => `<li>${line.quantity} × ${escapeHtml(line.name)}</li>`).join('')}</ul>` : ''}
     <p>${order.lines?.length ? '' : escapeHtml(order.model_name || 'Movility One') + ' · '}${money(locale, order.cents)} · ${order.method}</p>
     <p>${l.reference} <code>${order.id}</code></p>
-    <ol class="timeline">${steps.map((step) => `<li ${step === order.status ? 'aria-current="step"' : ''}>${t[step]}</li>`).join('')}</ol>
+    <ol class="timeline">${steps.map((step) => `<li ${step === state ? 'aria-current="step"' : ''}>${t[step]}</li>`).join('')}</ol>
     ${order.tracking ? `<p>${t.tracking} ${escapeHtml(order.tracking)}</p>` : ''}
+    ${trackingHistory(locale, events)}
     ${order.lines?.length ? button(href(locale), t.catalog)
       : button(href(locale, order.model_sku ? '/models/' + order.model_sku : '/movility-one'), t.catalog)}</section>`;
 }

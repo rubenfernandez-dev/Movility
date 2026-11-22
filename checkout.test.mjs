@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { copyFileSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,6 +29,7 @@ test('accounting import keeps unknown dates and is safe to repeat', () => {
 });
 
 test('French checkout, concurrent stock, shipment and idempotent refund', { timeout: 15000 }, async (t) => {
+  const carrierSecret = 'carrier-integration-fixture-not-a-real-secret';
   const media = mkdtempSync(join(tmpdir(), 'movility-media-'));
   writeFileSync(join(media, 'movility-one.mp4'), '0123456789');
   writeFileSync(join(media, 'movility-one.fr-CH.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nExemple\n');
@@ -49,6 +50,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       MOVILITY_WAREHOUSE_PASSWORD: 'warehouse-fixture', MOVILITY_SUPPORT_PASSWORD: 'support-fixture',
       MOVILITY_FINANCE_PASSWORD: 'finance-fixture',
       MOVILITY_EMAIL_WORKER: 'manual',
+      MOVILITY_CARRIER_SECRET: carrierSecret,
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -192,6 +194,35 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, warehouse)).status, 303);
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, headers)).status, 303);
   assert.match(await (await get(orderPath)).text(), /CH-DEMO-1/);
+  const trackingPath = `/admin/${orderId}/tracking`;
+  const simulated = { eventId: randomUUID(), status: 'transit' };
+  assert.equal((await post(trackingPath, simulated, finance)).status, 403);
+  assert.equal((await post(trackingPath, simulated, warehouse)).status, 303);
+  assert.equal((await post(trackingPath, simulated, warehouse)).status, 303);
+  assert.equal((await post(trackingPath, { ...simulated, status: 'exception' }, warehouse)).status, 409);
+  assert.match(await (await get(orderPath)).text(), /En transit/);
+  const event = {
+    eventId: 'carrier-1', orderId, tracking: 'CH-DEMO-1', status: 'delivered', occurredAt: new Date().toISOString(),
+  };
+  const signed = (payload, timestamp = String(Math.floor(Date.now() / 1000)), secret = carrierSecret) => {
+    const body = JSON.stringify(payload);
+    const digest = createHmac('sha256', secret).update(timestamp + '.').update(body).digest('hex');
+    return fetch(base + '/integrations/carrier/events', { method: 'POST', body, headers: {
+      'Content-Type': 'application/json', 'X-Movility-Timestamp': timestamp, 'X-Movility-Signature': 'sha256=' + digest,
+    } });
+  };
+  assert.equal((await signed(event, '1700000000')).status, 401);
+  assert.equal((await signed(event, undefined, 'bad-key')).status, 401);
+  assert.equal((await signed({ ...event, tracking: 'wrong' })).status, 422);
+  assert.deepEqual(await (await signed(event)).json(), { result: 'applied' });
+  assert.deepEqual(await (await signed(event)).json(), { result: 'duplicate' });
+  assert.equal((await signed({ ...event, status: 'exception' })).status, 409);
+  assert.equal((await signed({ ...event, eventId: 'carrier-2', status: 'exception' })).status, 200);
+  assert.equal((await signed({ ...event, eventId: 'carrier-3' })).status, 200);
+  assert.match(await (await get(orderPath)).text(), /<h1 class="page-title">Commande livrée/);
+  assert.match(await (await get(emailPath('delivered'), support)).text(), /Movility · Commande livrée/);
+  const trackingOrders = await (await get('/admin', support)).text();
+  assert.equal(trackingOrders.match(new RegExp('/admin/' + orderId + '/email/delivered', 'g'))?.length, 1);
   for (let i = 0; i < 2; i++) {
     assert.equal((await post(`/admin/${orderId}/refund`, {}, headers)).status, 303);
   }

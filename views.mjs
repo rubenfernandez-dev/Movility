@@ -9,6 +9,7 @@ export const copy = {
     pay: 'Zahlung simulieren', fail: 'Fehler simulieren', failed: 'Die Testzahlung ist fehlgeschlagen.',
     retry: 'Zurück zur Kasse', invalid: 'Bitte überprüfe deine Angaben.', soldOut: 'Keine Einheit verfügbar.',
     paid: 'Testzahlung bestätigt', shipped: 'Bestellung versendet', refunded: 'Testzahlung erstattet', tracking: 'Sendungsnummer:',
+    delivered: 'Bestellung zugestellt',
   },
   'fr-CH': {
     priceChanged: 'Le prix a changé. Vérifiez le nouveau total et confirmez à nouveau.',
@@ -18,6 +19,7 @@ export const copy = {
     pay: 'Simuler le paiement', fail: 'Simuler un échec', failed: 'Le paiement de test a échoué.',
     retry: 'Retour à la caisse', invalid: 'Veuillez vérifier vos informations.', soldOut: 'Aucune unité disponible.',
     paid: 'Paiement de test confirmé', shipped: 'Commande expédiée', refunded: 'Paiement de test remboursé', tracking: 'Numéro de suivi :',
+    delivered: 'Commande livrée',
   },
 };
 

@@ -48,7 +48,9 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [x] Cola de entrega simulada con identidad por aviso, reintentos, recuperación tras interrupción e historial.
   - [x] Adaptador Resend con modo de prueba, destinatario fijo y deduplicación dentro de la ventana del proveedor.
   - [ ] Verificar remitente y recepción con cuenta y dirección de prueba autorizadas.
-  - [ ] Adaptador de transportista. El envío conserva su referencia; asociar a ella eventos de tránsito, entrega e incidencia y aplicar cada evento una sola vez.
+  - [x] Seguimiento simulado y adaptador firmado de eventos de tránsito, entrega e incidencia, con deduplicación y aviso de entrega.
+  - [ ] Conectar el transportista elegido y validar eventos en su entorno de pruebas.
+  - [ ] Push voluntario. Permitir suscripción y baja desde el seguimiento del pedido; avisar de expedición y entrega sin incluir el producto ni el destinatario en el mensaje.
 - [ ] **5. Pagos suizos.** Conectar TWINT, PayPal y tarjetas en entorno de
   pruebas, verificar notificaciones firmadas y conciliar devoluciones.
   Aceptación: probar cobro, fallo, cancelación y reembolso para los cuatro

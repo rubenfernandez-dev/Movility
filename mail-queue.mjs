@@ -115,7 +115,7 @@ const labels = { queued: 'Pendiente', sending: 'Procesando', delivered: 'Aceptad
 const jobLabel = job => job.status === 'delivered'
   ? (job.test_payload ? 'Aceptado por Resend' : 'Aceptado en simulación') : labels[job.status];
 const outcomes = { accepted: 'Aceptado', temporary: 'Fallo temporal', permanent: 'Rechazado', expired: 'Interrumpido' };
-const kinds = { paid: 'Confirmación', shipped: 'Expedición', refunded: 'Reembolso' };
+const kinds = { paid: 'Confirmación', shipped: 'Expedición', refunded: 'Reembolso', delivered: 'Entrega' };
 const date = value => new Date(value * 1000).toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
 
 export function deliveryStatus(db, orderId, kind) {

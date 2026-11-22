@@ -21,10 +21,14 @@ import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunne
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
 import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
 import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
+import { setupTracking, trackingStart, trackingEvents, applyTrackingEvent, trackingHistory, trackingForm,
+  manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody } from './tracking.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
 const emailTest = emailTestConfig(process.env, siteOrigin);
+const carrierSecret = process.env.MOVILITY_CARRIER_SECRET || '';
+if (carrierSecret && carrierSecret.length < 32) throw new Error('MOVILITY_CARRIER_SECRET needs at least 32 characters.');
 const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
 const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
   ? `${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
@@ -127,6 +131,7 @@ transaction(() => {
   setupSerials(db);
   setupFunnel(db);
   setupMailQueue(db);
+  setupTracking(db);
   purgeFunnel(db);
 });
 setInterval(() => {
@@ -175,7 +180,7 @@ const orderReceipts = id => db.prepare('SELECT sku, quantity, restocked FROM ret
 const orderIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const inventoryRows = (sku, limit) => db.prepare(`SELECT * FROM stock_movements
   WHERE (? = '' OR sku = ?) ORDER BY id DESC LIMIT ?`).all(sku, sku, limit);
-const noticeKinds = ['paid', 'shipped', 'refunded'];
+const noticeKinds = ['paid', 'shipped', 'delivered', 'refunded'];
 
 const storeEmail = (order, kind) => {
   const { subject, body } = orderEmail(order, kind);
@@ -188,11 +193,12 @@ const notice = (id, kind) => {
   queueEmail(db, id, kind, undefined, emailTest?.target);
   if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
+const applyCarrierEvent = event => transaction(() => applyTrackingEvent(db, event, id => notice(id, 'delivered')));
 transaction(() => {
   const previousEvents = db.prepare(`SELECT orders.*, notices.kind FROM notices
     JOIN orders ON orders.id = notices.order_id
     LEFT JOIN email_previews ON email_previews.order_id = notices.order_id AND email_previews.kind = notices.kind
-    WHERE email_previews.order_id IS NULL AND notices.kind IN ('paid', 'shipped', 'refunded')`).all();
+    WHERE email_previews.order_id IS NULL AND notices.kind IN ('paid', 'shipped', 'delivered', 'refunded')`).all();
   for (const event of previousEvents) storeEmail(orderById(event.id), event.kind);
 });
 
@@ -244,6 +250,12 @@ function redirect(res, location) {
   res.end();
 }
 
+function carrierResponse(res, status, result) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff' });
+  res.end(JSON.stringify({ result }));
+}
+
 async function form(req, limit = 16384) {
   if (!req.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) return null;
   let body = '';
@@ -287,6 +299,8 @@ function adminView({ role, error, saved, draft, filter = '' }) {
         ${financeAccess ? escapeHtml(order.method) + ' · ' + money('es', order.cents) + ' · ' : ''}${orderLabels[order.status]}</p>
       ${addressAccess && order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${(shippingAccess || supportAccess) && order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
+      ${(shippingAccess || supportAccess) ? trackingHistory('es', trackingEvents(db, order.id)) : ''}
+      ${shippingAccess ? trackingForm(order) : ''}
       ${supportAccess ? `<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
       ${shippingAccess && order.status === 'paid' ? shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
@@ -358,6 +372,20 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
+    if (req.method === 'POST' && path === '/integrations/carrier/events') {
+      if (!carrierSecret) return carrierResponse(res, 404, 'disabled');
+      const body = await readCarrierBody(req);
+      if (!body) return carrierResponse(res, 400, 'invalid');
+      if (!carrierSignatureValid(carrierSecret, req.headers['x-movility-timestamp'], req.headers['x-movility-signature'], body)) {
+        return carrierResponse(res, 401, 'unauthorized');
+      }
+      let event;
+      try { event = normalizeTrackingEvent(JSON.parse(body.toString('utf8')), 'carrier'); }
+      catch { return carrierResponse(res, 400, 'invalid'); }
+      if (!event) return carrierResponse(res, 400, 'invalid');
+      const outcome = applyCarrierEvent(event);
+      return carrierResponse(res, { applied: 200, duplicate: 200, conflict: 409, unmatched: 422 }[outcome], outcome);
+    }
     const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(?:(side\.|rear\.)?jpg|glb|mp4|(de-CH|fr-CH)\.(?:vtt|txt))$/.exec(path);
     if (modelAsset && ['GET', 'HEAD'].includes(req.method) && extraModel(modelAsset[1])?.active && existsSync(mediaFile(path))) {
       const [, sku, , trackLocale] = modelAsset;
@@ -548,6 +576,18 @@ const server = createServer(async (req, res) => {
         });
         return redirect(res, '/admin');
       }
+      if (req.method === 'POST' && third === 'tracking' && orderIdPattern.test(second) && path === `/admin/${second}/tracking`) {
+        const fields = await form(req);
+        const eventId = fields?.get('eventId') || '';
+        if (!orderIdPattern.test(eventId)) return send(res, 400, rolePanel({ error: 'Selecciona un evento de seguimiento válido.' }));
+        const order = orderById(second);
+        if (!order?.tracking) return send(res, 409, rolePanel({ error: 'Registra el envío antes del evento de seguimiento.' }));
+        const event = manualTrackingEvent(db, order, eventId, fields.get('status'));
+        if (!event) return send(res, 400, rolePanel({ error: 'Selecciona un evento de seguimiento válido.' }));
+        const outcome = applyCarrierEvent(event);
+        return ['applied', 'duplicate'].includes(outcome) ? redirect(res, `/admin#order-${second}`)
+          : send(res, 409, rolePanel({ error: 'El evento no coincide con el envío registrado.' }));
+      }
       if (req.method === 'POST' && third === 'return' && orderIdPattern.test(second) && path === `/admin/${second}/return`) {
         const fields = await form(req, 32768);
         const receipt = fields?.get('receipt') || '';
@@ -593,6 +633,7 @@ const server = createServer(async (req, res) => {
               sameShipmentSerials(shipmentSerials(db, second), serials) ? 'ok' : 'invalid';
             if (!assignShipmentSerials(db, second, serials)) return 'invalid';
             db.prepare("UPDATE orders SET status = 'shipped', tracking = ? WHERE id = ?").run(tracking, second);
+            trackingStart(db, second);
             notice(second, 'shipped');
           }
           if (third === 'refund' && order.status !== 'refunded') {
@@ -760,7 +801,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && second === 'orders' && first === locale && path === `/${locale}/orders/${third}`) {
       const order = orderById(third);
-      if (order) return render(orderPage(locale, order));
+      if (order) return render(orderPage(locale, order, trackingEvents(db, order.id)));
     }
     return render(`<h1>404</h1><a href="/${locale}">${t.catalog}</a>`, 404);
   } catch (error) {

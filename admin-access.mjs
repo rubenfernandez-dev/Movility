@@ -21,8 +21,8 @@ export function adminAuth(passwords) {
   };
 }
 
-const orderAction = /^\/admin\/[0-9a-f-]{36}\/(ship|refund|return)$/;
-const orderEmail = /^\/admin\/[0-9a-f-]{36}\/email\/(paid|shipped|refunded)$/;
+const orderAction = /^\/admin\/[0-9a-f-]{36}\/(ship|refund|return|tracking)$/;
+const orderEmail = /^\/admin\/[0-9a-f-]{36}\/email\/(paid|shipped|refunded|delivered)$/;
 
 export function adminRouteAllowed(role, method, path) {
   if (role === 'admin') return true;
