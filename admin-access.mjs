@@ -30,7 +30,7 @@ export function adminRouteAllowed(role, method, path) {
     if (path === '/admin') return true;
     if (path === '/admin/serials') return can(role, 'serials');
     if (path === '/admin/inventory' || path === '/admin/inventory.csv') return can(role, 'stock');
-    if (path === '/admin/accounting' || path === '/admin/accounting.csv') return can(role, 'finance');
+    if (['/admin/accounting', '/admin/accounting.csv', '/admin/analytics'].includes(path)) return can(role, 'finance');
     if (orderEmail.test(path)) return can(role, 'support');
   }
   if (method === 'POST') {

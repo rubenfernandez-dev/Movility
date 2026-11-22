@@ -29,7 +29,7 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [x] Integración con el comparador y compra de un modelo con stock independiente e historial.
   - [x] Galería, vídeo subtitulado, transcripción y visor GLB opcionales por modelo mediante archivos asociados al SKU.
   - [x] Carrito con varias referencias, cantidades y comprobación transaccional de stock y precios.
-- [ ] **3. Administración y analítica.** Añadir movimientos de stock y
+- [x] **3. Administración y analítica.** Añadir movimientos de stock y
   devoluciones físicas, trazabilidad por serie cuando aplique, roles, filtros
   y exportación contable. Medir ventas netas y el embudo con el consentimiento
   aplicable. Aceptación: el panel y los informes cuadran con pedidos y abonos,
@@ -39,12 +39,13 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [x] Exportación de conciliación de cobros y reembolsos en CHF, filtrable por fecha y medio de pago.
   - [x] Trazabilidad por número de serie en expediciones y devoluciones, con búsqueda de historial.
   - [x] Roles de demostración con permisos de catálogo, almacén, atención y finanzas comprobados en cada ruta. Cuentas individuales y MFA para producción.
-  - [ ] Analítica del embudo. Medir visitas a ficha, carrito, checkout y pedido confirmado; diseñar consentimiento y mostrar tasas agregadas en el panel.
+  - [x] Analítica del embudo con consentimiento, retirada y tasas agregadas por idioma y periodo.
 - [ ] **4. Automatizaciones e integraciones.** Conectar el correo transaccional
   y el transportista, registrar reintentos y errores, y añadir push voluntario
   con baja. Aceptación: un evento duplicado no genera dos envíos, se pueden
   reintentar fallos y el correo sigue disponible para quien no active push.
   El envío de correos reales depende de una cuenta y un remitente autorizados.
+  - [ ] Cola de entrega para confirmación, expedición y reembolso. Usar la identidad única de cada aviso para reintentos y registrar intentos, estado y resultado del proveedor.
 - [ ] **5. Pagos suizos.** Conectar TWINT, PayPal y tarjetas en entorno de
   pruebas, verificar notificaciones firmadas y conciliar devoluciones.
   Aceptación: probar cobro, fallo, cancelación y reembolso para los cuatro

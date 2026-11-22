@@ -17,6 +17,8 @@ import { setupAccounting, recordPayment, accountingFilters, accountingData, acco
 import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
   readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
 import { adminAuth, adminRouteAllowed, can, roleNames } from './admin-access.mjs';
+import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
+  analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -120,7 +122,13 @@ transaction(() => {
   setupInventory(db);
   setupAccounting(db);
   setupSerials(db);
+  setupFunnel(db);
+  purgeFunnel(db);
 });
+setInterval(() => {
+  try { purgeFunnel(db); }
+  catch (error) { console.error('Could not purge expired analytics journeys', error); }
+}, 3600000).unref();
 function purchaseModel(sku) {
   if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
   const model = extraModel(sku);
@@ -277,7 +285,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${catalogAccess ? '<a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>' : ''}
       ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
       ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
-      ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a>' : ''}</div>
+      ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a>' : ''}</div>
     ${financeAccess ? `<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -364,7 +372,7 @@ const server = createServer(async (req, res) => {
     const t = copy[locale];
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
-    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart'].includes(suffix) ||
+    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics'].includes(suffix) ||
       modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
@@ -376,9 +384,19 @@ const server = createServer(async (req, res) => {
         ? `?view=${galleryView}#gallery` : '';
     const discoverable = first === locale && (suffix === '' || ['/movility-one', '/compare', '/movility-one/3d'].includes(suffix));
     const cartUnits = [...readCart(req).values()].reduce((sum, quantity) => sum + quantity, 0);
+    const consent = analyticsChoice(req);
+    const settings = path === `/${locale}/analytics`;
+    const track = stage => {
+      try { recordFunnel(db, consent, locale, stage); }
+      catch (error) { console.error('Could not record analytics stage', error); }
+    };
     const render = (body, status = 200) => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
-        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]));
+        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}, {
+          footer: analyticsLink(locale),
+          prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
+            ? analyticsPrompt(locale, consent, path) : '',
+        }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]));
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
@@ -407,6 +425,9 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && path === '/admin/serials') {
         return send(res, 200, page('es', 'Historial por número de serie', serialLookup(db, searchParams.get('serial') || '')));
+      }
+      if (req.method === 'GET' && path === '/admin/analytics') {
+        return send(res, 200, page('es', 'Embudo de compra', funnelReport(db, searchParams)));
       }
       if (req.method === 'GET' && ['/admin/inventory', '/admin/inventory.csv'].includes(path)) {
         const requested = searchParams.get('sku') || '';
@@ -555,12 +576,21 @@ const server = createServer(async (req, res) => {
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
       }
     }
+    if (req.method === 'GET' && settings) return render(analyticsPrompt(locale, consent, path, true));
+    if (req.method === 'POST' && settings) {
+      const fields = await form(req);
+      const choice = fields?.get('choice');
+      if (!['accept', 'decline'].includes(choice)) return render(analyticsPrompt(locale, consent, path, true), 400);
+      res.setHeader('Set-Cookie', updateAnalytics(db, consent, choice === 'accept', Boolean(codespaceOrigin)));
+      return redirect(res, analyticsReturn(locale, fields.get('return') || ''));
+    }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
       return render(homepage(locale, catalog().cents, stock() > 0, extraCatalog(locale, liveModels())));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();
+      track('view');
       return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView, video: videoLocales.has(locale) }));
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
@@ -570,7 +600,10 @@ const server = createServer(async (req, res) => {
       const model = extraModel(modelRoute[1]);
       if (model?.active) {
         const media = modelMedia(model.sku, locale);
-        if (!modelRoute[2]) return render(extraProduct(locale, model, media, galleryView));
+        if (!modelRoute[2]) {
+          track('view');
+          return render(extraProduct(locale, model, media, galleryView));
+        }
         if (media.model) return render(viewerPage(locale, media.photo,
           { name: model.name, url: media.model, productPath: '/models/' + model.sku }));
       }
@@ -581,31 +614,38 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && path === `/${locale}/cart`) {
       if (selectedSKU) {
         const model = extraModel(selectedSKU);
+        if (model?.active && model.units) track('cart');
         return model?.active ? render(cartPage(locale, model.cents, model.units > 0, model)) : render(`<h1>${t.soldOut}</h1>`, 404);
       }
-      return render(basketPage(locale, cartLines(readCart(req), purchaseModel)));
+      const lines = cartLines(readCart(req), purchaseModel);
+      if (canCheckout(lines)) track('cart');
+      return render(basketPage(locale, lines));
     }
     if (req.method === 'POST' && path === `/${locale}/cart`) {
       const cart = readCart(req);
       if (!changeCart(cart, await form(req), purchaseModel)) {
         return render(basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable), 409);
       }
+      if (canCheckout(cartLines(cart, purchaseModel))) track('cart');
       res.setHeader('Set-Cookie', cartCookie(cart, Boolean(codespaceOrigin)));
       return redirect(res, `/${locale}/cart`);
     }
     if (req.method === 'GET' && basketCheckout) {
       const lines = cartLines(readCart(req), purchaseModel);
       if (!canCheckout(lines)) return render(basketPage(locale, lines, cartText(locale).unavailable), 409);
+      track('checkout');
       return render(checkoutPage(locale, cartTotal(lines), randomUUID(), {}, '', null, lines));
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
       if (selectedSKU) {
         const model = extraModel(selectedSKU);
         if (!model?.active || !model.units) return render(`<h1>${t.soldOut}</h1>`, 409);
+        track('checkout');
         return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', model));
       }
       const model = catalog();
       if (!stock()) return render(productPage(locale, model.cents, false, model), 409);
+      track('checkout');
       return render(checkoutPage(locale, model.cents, randomUUID()));
     }
     if (req.method === 'POST' && (basketCheckout || path === `/${locale}/checkout`)) {
@@ -666,6 +706,7 @@ const server = createServer(async (req, res) => {
         return 'ok';
       });
       if (outcome === 'ok' || outcome === 'repeat') {
+        if (outcome === 'ok') track('purchase');
         if (basketCheckout && (outcome === 'ok' || cartQuote(lines) === fields.get('cartQuote'))) {
           res.setHeader('Set-Cookie', cartCookie(new Map(), Boolean(codespaceOrigin)));
         }

@@ -94,6 +94,11 @@ habilitan al arrancar con una contraseña propia en la variable indicada.
 Son perfiles de la demo con autenticación HTTP. El control de cuentas
 individuales, MFA y gestión de sesiones corresponde al piloto comercial.
 
+El **Embudo de compra** está disponible para administración y finanzas.
+Mide recorridos consentidos en orden desde la ficha hasta la compra, por
+idioma de inicio y periodo. Las preferencias se pueden cambiar desde el
+pie de la tienda. Retirar el consentimiento borra el recorrido asociado.
+
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 

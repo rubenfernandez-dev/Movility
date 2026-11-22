@@ -32,12 +32,12 @@ export function escapeHtml(text) {
 
 const pageFooter = { 'de-CH': 'Schweiz · CHF', 'fr-CH': 'Suisse · CHF', es: 'Movility · Entorno de prueba' };
 
-export function page(locale, title, content, header = '', metadata = {}) {
+export function page(locale, title, content, header = '', metadata = {}, extras = {}) {
   const t = copy[locale];
   return `<!doctype html>
 <html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body>
 ${header || '<header class="top"><div class="top-inner"><a class="brand" href="/de-CH">Movility</a></div></header>'}
-<main id="content" tabindex="-1">${t ? `<p class="demo">${t.demo}</p>` : ''}${content}</main>
-<footer>${pageFooter[locale]}</footer></body></html>`;
+<main id="content" tabindex="-1">${t ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}</main>
+<footer>${pageFooter[locale]}${extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
 }

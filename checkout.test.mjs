@@ -342,4 +342,40 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(serialLookup, /CH-RESOLD/);
   assert.match(serialLookup, /CH-STOCK-2/);
   assert.match(serialLookup, /Devuelto y repuesto/);
+  const funnel = '/admin/analytics';
+  const count = (html, stage, n) => assert.match(html, new RegExp('<th scope="row">' + stage + '</th><td>' + n + '</td>'));
+  assert.equal((await get(funnel, support)).status, 403);
+  count(await (await get(funnel, finance)).text(), 'Ficha de producto', 0);
+  const visit = await get('/fr-CH/movility-one');
+  assert.equal(visit.headers.get('set-cookie'), null);
+  assert.match(await visit.text(), /Continuer sans statistiques/);
+  const reject = await post('/fr-CH/analytics', { choice: 'decline', return: '//example.com' });
+  assert.equal(reject.headers.get('location'), '/fr-CH');
+  const rejected = reject.headers.get('set-cookie').split(';')[0];
+  await get('/fr-CH/movility-one', { Cookie: rejected });
+  count(await (await get(funnel, finance)).text(), 'Ficha de producto', 0);
+  const accepted = await post('/fr-CH/analytics', { choice: 'accept', return: '/fr-CH/movility-one' });
+  assert.equal(accepted.headers.get('location'), '/fr-CH/movility-one');
+  const analytics = accepted.headers.get('set-cookie').split(';')[0];
+  await get('/fr-CH/movility-one', { Cookie: analytics });
+  await get('/de-CH/movility-one', { Cookie: analytics });
+  const add = await post('/de-CH/cart', { action: 'add', sku: 'one' }, { Cookie: analytics });
+  const basketOnly = add.headers.get('set-cookie').split(';')[0];
+  const journey = { Cookie: analytics + '; ' + basketOnly };
+  const funnelCheckout = await (await get(basketCheckout, journey)).text();
+  const analyticsPurchase = {
+    id: funnelCheckout.match(/name="id" value="([^"]+)"/)[1],
+    cartQuote: funnelCheckout.match(/name="cartQuote" value="([^"]+)"/)[1].replaceAll('&quot;', '"'),
+    email: 'metrics@example.com', name: 'Client Demo', street: 'Rue de Test 1', zip: '1201',
+    city: 'Genève', method: 'Visa', result: 'paid',
+  };
+  assert.equal((await post(basketCheckout, analyticsPurchase, journey)).status, 303);
+  assert.equal((await post(basketCheckout, analyticsPurchase, journey)).status, 303);
+  const french = await (await get(funnel + '?days=7&locale=fr-CH', finance)).text();
+  for (const stage of ['Ficha de producto', 'Carrito', 'Inicio de pago', 'Pedido confirmado']) count(french, stage, 1);
+  assert.doesNotMatch(french, /metrics@example\.com|Genève/);
+  count(await (await get(funnel + '?locale=de-CH', finance)).text(), 'Ficha de producto', 0);
+  assert.equal((await post('/fr-CH/analytics', { choice: 'decline', return: '/fr-CH/analytics' }, journey)).status, 303);
+  await get('/fr-CH/movility-one', { Cookie: analytics });
+  count(await (await get(funnel, finance)).text(), 'Ficha de producto', 0);
 });
