@@ -66,6 +66,12 @@ directamente en `MOVILITY_MEDIA_DIR` si se configuró ese directorio.
 El vídeo aparece en cada idioma con subtítulos WebVTT y transcripción.
 Los medios de los modelos archivados dejan de servirse.
 
+En **Movimientos de stock** puedes consultar el saldo por SKU y descargar CSV.
+El saldo inicial se toma de la base de datos al activar el historial. Para
+pedidos enviados, abre **Devolución física** en el pedido y registra las
+unidades recibidas por referencia. Solo las marcadas como aptas se vuelven
+a poner a la venta. La recepción y el reembolso son acciones independientes.
+
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 

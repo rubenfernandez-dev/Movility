@@ -12,6 +12,7 @@ import { orderEmail } from './postpurchase.mjs';
 import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct } from './catalog.mjs';
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
+import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -109,6 +110,7 @@ const transaction = (work) => {
   }
 };
 const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().units;
+transaction(() => setupInventory(db));
 function purchaseModel(sku) {
   if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
   const model = extraModel(sku);
@@ -127,6 +129,19 @@ function changeStock(sku, quantity) {
   return db.prepare(`UPDATE extra_models SET units = units + ?, revision = revision + 1
     WHERE sku = ? AND units + ? >= 0 AND (? > 0 OR active = 1)`).run(quantity, sku, quantity, quantity).changes;
 }
+function recordMovement(sku, delta, reason, orderId = null) {
+  const balance = sku === coreSKU ? stock() : extraModel(sku).units;
+  db.prepare('INSERT INTO stock_movements (sku, delta, balance, reason, order_id) VALUES (?, ?, ?, ?, ?)')
+    .run(sku, delta, balance, reason, orderId);
+}
+function orderStock(sku, quantity, reason, orderId) {
+  if (!changeStock(sku, quantity)) throw new Error('Stock changed during order operation');
+  recordMovement(sku, quantity, reason, orderId);
+}
+const orderReceipts = id => db.prepare('SELECT sku, quantity, restocked FROM return_receipts WHERE order_id = ?').all(id);
+const orderIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+const inventoryRows = (sku, limit) => db.prepare(`SELECT * FROM stock_movements
+  WHERE (? = '' OR sku = ?) ORDER BY id DESC LIMIT ?`).all(sku, sku, limit);
 const adminHeader = 'Basic ' + Buffer.from('admin:' + admin).toString('base64');
 const noticeKinds = ['paid', 'shipped', 'refunded'];
 
@@ -223,18 +238,20 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
     const events = db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id);
     const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
-    return `<article><h2>${order.id}</h2>
+    return `<article id="order-${order.id}"><h2>${order.id}</h2>
       <p>${escapeHtml(productNames)} · ${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
       ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
       <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
       ${order.status === 'paid' ? `<form method="post" action="/admin/${order.id}/ship"><label>Referencia de seguimiento <input name="tracking" required maxlength="80"></label><button>Registrar envío</button></form>` : ''}
       ${order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
+      ${returnControls({ ...order, lines }, orderReceipts(order.id))}
     </article>`;
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
-    <p><a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a></p>
+    <div class="product-actions"><a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>
+      <a class="button secondary" href="/admin/inventory">Movimientos de stock</a></div>
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -357,6 +374,18 @@ const server = createServer(async (req, res) => {
         return send(res, 200, displayModelAdmin(searchParams.has('saved')
           ? '<p class="form-success" role="status">Modelo guardado.</p>' : ''));
       }
+      if (req.method === 'GET' && ['/admin/inventory', '/admin/inventory.csv'].includes(path)) {
+        const requested = searchParams.get('sku') || '';
+        const sku = requested === coreSKU || skuPattern.test(requested) ? requested : '';
+        if (path.endsWith('.csv')) {
+          res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+            'Content-Disposition': 'attachment; filename="movility-stock.csv"', 'X-Content-Type-Options': 'nosniff' });
+          return res.end(inventoryCsv(inventoryRows(sku, -1)));
+        }
+        const models = [{ sku: coreSKU, name: 'Movility One', units: stock() },
+          ...db.prepare('SELECT sku, name, units FROM extra_models ORDER BY name, sku').all()];
+        return send(res, 200, page('es', 'Movimientos de stock', inventoryPage(models, inventoryRows(sku, 200), sku)));
+      }
       const modelEdit = /^\/admin\/models(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
       if (req.method === 'POST' && modelEdit) {
         const fields = await form(req);
@@ -370,9 +399,11 @@ const server = createServer(async (req, res) => {
           if (current) {
             db.prepare(`UPDATE extra_models SET name = ?, cents = ?, units = ?, active = ?, description_de = ?,
               description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
+            if (input[2] !== current.units) recordMovement(sku, input[2] - current.units, 'adjustment');
           } else {
             db.prepare(`INSERT INTO extra_models (name, cents, units, active, description_de, description_fr,
               width, weight, range, fold, sku) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...input, sku);
+            recordMovement(sku, input[2], 'opening');
           }
           return true;
         });
@@ -404,6 +435,8 @@ const server = createServer(async (req, res) => {
           db.prepare('UPDATE catalog SET cents = ?, description_de = ?, description_fr = ? WHERE id = 1')
             .run(Math.round(Number(rawPrice) * 100), descriptionDe, descriptionFr);
           db.prepare('UPDATE stock SET units = ? WHERE id = 1').run(Number(rawUnits));
+          const delta = Number(rawUnits) - Number(fields.get('expectedUnits'));
+          if (delta) recordMovement(coreSKU, delta, 'adjustment');
           return true;
         });
         return saved ? redirect(res, '/admin?saved=catalog') : send(res, 409, adminView({
@@ -411,8 +444,38 @@ const server = createServer(async (req, res) => {
         }));
       }
       if (req.method === 'POST' && path === '/admin/restock') {
-        db.exec('UPDATE stock SET units = 1 WHERE id = 1 AND units = 0');
+        transaction(() => {
+          if (stock() === 0) orderStock(coreSKU, 1, 'adjustment', null);
+        });
         return redirect(res, '/admin');
+      }
+      if (req.method === 'POST' && third === 'return' && orderIdPattern.test(second) && path === `/admin/${second}/return`) {
+        const fields = await form(req);
+        const receipt = fields?.get('receipt') || '';
+        const sku = fields?.get('sku') || '';
+        const rawQuantity = fields?.get('quantity') || '';
+        const quantity = Number(rawQuantity);
+        const disposition = fields?.get('disposition');
+        if (!orderIdPattern.test(receipt) || !/^[1-9]\d{0,2}$/.test(rawQuantity) || !['restock', 'hold'].includes(disposition)) {
+          return send(res, 400, adminView({ error: 'Indica las unidades recibidas y su estado.' }));
+        }
+        const restocked = Number(disposition === 'restock');
+        const received = transaction(() => {
+          const order = orderById(second);
+          if (!order?.tracking) return false;
+          const duplicate = db.prepare('SELECT * FROM return_receipts WHERE id = ?').get(receipt);
+          if (duplicate) return duplicate.order_id === second && duplicate.sku === sku &&
+            duplicate.quantity === quantity && duplicate.restocked === restocked;
+          const line = purchasedLines(order).find(item => item.sku === sku);
+          const alreadyReceived = orderReceipts(second).filter(item => item.sku === sku).reduce((sum, item) => sum + item.quantity, 0);
+          if (!line || quantity > line.quantity - alreadyReceived) return false;
+          db.prepare('INSERT INTO return_receipts (id, order_id, sku, quantity, restocked) VALUES (?, ?, ?, ?, ?)')
+            .run(receipt, second, sku, quantity, restocked);
+          if (restocked) orderStock(sku, quantity, 'return', second);
+          return true;
+        });
+        return received ? redirect(res, `/admin#order-${second}`)
+          : send(res, 409, adminView({ error: 'La recepción supera las unidades pendientes o el pedido aún no se ha enviado.' }));
       }
       if (req.method === 'POST' && /^\/admin\/[0-9a-f-]{36}\/(ship|refund)$/.test(path)) {
         const fields = await form(req);
@@ -428,9 +491,7 @@ const server = createServer(async (req, res) => {
           if (third === 'refund' && order.status !== 'refunded') {
             db.prepare("UPDATE orders SET status = 'refunded' WHERE id = ?").run(second);
             if (order.status === 'paid') {
-              if (order.lines.length) {
-                for (const line of order.lines) changeStock(line.sku, line.quantity);
-              } else changeStock(order.model_sku || coreSKU, 1);
+              for (const line of purchasedLines(order)) orderStock(line.sku, line.quantity, 'refund', second);
             }
             notice(second, 'refunded');
           }
@@ -530,7 +591,7 @@ const server = createServer(async (req, res) => {
           const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?)');
           db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(currentLines));
           for (const line of currentLines) {
-            if (!changeStock(line.sku, -line.quantity)) throw new Error('Cart stock changed during checkout');
+            orderStock(line.sku, -line.quantity, 'order', id);
             insertLine.run(id, line.sku, line.name, line.quantity, line.cents);
           }
           db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
@@ -543,6 +604,7 @@ const server = createServer(async (req, res) => {
         if (quotedPrice !== String(currentPrice)) return 'price';
         if (!changeStock(sku || coreSKU, -1)) return 'out';
         db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, currentPrice);
+        recordMovement(sku || coreSKU, -1, 'order', id);
         if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?)').run(id, sku, currentModel.name);
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         notice(id, 'paid');
