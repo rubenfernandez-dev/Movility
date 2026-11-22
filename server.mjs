@@ -9,6 +9,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { orderEmail } from './postpurchase.mjs';
+import { setupModels, skuPattern, modelAdmin, modelInput, extraCatalog, extraProduct } from './catalog.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -49,7 +50,12 @@ db.exec(`
   INSERT OR IGNORE INTO catalog (id, cents) VALUES (1, 249900);
 `);
 
+setupModels(db);
 const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
+const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
+const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
+const displayModelAdmin = message => page('es', 'Modelos del catálogo', modelAdmin(
+  db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all(), message));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -59,6 +65,11 @@ const assets = new Map([
 ]);
 const mediaFile = path => process.env.MOVILITY_MEDIA_DIR
   ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
+function modelMedia(sku) {
+  const photo = `/assets/models/${sku}.jpg`;
+  const model = `/assets/models/${sku}.glb`;
+  return { photo: existsSync(mediaFile(photo)) ? photo : '', model: existsSync(mediaFile(model)) ? model : '' };
+}
 const videoFile = mediaFile(videoPath);
 const videoLocales = new Set();
 for (const locale of Object.keys(copy)) {
@@ -84,7 +95,8 @@ const transaction = (work) => {
   }
 };
 const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().units;
-const orderById = (id) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+const orderById = (id) => db.prepare(`SELECT orders.*, order_models.sku AS model_sku, order_models.name AS model_name
+  FROM orders LEFT JOIN order_models ON orders.id = order_models.order_id WHERE orders.id = ?`).get(id);
 const adminHeader = 'Basic ' + Buffer.from('admin:' + admin).toString('base64');
 const noticeKinds = ['paid', 'shipped', 'refunded'];
 
@@ -167,8 +179,9 @@ const orderLabels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsad
 function adminView({ error, saved, draft, filter = '' } = {}) {
   const model = catalog();
   const units = stock();
-  const orders = db.prepare(`SELECT orders.*, name, street, zip, city FROM orders
+  const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city, order_models.name AS model_name FROM orders
     LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id
+    LEFT JOIN order_models ON orders.id = order_models.order_id
     WHERE (? = '' OR status = ?) ORDER BY orders.rowid DESC`).all(filter, filter);
   const totals = db.prepare(`SELECT COUNT(*) AS quantity, COALESCE(SUM(cents), 0) AS gross,
     COALESCE(SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END), 0) AS refunds FROM orders`).get();
@@ -179,7 +192,7 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     const events = db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id);
     const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
     return `<article><h2>${order.id}</h2>
-      <p>${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
+      <p>${escapeHtml(order.model_name || 'Movility One')} · ${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
       ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
       <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
@@ -189,6 +202,7 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
+    <p><a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a></p>
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -242,6 +256,13 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
+    const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(jpg|glb)$/.exec(path);
+    if (req.method === 'GET' && modelAsset && extraModel(modelAsset[1])?.active && existsSync(mediaFile(path))) {
+      const type = modelAsset[2] === 'jpg' ? 'image/jpeg' : 'model/gltf-binary';
+      const data = readFileSync(mediaFile(path));
+      res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
+      return res.end(data);
+    }
     if (req.method === 'GET' && path === '/robots.txt') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end('User-agent: *\nDisallow: /admin\n');
@@ -260,15 +281,19 @@ const server = createServer(async (req, res) => {
     const locale = Object.hasOwn(copy, first) ? first : 'de-CH';
     const t = copy[locale];
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
-    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout'].includes(suffix) || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
+    const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
+    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout'].includes(suffix) ||
+      modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const galleryView = searchParams.get('view') === 'side' ? 'side' : 'front';
-    const languageQuery = languagePath === '/compare' && searchParams.size ? `?${searchParams}`
+    const selectedSKU = searchParams.get('model') || '';
+    const languageQuery = ['/cart', '/checkout'].includes(languagePath) && skuPattern.test(selectedSKU) ? `?model=${selectedSKU}`
+      : languagePath === '/compare' && searchParams.size ? `?${searchParams}`
       : languagePath === '/movility-one' && galleryView === 'side' ? '?view=side#gallery' : '';
     const discoverable = first === locale && (suffix === '' || ['/movility-one', '/compare', '/movility-one/3d'].includes(suffix));
     const render = (body, status = 200) => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery),
-        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}), languagePath === '/movility-one/3d');
+        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]));
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
@@ -284,6 +309,32 @@ const server = createServer(async (req, res) => {
         const status = searchParams.get('status');
         return send(res, 200, adminView({ saved: searchParams.get('saved') === 'catalog',
           filter: Object.hasOwn(orderLabels, status) ? status : '' }));
+      }
+      if (req.method === 'GET' && path === '/admin/models') {
+        return send(res, 200, displayModelAdmin(searchParams.has('saved')
+          ? '<p class="form-success" role="status">Modelo guardado.</p>' : ''));
+      }
+      const modelEdit = /^\/admin\/models(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
+      if (req.method === 'POST' && modelEdit) {
+        const fields = await form(req);
+        const sku = modelEdit[1] || fields?.get('sku')?.trim() || '';
+        const input = modelInput(fields, sku);
+        if (!input) return send(res, 400, displayModelAdmin('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>'));
+        const saved = transaction(() => {
+          const current = extraModel(sku);
+          if (modelEdit[1] ? !current || String(current.revision) !== fields.get('revision') : current) return false;
+          if (input[3] && !current?.active && liveModels().length >= 9) return false;
+          if (current) {
+            db.prepare(`UPDATE extra_models SET name = ?, cents = ?, units = ?, active = ?, description_de = ?,
+              description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
+          } else {
+            db.prepare(`INSERT INTO extra_models (name, cents, units, active, description_de, description_fr,
+              width, weight, range, fold, sku) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...input, sku);
+          }
+          return true;
+        });
+        return saved ? redirect(res, '/admin/models?saved=1') : send(res, 409, displayModelAdmin(
+          '<p class="form-error" role="alert">El SKU ya existe, el modelo cambió mientras editabas o se alcanzó el límite de diez publicados.</p>'));
       }
       const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z]+)$/.exec(path);
       if (req.method === 'GET' && emailRoute && noticeKinds.includes(emailRoute[2])) {
@@ -333,7 +384,10 @@ const server = createServer(async (req, res) => {
           }
           if (third === 'refund' && order.status !== 'refunded') {
             db.prepare("UPDATE orders SET status = 'refunded' WHERE id = ?").run(second);
-            if (order.status === 'paid') db.exec('UPDATE stock SET units = units + 1 WHERE id = 1');
+            if (order.status === 'paid') {
+              if (order.model_sku) db.prepare('UPDATE extra_models SET units = units + 1, revision = revision + 1 WHERE sku = ?').run(order.model_sku);
+              else db.exec('UPDATE stock SET units = units + 1 WHERE id = 1');
+            }
             notice(second, 'refunded');
           }
           return true;
@@ -343,22 +397,40 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
-      return render(homepage(locale, catalog().cents, stock() > 0));
+      return render(homepage(locale, catalog().cents, stock() > 0, extraCatalog(locale, liveModels())));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();
       return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView, video: videoLocales.has(locale) }));
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
-      return render(comparisonPage(locale, searchParams, catalog().cents));
+      return render(comparisonPage(locale, searchParams, catalog().cents, liveModels()));
+    }
+    if (req.method === 'GET' && modelRoute) {
+      const model = extraModel(modelRoute[1]);
+      if (model?.active) {
+        const media = modelMedia(model.sku);
+        if (!modelRoute[2]) return render(extraProduct(locale, model, media));
+        if (media.model) return render(viewerPage(locale, media.photo,
+          { name: model.name, url: media.model, productPath: '/models/' + model.sku }));
+      }
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one/3d`) {
       return render(viewerPage(locale, productImage));
     }
     if (req.method === 'GET' && path === `/${locale}/cart`) {
+      if (selectedSKU) {
+        const model = extraModel(selectedSKU);
+        return model?.active ? render(cartPage(locale, model.cents, model.units > 0, model)) : render(`<h1>${t.soldOut}</h1>`, 404);
+      }
       return render(cartPage(locale, catalog().cents, stock() > 0));
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
+      if (selectedSKU) {
+        const model = extraModel(selectedSKU);
+        if (!model?.active || !model.units) return render(`<h1>${t.soldOut}</h1>`, 409);
+        return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', model));
+      }
       const model = catalog();
       if (!stock()) return render(productPage(locale, model.cents, false, model), 409);
       return render(checkoutPage(locale, model.cents, randomUUID()));
@@ -370,32 +442,44 @@ const server = createServer(async (req, res) => {
       const method = fields?.get('method');
       const result = fields?.get('result');
       const quotedPrice = fields?.get('quotedPrice');
-      const cents = catalog().cents;
+      const sku = fields?.get('model') || '';
+      const selected = sku ? extraModel(sku) : null;
+      const cents = selected?.cents ?? catalog().cents;
       const address = Object.fromEntries(['name', 'street', 'zip', 'city'].map(key => [key, fields?.get(key)?.trim() || '']));
       const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
       const values = { ...address, email, method };
+      if (sku && !selected) return render(`<h1>${t.soldOut}</h1>`, 409);
       if (!validId ||
           email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           !address.name || address.name.length > 100 || !address.street || address.street.length > 160 ||
           !address.city || address.city.length > 100 || !/^[0-9]{4}$/.test(address.zip) ||
           !methods.includes(method) || !['paid', 'failed'].includes(result)) {
-        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid), 400);
+        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected), 400);
       }
-      if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed));
+      if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed, selected));
       const outcome = transaction(() => {
         const existing = orderById(id);
-        if (existing) return existing.email === email && existing.method === method && existing.locale === locale ? 'ok' : 'conflict';
-        const currentPrice = catalog().cents;
+        if (existing) return existing.email === email && existing.method === method && existing.locale === locale &&
+          (existing.model_sku || '') === sku ? 'ok' : 'conflict';
+        const currentModel = sku ? extraModel(sku) : null;
+        if (sku && !currentModel?.active) return 'out';
+        const currentPrice = currentModel?.cents ?? catalog().cents;
         if (quotedPrice !== String(currentPrice)) return 'price';
-        const updated = db.prepare('UPDATE stock SET units = units - 1 WHERE id = 1 AND units > 0').run();
+        const updated = currentModel
+          ? db.prepare('UPDATE extra_models SET units = units - 1, revision = revision + 1 WHERE sku = ? AND units > 0 AND active = 1').run(sku)
+          : db.prepare('UPDATE stock SET units = units - 1 WHERE id = 1 AND units > 0').run();
         if (!updated.changes) return 'out';
         db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, currentPrice);
+        if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?)').run(id, sku, currentModel.name);
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         notice(id, 'paid');
         return 'ok';
       });
       if (outcome === 'ok') return redirect(res, `/${locale}/orders/${id}`);
-      if (outcome === 'price') return render(checkoutPage(locale, catalog().cents, id, values, t.priceChanged), 409);
+      if (outcome === 'price') {
+        const current = sku ? extraModel(sku) : null;
+        return render(checkoutPage(locale, current?.cents ?? catalog().cents, id, values, t.priceChanged, current), 409);
+      }
       return render(`<h1>${outcome === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
     }
     if (req.method === 'GET' && second === 'orders' && first === locale && path === `/${locale}/orders/${third}`) {

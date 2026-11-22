@@ -25,6 +25,10 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   un carrito con varias referencias. Aceptación: despublicar un modelo bloquea
   nuevas compras y preserva los pedidos anteriores, y dos compras simultáneas
   no venden dos veces la misma unidad.
+  - [x] Modelos con SKU, ficha bilingüe, precio, stock, características, publicación y archivo.
+  - [x] Integración con el comparador y compra de un modelo con stock independiente e historial.
+  - [x] Foto y visor GLB opcionales por modelo.
+  - [ ] Galería y vídeo por modelo, y carrito con varias referencias.
 - [ ] **3. Administración y analítica.** Añadir movimientos de stock y
   devoluciones físicas, trazabilidad por serie cuando aplique, roles, filtros
   y exportación contable. Medir ventas netas y el embudo con el consentimiento

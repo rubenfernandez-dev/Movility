@@ -45,6 +45,12 @@ y enlace de seguimiento. La bandeja de prueba no envía correos externos.
 Consulta [las tareas del proyecto](TAREAS.md) para ver qué está listo y qué
 queda para el piloto suizo y la expansión a la UE.
 
+En **Gestionar modelos del catálogo** puedes crear y publicar hasta nueve
+modelos adicionales con stock propio. Desmarca **Publicado en la tienda**
+para archivar un modelo. Para asociar una foto JPG y un GLB autocontenido,
+coloca `<sku>.jpg` y `<sku>.glb` en `assets/models/` o directamente en
+`MOVILITY_MEDIA_DIR` si se configuró ese directorio.
+
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 

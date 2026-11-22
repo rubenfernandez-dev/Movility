@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -12,6 +12,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   writeFileSync(join(media, 'movility-one.mp4'), '0123456789');
   writeFileSync(join(media, 'movility-one.fr-CH.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nExemple\n');
   writeFileSync(join(media, 'movility-one.fr-CH.txt'), 'Transcription de test');
+  copyFileSync(new URL('./assets/movility-one.glb', import.meta.url), join(media, 'alpine.glb'));
+  copyFileSync(new URL('./assets/movility-one.jpg', import.meta.url), join(media, 'alpine.jpg'));
   const processHandle = spawn(process.execPath, ['server.mjs'], {
     env: {
       ...process.env, PORT: '0', MOVILITY_DB: ':memory:', MOVILITY_ADMIN_PASSWORD: 'local-test',
@@ -26,7 +28,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       processHandle.kill();
       await exited;
     }
-    for (const name of ['movility-one.mp4', 'movility-one.fr-CH.vtt', 'movility-one.fr-CH.txt']) {
+    for (const name of ['movility-one.mp4', 'movility-one.fr-CH.vtt', 'movility-one.fr-CH.txt', 'alpine.glb', 'alpine.jpg']) {
       rmSync(join(media, name), { force: true });
     }
     rmdirSync(media);
@@ -40,13 +42,13 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const post = (path, fields, headers) => fetch(base + path, {
     method: 'POST', body: new URLSearchParams(fields), headers: { Origin: base, ...headers }, redirect: 'manual',
   });
-  const fields = async (method) => {
-    const html = await (await get(checkout)).text();
+  const fields = async (method, sku = '') => {
+    const html = await (await get(checkout + (sku ? '?model=' + sku : ''))).text();
     const [, id] = html.match(/name="id" value="([^"]+)"/);
     const [, quotedPrice] = html.match(/name="quotedPrice" value="([^"]+)"/);
     return {
       id, quotedPrice, email: 'demo@example.com', name: 'Client Démo', street: 'Route de Test 1', zip: '1201',
-      city: 'Genève', method, result: 'paid',
+      city: 'Genève', method, result: 'paid', ...(sku ? { model: sku } : {}),
     };
   };
 
@@ -75,9 +77,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(await (await get('/fr-CH/movility-one/3d')).text(), /<model-viewer/);
   const glb = await get('/assets/movility-one.glb');
   assert.equal(glb.headers.get('content-type'), 'model/gltf-binary');
-  const model = Buffer.from(await glb.arrayBuffer());
-  assert.equal(model.toString('ascii', 0, 4), 'glTF');
-  assert.equal(model.readUInt32LE(8), model.length);
+  const glbBytes = Buffer.from(await glb.arrayBuffer());
+  assert.equal(glbBytes.toString('ascii', 0, 4), 'glTF');
+  assert.equal(glbBytes.readUInt32LE(8), glbBytes.length);
   assert.match(await (await get('/de-CH/cart')).text(), /\/de-CH\/checkout/);
   assert.equal((await get('/site.css')).headers.get('content-type'), 'text/css; charset=utf-8');
   assert.equal((await get('/assets/movility-one.jpg')).headers.get('content-type'), 'image/jpeg');
@@ -142,4 +144,29 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1 · Pedidos: 1/);
   assert.equal((await post('/admin/catalog', { ...edit, expectedPrice: '259990', price: '999' }, headers)).status, 303);
   assert.match(await (await get(orderPath)).text(), /599\.90/);
+  const model = { sku: 'alpine', name: 'Movility Alpine', price: '3199', units: '1',
+    active: '1', description_de: 'Testmodell für den Alltag', description_fr: 'Modèle de test',
+    width: '60', weight: '28', range: '24', fold: '1' };
+  assert.equal((await post('/admin/models', model, headers)).status, 303);
+  assert.equal((await post('/admin/models', model, headers)).status, 409);
+  assert.match(await (await get('/fr-CH/models/alpine')).text(), /Modèle de test/);
+  assert.match(await (await get('/fr-CH/models/alpine')).text(), /\/assets\/models\/alpine.jpg/);
+  assert.match(await (await get('/fr-CH/models/alpine/3d')).text(), /\/assets\/models\/alpine.glb/);
+  assert.equal((await get('/assets/models/alpine.glb')).headers.get('content-type'), 'model/gltf-binary');
+  assert.match(await (await get('/de-CH')).text(), /Movility Alpine/);
+  assert.match(await (await get('/fr-CH/compare?first=alpine&second=one')).text(), /Movility Alpine \/ Movility One/);
+  const extra = await Promise.all([fields('Visa', 'alpine'), fields('PayPal', 'alpine')]);
+  const extraResults = await Promise.all(extra.map(candidate => post(checkout, candidate)));
+  assert.deepEqual(extraResults.map(({ status }) => status).sort(), [303, 409]);
+  const extraOrder = extraResults.find(({ status }) => status === 303).headers.get('location');
+  assert.match(await (await get(extraOrder)).text(), /Movility Alpine/);
+  assert.equal((await post('/admin/models/alpine', { ...model, revision: '0', active: '0' }, headers)).status, 409);
+  assert.equal((await post('/admin/models/alpine', { ...model, revision: '1', name: 'Alpine édition 2', units: '0', active: '0' }, headers)).status, 303);
+  assert.equal((await get('/fr-CH/models/alpine')).status, 404);
+  assert.equal((await get('/assets/models/alpine.glb')).status, 404);
+  assert.equal((await get('/fr-CH/checkout?model=alpine')).status, 409);
+  assert.doesNotMatch(await (await get('/fr-CH/compare')).text(), /Alpine/);
+  assert.match(await (await get(extraOrder)).text(), /Movility Alpine/);
+  assert.equal((await post('/admin/' + extraOrder.split('/').at(-1) + '/refund', {}, headers)).status, 303);
+  assert.match(await (await get('/admin/models', headers)).text(), /Archivad[o] · 1 ud\./);
 });

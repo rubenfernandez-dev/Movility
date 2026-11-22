@@ -61,7 +61,7 @@ export function navigation(locale, suffix, query = '') {
     <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}</a></div></div></header>`;
 }
 
-export function homepage(locale, cents, available) {
+export function homepage(locale, cents, available, extras = '') {
   const l = labels[locale];
   const t = copy[locale];
   const product = href(locale, '/movility-one');
@@ -76,7 +76,7 @@ export function homepage(locale, cents, available) {
       ${status(l, t, available)}<h3>Movility One</h3><p>${l.fit} · ${l.drive}</p>
       <p class="price">${money(locale, cents)}</p><a href="${product}">${l.details}</a></div>
   </article></section>
-  <section class="section faq" id="faq"><h2>${l.faq}</h2>
+  ${extras}<section class="section faq" id="faq"><h2>${l.faq}</h2>
     ${l.questions.map(([question, answer]) => `<details><summary>${question}</summary><p>${answer}</p></details>`).join('')}
   </section>`;
 }
@@ -109,16 +109,17 @@ export function productPage(locale, cents, available, model, { view = 'front', v
     </video><p><a href="${transcriptPath(locale)}">${l.transcript}</a></p></section>` : ''}`;
 }
 
-export function cartPage(locale, cents, available) {
+export function cartPage(locale, cents, available, model) {
   const l = labels[locale];
   const t = copy[locale];
   return `<h1 class="page-title">${l.basket}</h1>
-    <article class="catalog-card">${image(l)}<div>${status(l, t, available)}<h2>Movility One</h2>
+    <article class="${model ? 'confirmation' : 'catalog-card'}">${model ? '' : image(l)}<div>${status(l, t, available)}<h2>${escapeHtml(model?.name || 'Movility One')}</h2>
     <dl class="specs"><div><dt>${l.quantity}</dt><dd>1</dd></div><div><dt>${l.total}</dt><dd>${money(locale, cents)}</dd></div></dl>
-    <p class="cart-action">${available ? button(href(locale, '/checkout'), t.checkout) : button(href(locale, '/movility-one'), t.catalog)}</p></div></article>`;
+    <p class="cart-action">${available ? button(href(locale, '/checkout' + (model ? '?model=' + model.sku : '')), t.checkout)
+      : button(href(locale, model ? '/models/' + model.sku : '/movility-one'), t.catalog)}</p></div></article>`;
 }
 
-export function checkoutPage(locale, cents, id, values = {}, message = '') {
+export function checkoutPage(locale, cents, id, values = {}, message = '', model) {
   const l = labels[locale];
   const t = copy[locale];
   const field = (name, label, attributes) => `<label>${label}<input name="${name}" value="${escapeHtml(values[name] || '')}" required ${attributes}></label>`;
@@ -127,6 +128,7 @@ export function checkoutPage(locale, cents, id, values = {}, message = '') {
     <div class="checkout-grid"><form method="post" action="/${locale}/checkout">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="quotedPrice" value="${cents}">
+      ${model ? `<input type="hidden" name="model" value="${model.sku}">` : ''}
       <fieldset><legend>${l.address} · ${l.country}</legend>
         ${field('email', t.email, 'type="email" maxlength="254" placeholder="demo@example.com"')}
         ${field('name', l.name, 'maxlength="100"')}${field('street', l.street, 'maxlength="160"')}
@@ -137,7 +139,7 @@ export function checkoutPage(locale, cents, id, values = {}, message = '') {
       <button name="result" value="paid">${t.pay}</button>
       <button class="secondary" name="result" value="failed">${t.fail}</button>
     </form><aside class="summary"><h2>${l.summary}</h2>
-      ${image(l)}<h3>Movility One</h3><dl class="specs">
+      ${model ? '' : image(l)}<h3>${escapeHtml(model?.name || 'Movility One')}</h3><dl class="specs">
         <div><dt>${l.quantity}</dt><dd>1</dd></div><div><dt>${l.delivery}</dt><dd>${money(locale, 0)}</dd></div>
         <div><dt>${l.total}</dt><dd>${money(locale, cents)}</dd></div>
       </dl></aside></div>`;
@@ -149,9 +151,9 @@ export function orderPage(locale, order) {
   const steps = order.status === 'refunded' && !order.tracking ? ['paid', 'refunded']
     : ['paid', 'shipped', ...(order.status === 'refunded' ? ['refunded'] : [])];
   return `<section class="confirmation"><p class="eyebrow">${l.progress}</p><h1 class="page-title">${t[order.status]}</h1>
-    <p>Movility One · ${money(locale, order.cents)} · ${order.method}</p>
+    <p>${escapeHtml(order.model_name || 'Movility One')} · ${money(locale, order.cents)} · ${order.method}</p>
     <p>${l.reference} <code>${order.id}</code></p>
     <ol class="timeline">${steps.map((step) => `<li ${step === order.status ? 'aria-current="step"' : ''}>${t[step]}</li>`).join('')}</ol>
     ${order.tracking ? `<p>${t.tracking} ${escapeHtml(order.tracking)}</p>` : ''}
-    ${button(href(locale, '/movility-one'), t.catalog)}</section>`;
+    ${button(href(locale, order.model_sku ? '/models/' + order.model_sku : '/movility-one'), t.catalog)}</section>`;
 }

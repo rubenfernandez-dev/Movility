@@ -25,6 +25,7 @@ export function orderEmail(order, kind) {
   const subject = `Movility · ${title}`;
   const orderPath = `/${order.locale}/orders/${order.id}`;
   const details = [
+    order.model_name || 'Movility One',
     `${t.reference}: ${order.id}`,
     `${t.amount}: ${money(order.locale, order.cents)}`,
     `${t.method}: ${order.method}`,

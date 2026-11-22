@@ -77,6 +77,10 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .payment-breakdown{max-width:54rem;margin:0 0 1.5rem}.payment-breakdown summary{font-weight:750;cursor:pointer;margin-bottom:.55rem}
 .email-preview{max-width:46rem;padding:clamp(1rem,4vw,2rem)}
 .email-body{white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:1rem}
+.model-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:1rem}
+.model-editor{max-width:54rem;margin-bottom:1rem;padding:1rem;background:#fff;border:1px solid var(--line);border-radius:.75rem}
+.model-editor summary{cursor:pointer;font-weight:750}.model-editor form{margin-top:1rem}
+.model-editor label:has(input[type=checkbox]){margin:.75rem 0}
 textarea{display:block;width:100%;padding:.65rem;border:1px solid #66867e;border-radius:.4rem;margin:.3rem 0 .8rem;font:inherit;resize:vertical}
 .timeline{padding-left:1.5rem}.timeline li{padding:.25rem}.timeline [aria-current]{font-weight:800;color:var(--accent)}
 footer{border-top:1px solid var(--line);color:var(--muted)}
