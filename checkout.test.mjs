@@ -25,12 +25,20 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const fields = async (method) => {
     const html = await (await get(checkout)).text();
     const [, id] = html.match(/name="id" value="([^"]+)"/);
-    return { id, email: 'demo@example.com', method, result: 'paid' };
+    return {
+      id, email: 'demo@example.com', name: 'Client Démo', street: 'Route de Test 1', zip: '1201',
+      city: 'Genève', method, result: 'paid',
+    };
   };
 
-  assert.match(await (await get('/de-CH')).text(), /Zur Testkasse/);
+  assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
+  assert.match(await (await get('/fr-CH/movility-one')).text(), /\/de-CH\/movility-one/);
+  assert.match(await (await get('/de-CH/cart')).text(), /\/de-CH\/checkout/);
+  assert.equal((await get('/site.css')).headers.get('content-type'), 'text/css; charset=utf-8');
+  assert.equal((await get('/assets/movility-one.jpg')).headers.get('content-type'), 'image/jpeg');
   assert.equal((await get('/admin')).status, 401);
   const failedPayment = { ...await fields('Visa'), result: 'failed' };
+  assert.equal((await post(checkout, { ...failedPayment, zip: '12345' })).status, 400);
   assert.equal((await post(checkout, failedPayment, { Origin: 'https://other-0.app.github.dev' })).status, 403);
   const preview = { Origin: 'https://movility-test-0.app.github.dev' };
   assert.match(await (await post(checkout, failedPayment, preview)).text(), /a échoué/);
@@ -51,6 +59,10 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   }
   const admin = await (await get('/admin', headers)).text();
   assert.match(admin, /Unidades disponibles: 0 · Pedidos: 1/);
+  assert.match(admin, /1201 Genève/);
   assert.equal(admin.match(/Paiement de test remboursé/g)?.length, 1);
   assert.match(await (await get(orderPath)).text(), /Paiement de test remboursé/);
+  assert.equal((await post('/admin/restock', {}, headers)).status, 303);
+  assert.equal((await post('/admin/restock', {}, headers)).status, 303);
+  assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1 · Pedidos: 1/);
 });

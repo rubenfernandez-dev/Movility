@@ -7,14 +7,17 @@ npm start
 ```
 
 Abre http://127.0.0.1:3000. La tienda tiene un modelo ficticio en alemán y francés,
-una unidad disponible y precios en CHF. Prueba con una dirección ficticia como
-demo@example.com. Los cuatro métodos de pago son simulados.
+una unidad disponible, imagen ilustrativa y precios en CHF. Puedes recorrer
+la ficha del producto, el carrito y el seguimiento. En el checkout usa
+datos ficticios, por ejemplo demo@example.com y el código postal 1201.
+Los cuatro métodos de pago son simulados.
 
 El panel está en http://127.0.0.1:3000/admin. El usuario es `admin` y la contraseña
 temporal aparece al arrancar. Desde el panel puedes registrar un envío, consultar
 la bandeja simulada de confirmación y seguimiento, y registrar el reembolso.
 Un reembolso posterior a la expedición conserva el stock hasta que exista un
-flujo de devolución física. Los correos quedan en la bandeja local.
+flujo de devolución física. El panel permite reponer una unidad cuando
+se agota el stock. Los correos quedan en la bandeja local.
 
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.

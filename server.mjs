@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
+import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage, productImage } from './storefront.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
@@ -15,6 +16,7 @@ if (!process.env.MOVILITY_DB) mkdirSync('data', { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA busy_timeout = 5000;
+  PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS stock (id INTEGER PRIMARY KEY, units INTEGER NOT NULL CHECK (units >= 0));
   INSERT OR IGNORE INTO stock VALUES (1, 1);
   CREATE TABLE IF NOT EXISTS orders (
@@ -25,9 +27,17 @@ db.exec(`
     order_id TEXT NOT NULL REFERENCES orders(id), kind TEXT NOT NULL,
     PRIMARY KEY (order_id, kind)
   );
+  CREATE TABLE IF NOT EXISTS delivery_addresses (
+    order_id TEXT PRIMARY KEY REFERENCES orders(id), name TEXT NOT NULL,
+    street TEXT NOT NULL, zip TEXT NOT NULL, city TEXT NOT NULL
+  );
 `);
 
 const cents = 249900;
+const assets = new Map([
+  ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
+  [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
+]);
 const transaction = (work) => {
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -51,7 +61,7 @@ function send(res, status, body) {
     'X-Robots-Tag': 'noindex, nofollow',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   });
   res.end(body);
 }
@@ -72,7 +82,8 @@ async function form(req) {
 }
 
 function adminView() {
-  const orders = db.prepare('SELECT * FROM orders ORDER BY rowid DESC').all();
+  const orders = db.prepare(`SELECT orders.*, name, street, zip, city FROM orders
+    LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id ORDER BY orders.rowid DESC`).all();
   const labels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
   const totals = db.prepare(`SELECT COUNT(*) AS quantity, COALESCE(SUM(cents), 0) AS gross,
     COALESCE(SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END), 0) AS refunds FROM orders`).get();
@@ -81,6 +92,7 @@ function adminView() {
     const notices = events.map(({ kind }) => `<li>${copy[order.locale][kind]}</li>`).join('');
     return `<article><h2>${order.id}</h2>
       <p>${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${labels[order.status]}</p>
+      ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
       <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
       ${order.status === 'paid' ? `<form method="post" action="/admin/${order.id}/ship"><label>Referencia de seguimiento <input name="tracking" required maxlength="80"></label><button>Registrar envío</button></form>` : ''}
@@ -90,6 +102,7 @@ function adminView() {
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
     <p>Cobros: ${money('es', totals.gross)} · Reembolsos: ${money('es', totals.refunds)} · Neto: ${money('es', totals.gross - totals.refunds)}</p>
+    ${stock() === 0 ? '<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>' : ''}
     ${cards || '<p>Todavía no hay pedidos.</p>'}`);
 }
 
@@ -101,10 +114,18 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     const path = new URL(req.url, 'http://localhost').pathname;
+    if (req.method === 'GET' && assets.has(path)) {
+      const [type, data] = assets.get(path);
+      res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
+      return res.end(data);
+    }
     const [, first, second, third] = path.split('/');
     const locale = Object.hasOwn(copy, first) ? first : 'de-CH';
     const t = copy[locale];
-    const render = (body, status = 200) => send(res, status, page(locale, t.title, body));
+    const suffix = first === locale ? path.slice(locale.length + 1) : '';
+    const languagePath = ['/movility-one', '/cart', '/checkout'].includes(suffix) || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
+      ? suffix : '';
+    const render = (body, status = 200) => send(res, status, page(locale, t.title, body, navigation(locale, languagePath)));
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
@@ -117,6 +138,10 @@ const server = createServer(async (req, res) => {
         return send(res, 401, 'Authentication required');
       }
       if (req.method === 'GET' && path === '/admin') return send(res, 200, adminView());
+      if (req.method === 'POST' && path === '/admin/restock') {
+        db.exec('UPDATE stock SET units = 1 WHERE id = 1 AND units = 0');
+        return redirect(res, '/admin');
+      }
       if (req.method === 'POST' && /^\/admin\/[0-9a-f-]{36}\/(ship|refund)$/.test(path)) {
         const fields = await form(req);
         const tracking = fields?.get('tracking')?.trim();
@@ -140,22 +165,17 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
-      return render(`<section class="product"><div class="specimen" aria-hidden="true"><span>M</span></div><div>
-        <p class="eyebrow">${t.category}</p><h1>Movility One</h1><p>${t.description}</p>
-        <p class="price">${money(locale, cents)}</p>
-        ${stock() > 0 ? `<a class="button" href="/${locale}/checkout">${t.checkout}</a>` : `<p>${t.soldOut}</p>`}
-        </div></section>`);
+      return render(homepage(locale, cents, stock() > 0));
+    }
+    if (req.method === 'GET' && path === `/${locale}/movility-one`) {
+      return render(productPage(locale, cents, stock() > 0));
+    }
+    if (req.method === 'GET' && path === `/${locale}/cart`) {
+      return render(cartPage(locale, cents, stock() > 0));
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
-      const id = randomUUID();
-      return render(`<h1>${t.checkout}</h1><p>Movility One · ${money(locale, cents)}</p>
-        <form method="post" action="/${locale}/checkout">
-          <input type="hidden" name="id" value="${id}">
-          <label>${t.email}<input type="email" name="email" required maxlength="254" placeholder="demo@example.com"></label>
-          <fieldset><legend>${t.method}</legend>${methods.map((method) => `<label class="option"><input type="radio" name="method" value="${method}" required> ${method}</label>`).join('')}</fieldset>
-          <button name="result" value="paid">${t.pay}</button>
-          <button class="secondary" name="result" value="failed">${t.fail}</button>
-        </form>`);
+      if (!stock()) return render(productPage(locale, cents, false), 409);
+      return render(checkoutPage(locale, cents, randomUUID()));
     }
     if (req.method === 'POST' && path === `/${locale}/checkout`) {
       const fields = await form(req);
@@ -163,18 +183,24 @@ const server = createServer(async (req, res) => {
       const email = fields?.get('email')?.trim() || '';
       const method = fields?.get('method');
       const result = fields?.get('result');
-      if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id) ||
+      const address = Object.fromEntries(['name', 'street', 'zip', 'city'].map(key => [key, fields?.get(key)?.trim() || '']));
+      const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
+      const values = { ...address, email, method };
+      if (!validId ||
           email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+          !address.name || address.name.length > 100 || !address.street || address.street.length > 160 ||
+          !address.city || address.city.length > 100 || !/^[0-9]{4}$/.test(address.zip) ||
           !methods.includes(method) || !['paid', 'failed'].includes(result)) {
-        return render(`<h1>${t.invalid}</h1><a href="/${locale}/checkout">${t.retry}</a>`, 400);
+        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid), 400);
       }
-      if (result === 'failed') return render(`<h1>${t.failed}</h1><a href="/${locale}/checkout">${t.retry}</a>`);
+      if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed));
       const outcome = transaction(() => {
         const existing = orderById(id);
         if (existing) return existing.email === email && existing.method === method && existing.locale === locale ? 'ok' : 'conflict';
         const updated = db.prepare('UPDATE stock SET units = units - 1 WHERE id = 1 AND units > 0').run();
         if (!updated.changes) return 'out';
         db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cents);
+        db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         notice(id, 'paid');
         return 'ok';
       });
@@ -183,9 +209,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && second === 'orders' && first === locale && path === `/${locale}/orders/${third}`) {
       const order = orderById(third);
-      if (order) return render(`<h1>${t[order.status]}</h1><p>Movility One · ${money(locale, order.cents)}</p>
-        ${order.tracking ? `<p>${t.tracking} ${escapeHtml(order.tracking)}</p>` : ''}
-        <a href="/${locale}">${t.catalog}</a>`);
+      if (order) return render(orderPage(locale, order));
     }
     return render(`<h1>404</h1><a href="/${locale}">${t.catalog}</a>`, 404);
   } catch (error) {
