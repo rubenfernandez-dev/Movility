@@ -46,7 +46,14 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const headers = { Authorization: auth };
   const edit = { expectedUnits: '1', expectedPrice: '249900', price: '2599,90', units: '1',
     descriptionDe: 'Neuer Testtext', descriptionFr: 'Description révisée <test>' };
-  assert.equal((await post('/admin/catalog', edit, headers)).status, 303);
+  const panel = await get('/admin', headers);
+  assert.equal(panel.headers.get('referrer-policy'), 'same-origin');
+  const invalidEdit = await post('/admin/catalog', { ...edit, price: 'abc' }, headers);
+  assert.equal(invalidEdit.status, 400);
+  assert.match(await invalidEdit.text(), /value="abc"/);
+  const saved = await post('/admin/catalog', edit, headers);
+  assert.equal(saved.status, 303);
+  assert.match(await (await get(saved.headers.get('location'), headers)).text(), /Cambios guardados/);
   assert.equal((await post('/admin/catalog', edit, headers)).status, 409);
   assert.match(await (await get('/fr-CH/movility-one')).text(), /Description révisée &lt;test&gt;/);
   const stale = await post(checkout, { ...failedPayment, result: 'paid' });
@@ -70,6 +77,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(admin, /Unidades disponibles: 0 · Pedidos: 1/);
   assert.match(admin, /1201 Genève/);
   assert.equal(admin.match(/Paiement de test remboursé/g)?.length, 1);
+  assert.match(await (await get('/admin?status=paid', headers)).text(), /No hay pedidos con este estado/);
+  assert.match(await (await get('/admin?status=refunded', headers)).text(), /1201 Genève/);
   assert.match(await (await get(orderPath)).text(), /Paiement de test remboursé/);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);

@@ -54,6 +54,9 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .admin-metrics div{padding:1rem;background:#fff;border:1px solid var(--line);border-radius:.6rem}
 .admin-metrics dd{margin:0;font-weight:800;font-size:1.3rem}
 .admin-catalog{max-width:54rem}
+.form-success{background:#d8eee4;border-left:4px solid #145e54;padding:.8rem}
+.order-filter{display:flex;align-items:end;gap:.75rem;margin-bottom:1rem}
+.order-filter select{display:block;min-height:2.75rem;margin-top:.3rem;padding:.45rem;border:1px solid #66867e;border-radius:.4rem;background:#fff;color:inherit;font:inherit}
 textarea{display:block;width:100%;padding:.65rem;border:1px solid #66867e;border-radius:.4rem;margin:.3rem 0 .8rem;font:inherit;resize:vertical}
 .timeline{padding-left:1.5rem}.timeline li{padding:.25rem}.timeline [aria-current]{font-weight:800;color:var(--accent)}
 footer{border-top:1px solid var(--line);color:var(--muted)}

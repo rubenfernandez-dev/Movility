@@ -65,7 +65,7 @@ function send(res, status, body) {
     'Cache-Control': 'no-store',
     'X-Robots-Tag': 'noindex, nofollow',
     'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
+    'Referrer-Policy': 'same-origin',
     'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   });
   res.end(body);
@@ -86,19 +86,21 @@ async function form(req) {
   return new URLSearchParams(Buffer.from(body, 'latin1').toString('utf8'));
 }
 
-function adminView(message = '') {
+const orderLabels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
+
+function adminView({ error, saved, draft, filter = '' } = {}) {
   const model = catalog();
   const units = stock();
   const orders = db.prepare(`SELECT orders.*, name, street, zip, city FROM orders
-    LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id ORDER BY orders.rowid DESC`).all();
-  const labels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
+    LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id
+    WHERE (? = '' OR status = ?) ORDER BY orders.rowid DESC`).all(filter, filter);
   const totals = db.prepare(`SELECT COUNT(*) AS quantity, COALESCE(SUM(cents), 0) AS gross,
     COALESCE(SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END), 0) AS refunds FROM orders`).get();
   const cards = orders.map((order) => {
     const events = db.prepare('SELECT kind FROM notices WHERE order_id = ? ORDER BY rowid').all(order.id);
     const notices = events.map(({ kind }) => `<li>${copy[order.locale][kind]}</li>`).join('');
     return `<article><h2>${order.id}</h2>
-      <p>${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${labels[order.status]}</p>
+      <p>${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
       ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
       <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
@@ -111,21 +113,27 @@ function adminView(message = '') {
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
-    ${message ? `<p class="form-error" role="alert">${message}</p>` : ''}
+    ${error ? `<p class="form-error" role="alert">${error}</p>` : ''}
+    ${saved ? '<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>' : ''}
     <form class="admin-catalog" method="post" action="/admin/catalog">
       <fieldset><legend>Catálogo · Movility One</legend>
         <input type="hidden" name="expectedUnits" value="${units}">
         <input type="hidden" name="expectedPrice" value="${model.cents}">
-        <div class="address-row"><label>Precio en CHF <input name="price" inputmode="decimal" required value="${(model.cents / 100).toFixed(2)}"></label>
-        <label>Unidades disponibles <input type="number" name="units" min="0" max="999" step="1" required value="${units}"></label></div>
-        <label>Descripción en alemán<textarea name="descriptionDe" rows="3" maxlength="500" lang="de-CH">${escapeHtml(model.description_de || copy['de-CH'].description)}</textarea></label>
-        <label>Descripción en francés<textarea name="descriptionFr" rows="3" maxlength="500" lang="fr-CH">${escapeHtml(model.description_fr || copy['fr-CH'].description)}</textarea></label>
+        <div class="address-row"><label>Precio en CHF <input name="price" inputmode="decimal" required value="${escapeHtml(draft?.price ?? (model.cents / 100).toFixed(2))}"></label>
+        <label>Unidades disponibles <input type="number" name="units" min="0" max="999" step="1" required value="${escapeHtml(draft?.units ?? String(units))}"></label></div>
+        <label>Descripción en alemán<textarea name="descriptionDe" rows="3" maxlength="500" lang="de-CH">${escapeHtml(draft?.descriptionDe ?? (model.description_de || copy['de-CH'].description))}</textarea></label>
+        <label>Descripción en francés<textarea name="descriptionFr" rows="3" maxlength="500" lang="fr-CH">${escapeHtml(draft?.descriptionFr ?? (model.description_fr || copy['fr-CH'].description))}</textarea></label>
         <button>Guardar cambios en la tienda</button>
       </fieldset>
     </form>
     ${stock() === 0 ? '<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>' : ''}
     <h2>Pedidos</h2>
-    ${cards || '<p>Todavía no hay pedidos.</p>'}`);
+    <form class="order-filter" method="get" action="/admin">
+      <label>Estado del pedido <select name="status"><option value="">Todos</option>
+      ${Object.entries(orderLabels).map(([value, label]) => `<option value="${value}" ${filter === value ? 'selected' : ''}>${label}</option>`).join('')}
+      </select></label><button class="secondary">Filtrar</button>
+    </form>
+    ${cards || `<p>${filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.'}</p>`}`);
 }
 
 const server = createServer(async (req, res) => {
@@ -135,7 +143,7 @@ const server = createServer(async (req, res) => {
     if (!localHosts.includes(req.headers.host) && req.headers.host !== codespaceHost) {
       return send(res, 403, 'Forbidden');
     }
-    const path = new URL(req.url, 'http://localhost').pathname;
+    const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
     if (req.method === 'GET' && assets.has(path)) {
       const [type, data] = assets.get(path);
       res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
@@ -159,7 +167,11 @@ const server = createServer(async (req, res) => {
         res.setHeader('WWW-Authenticate', 'Basic realm="Movility local demo", charset="UTF-8"');
         return send(res, 401, 'Authentication required');
       }
-      if (req.method === 'GET' && path === '/admin') return send(res, 200, adminView());
+      if (req.method === 'GET' && path === '/admin') {
+        const status = searchParams.get('status');
+        return send(res, 200, adminView({ saved: searchParams.get('saved') === 'catalog',
+          filter: Object.hasOwn(orderLabels, status) ? status : '' }));
+      }
       if (req.method === 'POST' && path === '/admin/catalog') {
         const fields = await form(req);
         const rawPrice = fields?.get('price')?.trim().replace(',', '.') || '';
@@ -168,7 +180,10 @@ const server = createServer(async (req, res) => {
         const descriptionFr = fields?.get('descriptionFr')?.trim() || '';
         if (!/^\d{1,6}(?:\.\d{1,2})?$/.test(rawPrice) || Number(rawPrice) <= 0 ||
             !/^\d{1,3}$/.test(rawUnits) || descriptionDe.length > 500 || descriptionFr.length > 500) {
-          return send(res, 400, adminView('Introduce un precio positivo, un stock de 0 a 999 y descripciones de hasta 500 caracteres.'));
+          return send(res, 400, adminView({
+            error: 'Introduce un precio positivo, un stock de 0 a 999 y descripciones de hasta 500 caracteres.',
+            draft: { price: rawPrice, units: rawUnits, descriptionDe, descriptionFr },
+          }));
         }
         const saved = transaction(() => {
           const current = catalog();
@@ -178,7 +193,9 @@ const server = createServer(async (req, res) => {
           db.prepare('UPDATE stock SET units = ? WHERE id = 1').run(Number(rawUnits));
           return true;
         });
-        return saved ? redirect(res, '/admin') : send(res, 409, adminView('El precio o el stock cambió mientras editabas. Revisa los valores actuales y vuelve a guardar.'));
+        return saved ? redirect(res, '/admin?saved=catalog') : send(res, 409, adminView({
+          error: 'El precio o el stock cambió mientras editabas. Revisa los valores actuales y vuelve a guardar.',
+        }));
       }
       if (req.method === 'POST' && path === '/admin/restock') {
         db.exec('UPDATE stock SET units = 1 WHERE id = 1 AND units = 0');
