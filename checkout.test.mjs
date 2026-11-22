@@ -48,6 +48,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       MOVILITY_MEDIA_DIR: media, MOVILITY_PUBLIC_ORIGIN: 'https://movility.example',
       MOVILITY_WAREHOUSE_PASSWORD: 'warehouse-fixture', MOVILITY_SUPPORT_PASSWORD: 'support-fixture',
       MOVILITY_FINANCE_PASSWORD: 'finance-fixture',
+      MOVILITY_EMAIL_WORKER: 'manual',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -162,6 +163,13 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const confirmation = await (await get(emailPath('paid'), headers)).text();
   assert.match(confirmation, /Movility · Commande confirmée/);
   assert.match(confirmation, /demo@example\.com/);
+  assert.match(confirmation, /Pendiente · 0 intentos/);
+  assert.equal((await get('/admin/mail', finance)).status, 403);
+  assert.equal((await post('/admin/mail/process', {}, support)).status, 403);
+  assert.doesNotMatch(await (await get('/admin/mail', support)).text(), /Procesar cola ahora/);
+  assert.equal((await post('/admin/mail/process', {}, headers)).status, 303);
+  assert.equal((await post('/admin/mail/process', {}, headers)).status, 303);
+  assert.match(await (await get(emailPath('paid'), support)).text(), /Aceptado en simulación · 1 intentos/);
   assert.match(confirmation, /599\.90/);
   assert.match(confirmation, new RegExp(orderPath));
   assert.equal((await get(emailPath('paid'), support)).status, 200);

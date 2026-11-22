@@ -45,7 +45,9 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   con baja. Aceptación: un evento duplicado no genera dos envíos, se pueden
   reintentar fallos y el correo sigue disponible para quien no active push.
   El envío de correos reales depende de una cuenta y un remitente autorizados.
-  - [ ] Cola de entrega para confirmación, expedición y reembolso. Usar la identidad única de cada aviso para reintentos y registrar intentos, estado y resultado del proveedor.
+  - [x] Cola de entrega simulada con identidad por aviso, reintentos, recuperación tras interrupción e historial.
+  - [ ] Conectar un proveedor de correo y validar el remitente, la deduplicación por clave y la recepción con direcciones de prueba.
+  - [ ] Diseñar un adaptador de transportista que asocie la referencia de seguimiento y aplique actualizaciones una vez por evento.
 - [ ] **5. Pagos suizos.** Conectar TWINT, PayPal y tarjetas en entorno de
   pruebas, verificar notificaciones firmadas y conciliar devoluciones.
   Aceptación: probar cobro, fallo, cancelación y reembolso para los cuatro

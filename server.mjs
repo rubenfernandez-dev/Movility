@@ -19,6 +19,7 @@ import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSeria
 import { adminAuth, adminRouteAllowed, can, roleNames } from './admin-access.mjs';
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
+import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -123,12 +124,21 @@ transaction(() => {
   setupAccounting(db);
   setupSerials(db);
   setupFunnel(db);
+  setupMailQueue(db);
   purgeFunnel(db);
 });
 setInterval(() => {
   try { purgeFunnel(db); }
   catch (error) { console.error('Could not purge expired analytics journeys', error); }
 }, 3600000).unref();
+const mailProvider = simulatedMailProvider(db);
+let mailRun;
+const processMail = () => mailRun ??= deliverBatch(db, transaction, mailProvider).finally(() => { mailRun = null; });
+if (process.env.MOVILITY_EMAIL_WORKER !== 'manual') {
+  setInterval(() => {
+    processMail().catch(error => console.error('Could not process mail queue', error));
+  }, 3000).unref();
+}
 function purchaseModel(sku) {
   if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
   const model = extraModel(sku);
@@ -170,6 +180,7 @@ const notice = (id, kind) => {
   db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
   const order = orderById(id);
   storeEmail(order, kind);
+  queueEmail(db, id, kind);
   if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
 transaction(() => {
@@ -285,6 +296,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${catalogAccess ? '<a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>' : ''}
       ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
       ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
+      ${supportAccess ? '<a class="button secondary" href="/admin/mail">Cola de correos</a>' : ''}
       ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a>' : ''}</div>
     ${financeAccess ? `<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
@@ -320,9 +332,11 @@ function adminView({ role, error, saved, draft, filter = '' }) {
 
 function emailView(order, preview) {
   const { orderPath, statusLabel } = orderEmail(order, preview.kind);
+  const state = deliveryStatus(db, order.id, preview.kind);
   return page('es', 'Vista previa de correo', `<a href="/admin">Volver a pedidos</a>
     <h1 class="page-title">Vista previa de correo</h1>
-    <p>Correo de prueba generado automáticamente. Disponible en este panel; envío externo pendiente.</p>
+    <p>${state || 'Aviso histórico disponible como vista previa.'} · Proveedor simulado</p>
+    <p><a href="/admin/mail">Ver cola de correos</a></p>
     <article class="email-preview">
       <p><strong>Para</strong> ${escapeHtml(order.email)}</p>
       <h2 lang="${order.locale}">${escapeHtml(preview.subject)}</h2>
@@ -428,6 +442,21 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && path === '/admin/analytics') {
         return send(res, 200, page('es', 'Embudo de compra', funnelReport(db, searchParams)));
+      }
+      if (req.method === 'GET' && path === '/admin/mail') {
+        const state = searchParams.get('result');
+        const message = state === 'processed' ? 'Procesamiento de la cola solicitado.'
+          : state === 'retried' ? 'Correo programado para reintento.' : '';
+        return send(res, 200, page('es', 'Cola de correos', mailQueuePage(db, role === 'admin', message)));
+      }
+      if (role === 'admin' && req.method === 'POST' && path === '/admin/mail/process') {
+        await processMail();
+        return redirect(res, '/admin/mail?result=processed');
+      }
+      const retryRoute = /^\/admin\/mail\/([0-9a-f-]{36})\/retry$/.exec(path);
+      if (role === 'admin' && req.method === 'POST' && retryRoute) {
+        if (!retryEmail(db, retryRoute[1])) return send(res, 409, 'El correo no está pendiente de revisión.');
+        return redirect(res, '/admin/mail?result=retried');
       }
       if (req.method === 'GET' && ['/admin/inventory', '/admin/inventory.csv'].includes(path)) {
         const requested = searchParams.get('sku') || '';

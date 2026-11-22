@@ -31,6 +31,7 @@ export function adminRouteAllowed(role, method, path) {
     if (path === '/admin/serials') return can(role, 'serials');
     if (path === '/admin/inventory' || path === '/admin/inventory.csv') return can(role, 'stock');
     if (['/admin/accounting', '/admin/accounting.csv', '/admin/analytics'].includes(path)) return can(role, 'finance');
+    if (path === '/admin/mail') return can(role, 'support');
     if (orderEmail.test(path)) return can(role, 'support');
   }
   if (method === 'POST') {

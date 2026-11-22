@@ -45,7 +45,10 @@ Un reembolso posterior a la expedición conserva el stock hasta que exista un
 flujo de devolución física. El panel permite reponer una unidad cuando
 se agota el stock. Los correos postcompra se generan en el idioma del pedido.
 Abre cualquiera desde la bandeja local para ver destinatario, asunto, texto
-y enlace de seguimiento. La bandeja de prueba no envía correos externos.
+y enlace de seguimiento. La **Cola de correos** muestra el estado y los
+intentos. Los avisos nuevos se procesan cada tres segundos por un proveedor
+simulado. Con `MOVILITY_EMAIL_WORKER=manual` se procesan solo desde el
+botón del panel. Los avisos históricos conservan su vista previa.
 
 Consulta [las tareas del proyecto](TAREAS.md) para ver qué está listo y qué
 queda para el piloto suizo y la expansión a la UE.
