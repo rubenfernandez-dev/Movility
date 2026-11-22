@@ -14,6 +14,8 @@ import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, ca
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
 import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
 import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
+import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
+  readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -114,6 +116,7 @@ const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().uni
 transaction(() => {
   setupInventory(db);
   setupAccounting(db);
+  setupSerials(db);
 });
 function purchaseModel(sku) {
   if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
@@ -215,12 +218,12 @@ function redirect(res, location) {
   res.end();
 }
 
-async function form(req) {
+async function form(req, limit = 16384) {
   if (!req.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) return null;
   let body = '';
   for await (const part of req) {
     body += part.toString('latin1');
-    if (body.length > 16384) return null;
+    if (body.length > limit) return null;
   }
   return new URLSearchParams(Buffer.from(body, 'latin1').toString('utf8'));
 }
@@ -230,7 +233,8 @@ const orderLabels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsad
 function adminView({ error, saved, draft, filter = '' } = {}) {
   const model = catalog();
   const units = stock();
-  const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city, order_models.name AS model_name FROM orders
+  const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city,
+    order_models.name AS model_name, order_models.sku AS model_sku FROM orders
     LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id
     LEFT JOIN order_models ON orders.id = order_models.order_id
     WHERE (? = '' OR status = ?) ORDER BY orders.rowid DESC`).all(filter, filter);
@@ -241,6 +245,7 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
     const lines = orderLines(order.id);
+    const serials = shipmentSerials(db, order.id);
     const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
     const events = db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id);
     const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
@@ -249,15 +254,17 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
       ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
       <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
-      ${order.status === 'paid' ? `<form method="post" action="/admin/${order.id}/ship"><label>Referencia de seguimiento <input name="tracking" required maxlength="80"></label><button>Registrar envío</button></form>` : ''}
+      ${order.status === 'paid' ? shipmentForm({ ...order, lines }) : ''}
+      ${serialSummary(serials)}
       ${order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
-      ${returnControls({ ...order, lines }, orderReceipts(order.id))}
+      ${returnControls({ ...order, lines }, orderReceipts(order.id), serials)}
     </article>`;
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
     <div class="product-actions"><a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>
       <a class="button secondary" href="/admin/inventory">Movimientos de stock</a>
+      <a class="button secondary" href="/admin/serials">Buscar número de serie</a>
       <a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a></div>
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
@@ -381,6 +388,9 @@ const server = createServer(async (req, res) => {
         return send(res, 200, displayModelAdmin(searchParams.has('saved')
           ? '<p class="form-success" role="status">Modelo guardado.</p>' : ''));
       }
+      if (req.method === 'GET' && path === '/admin/serials') {
+        return send(res, 200, page('es', 'Historial por número de serie', serialLookup(db, searchParams.get('serial') || '')));
+      }
       if (req.method === 'GET' && ['/admin/inventory', '/admin/inventory.csv'].includes(path)) {
         const requested = searchParams.get('sku') || '';
         const sku = requested === coreSKU || skuPattern.test(requested) ? requested : '';
@@ -467,14 +477,15 @@ const server = createServer(async (req, res) => {
         return redirect(res, '/admin');
       }
       if (req.method === 'POST' && third === 'return' && orderIdPattern.test(second) && path === `/admin/${second}/return`) {
-        const fields = await form(req);
+        const fields = await form(req, 32768);
         const receipt = fields?.get('receipt') || '';
         const sku = fields?.get('sku') || '';
-        const rawQuantity = fields?.get('quantity') || '';
+        const serials = fields ? readReturnSerials(fields) : null;
+        const rawQuantity = fields?.get('quantity') || String(serials?.length || 0);
         const quantity = Number(rawQuantity);
         const disposition = fields?.get('disposition');
-        if (!orderIdPattern.test(receipt) || !/^[1-9]\d{0,2}$/.test(rawQuantity) || !['restock', 'hold'].includes(disposition)) {
-          return send(res, 400, adminView({ error: 'Indica las unidades recibidas y su estado.' }));
+        if (!orderIdPattern.test(receipt) || !serials || !/^[1-9]\d{0,2}$/.test(rawQuantity) || !['restock', 'hold'].includes(disposition)) {
+          return send(res, 400, adminView({ error: 'Indica las unidades o los números de serie recibidos y su estado.' }));
         }
         const restocked = Number(disposition === 'restock');
         const received = transaction(() => {
@@ -482,26 +493,33 @@ const server = createServer(async (req, res) => {
           if (!order?.tracking) return false;
           const duplicate = db.prepare('SELECT * FROM return_receipts WHERE id = ?').get(receipt);
           if (duplicate) return duplicate.order_id === second && duplicate.sku === sku &&
-            duplicate.quantity === quantity && duplicate.restocked === restocked;
+            duplicate.quantity === quantity && duplicate.restocked === restocked && receiptMatches(db, receipt, serials);
           const line = purchasedLines(order).find(item => item.sku === sku);
           const alreadyReceived = orderReceipts(second).filter(item => item.sku === sku).reduce((sum, item) => sum + item.quantity, 0);
-          if (!line || quantity > line.quantity - alreadyReceived) return false;
+          if (!line || quantity > line.quantity - alreadyReceived ||
+              !validReturnSelection(shipmentSerials(db, second), sku, quantity, serials)) return false;
           db.prepare('INSERT INTO return_receipts (id, order_id, sku, quantity, restocked) VALUES (?, ?, ?, ?, ?)')
             .run(receipt, second, sku, quantity, restocked);
+          markSerialsReceived(db, second, receipt, serials, restocked);
           if (restocked) orderStock(sku, quantity, 'return', second);
           return true;
         });
         return received ? redirect(res, `/admin#order-${second}`)
-          : send(res, 409, adminView({ error: 'La recepción supera las unidades pendientes o el pedido aún no se ha enviado.' }));
+          : send(res, 409, adminView({ error: 'Revisa las unidades pendientes y que los números de serie correspondan a este modelo y pedido.' }));
       }
       if (req.method === 'POST' && /^\/admin\/[0-9a-f-]{36}\/(ship|refund)$/.test(path)) {
-        const fields = await form(req);
+        const fields = await form(req, third === 'ship' ? 262144 : undefined);
         const tracking = fields?.get('tracking')?.trim();
         if (!fields || (third === 'ship' && (!tracking || tracking.length > 80))) return send(res, 400, 'Datos incorrectos');
         const found = transaction(() => {
           const order = orderById(second);
-          if (!order) return false;
-          if (third === 'ship' && order.status === 'paid') {
+          if (!order) return 'missing';
+          if (third === 'ship') {
+            const serials = readShipmentSerials(order, fields);
+            if (!serials) return 'invalid';
+            if (order.status !== 'paid') return order.tracking === tracking &&
+              sameShipmentSerials(shipmentSerials(db, second), serials) ? 'ok' : 'invalid';
+            if (!assignShipmentSerials(db, second, serials)) return 'invalid';
             db.prepare("UPDATE orders SET status = 'shipped', tracking = ? WHERE id = ?").run(tracking, second);
             notice(second, 'shipped');
           }
@@ -512,9 +530,12 @@ const server = createServer(async (req, res) => {
             }
             notice(second, 'refunded');
           }
-          return true;
+          return 'ok';
         });
-        return found ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
+        if (found === 'invalid') return send(res, 409, adminView({
+          error: 'Indica un número de serie distinto por unidad. Las series enviadas o en revisión no se pueden volver a asignar.',
+        }));
+        return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
       }
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');

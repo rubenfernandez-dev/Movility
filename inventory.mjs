@@ -32,18 +32,21 @@ export const purchasedLines = order => order.lines.length ? order.lines : [{
   sku: order.model_sku || 'one', name: order.model_name || 'Movility One', quantity: 1,
 }];
 
-export function returnControls(order, receipts) {
+export function returnControls(order, receipts, serials = []) {
   if (!order.tracking) return '';
   const rows = purchasedLines(order).map(line => {
     const existing = receipts.filter(receipt => receipt.sku === line.sku);
     const received = existing.reduce((sum, receipt) => sum + receipt.quantity, 0);
     const restocked = existing.reduce((sum, receipt) => sum + receipt.quantity * receipt.restocked, 0);
     const remaining = line.quantity - received;
+    const outstanding = serials.filter(record => record.sku === line.sku && !record.receipt_id);
     return `<section class="return-line"><h4>${escapeHtml(line.name)}</h4>
       <p>Recibidas: ${received} de ${line.quantity} · Repuestas: ${restocked} · En revisión: ${received - restocked}</p>
       ${remaining > 0 ? `<form method="post" action="/admin/${order.id}/return">
         <input type="hidden" name="receipt" value="${randomUUID()}"><input type="hidden" name="sku" value="${line.sku}">
-        <label>Unidades recibidas<input name="quantity" type="number" min="1" max="${remaining}" value="1" required></label>
+        ${serials.length ? `<fieldset class="serial-selection"><legend>Números de serie recibidos</legend>
+          ${outstanding.map(record => `<label><input type="checkbox" name="serial" value="${escapeHtml(record.serial)}"> ${escapeHtml(record.serial)}</label>`).join('')}
+        </fieldset>` : `<label>Unidades recibidas<input name="quantity" type="number" min="1" max="${remaining}" value="1" required></label>`}
         <label>Estado de las unidades<select name="disposition" required>
           <option value="">Selecciona el estado</option><option value="restock">Aptas para la venta</option><option value="hold">En revisión</option>
         </select></label><button class="secondary">Registrar recepción</button></form>` : ''}</section>`;

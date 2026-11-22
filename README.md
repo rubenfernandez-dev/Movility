@@ -71,6 +71,11 @@ El saldo inicial se toma de la base de datos al activar el historial. Para
 pedidos enviados, abre **Devolución física** en el pedido y registra las
 unidades recibidas por referencia. Solo las marcadas como aptas se vuelven
 a poner a la venta. La recepción y el reembolso son acciones independientes.
+Al registrar un envío se pide un número de serie por silla. Los números
+se guardan en mayúsculas y se eligen al recibir una devolución. Una serie
+enviada o en revisión no se puede asignar a otro envío. Los pedidos enviados
+antes de activar esta función conservan la recepción por cantidad.
+Usa **Buscar número de serie** para ver los envíos y devoluciones de una unidad.
 
 En **Conciliación de pedidos** puedes filtrar y exportar cobros y reembolsos
 simulados por fecha UTC y medio de pago. El CSV lleva el identificador del

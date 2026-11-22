@@ -37,7 +37,8 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [x] Historial de stock filtrable por SKU, saldos de apertura y exportación de movimientos.
   - [x] Recepción parcial por modelo con reposición de unidades aptas y separación de unidades en revisión.
   - [x] Exportación de conciliación de cobros y reembolsos en CHF, filtrable por fecha y medio de pago.
-  - [ ] Trazabilidad por número de serie, roles y analítica del embudo.
+  - [x] Trazabilidad por número de serie en expediciones y devoluciones, con búsqueda de historial.
+  - [ ] Roles y analítica del embudo.
 - [ ] **4. Automatizaciones e integraciones.** Conectar el correo transaccional
   y el transportista, registrar reintentos y errores, y añadir push voluntario
   con baja. Aceptación: un evento duplicado no genera dos envíos, se pueden
