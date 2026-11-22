@@ -15,6 +15,8 @@ Los cuatro métodos de pago son simulados.
 El panel está en http://127.0.0.1:3000/admin. El usuario es `admin` y la contraseña
 temporal aparece al arrancar. Desde el panel puedes registrar un envío, consultar
 la bandeja simulada de confirmación y seguimiento, y registrar el reembolso.
+También puedes cambiar el precio en CHF, las unidades disponibles y la
+descripción de la ficha en ambos idiomas. Los pedidos conservan su precio original.
 Un reembolso posterior a la expedición conserva el stock hasta que exista un
 flujo de devolución física. El panel permite reponer una unidad cuando
 se agota el stock. Los correos quedan en la bandeja local.

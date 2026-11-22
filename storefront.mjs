@@ -72,12 +72,13 @@ export function homepage(locale, cents, available) {
   </section>`;
 }
 
-export function productPage(locale, cents, available) {
+export function productPage(locale, cents, available, model) {
   const l = labels[locale];
   const t = copy[locale];
+  const description = (locale === 'de-CH' ? model.description_de : model.description_fr) || t.description;
   return `<section class="product">
     <figure class="product-photo"><a href="${productImage}" aria-label="${l.zoom}">${image(l)}</a><figcaption>${l.sample}</figcaption></figure>
-    <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${t.description}</p>
+    <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
       ${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
       ${available ? button(href(locale, '/cart'), l.add) : ''}
       <h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl></div>
@@ -101,6 +102,7 @@ export function checkoutPage(locale, cents, id, values = {}, message = '') {
     ${message ? `<p class="form-error" role="alert">${message}</p>` : ''}
     <div class="checkout-grid"><form method="post" action="/${locale}/checkout">
       <input type="hidden" name="id" value="${id}">
+      <input type="hidden" name="quotedPrice" value="${cents}">
       <fieldset><legend>${l.address} · ${l.country}</legend>
         ${field('email', t.email, 'type="email" maxlength="254" placeholder="demo@example.com"')}
         ${field('name', l.name, 'maxlength="100"')}${field('street', l.street, 'maxlength="160"')}

@@ -25,8 +25,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const fields = async (method) => {
     const html = await (await get(checkout)).text();
     const [, id] = html.match(/name="id" value="([^"]+)"/);
+    const [, quotedPrice] = html.match(/name="quotedPrice" value="([^"]+)"/);
     return {
-      id, email: 'demo@example.com', name: 'Client Démo', street: 'Route de Test 1', zip: '1201',
+      id, quotedPrice, email: 'demo@example.com', name: 'Client Démo', street: 'Route de Test 1', zip: '1201',
       city: 'Genève', method, result: 'paid',
     };
   };
@@ -42,6 +43,15 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(checkout, failedPayment, { Origin: 'https://other-0.app.github.dev' })).status, 403);
   const preview = { Origin: 'https://movility-test-0.app.github.dev' };
   assert.match(await (await post(checkout, failedPayment, preview)).text(), /a échoué/);
+  const headers = { Authorization: auth };
+  const edit = { expectedUnits: '1', expectedPrice: '249900', price: '2599,90', units: '1',
+    descriptionDe: 'Neuer Testtext', descriptionFr: 'Description révisée <test>' };
+  assert.equal((await post('/admin/catalog', edit, headers)).status, 303);
+  assert.equal((await post('/admin/catalog', edit, headers)).status, 409);
+  assert.match(await (await get('/fr-CH/movility-one')).text(), /Description révisée &lt;test&gt;/);
+  const stale = await post(checkout, { ...failedPayment, result: 'paid' });
+  assert.equal(stale.status, 409);
+  assert.match(await stale.text(), /Le prix a changé/);
   const candidates = await Promise.all([fields('TWINT'), fields('PayPal')]);
   const results = await Promise.all(candidates.map((candidate) => post(checkout, candidate)));
   assert.deepEqual(results.map(({ status }) => status).sort(), [303, 409]);
@@ -51,7 +61,6 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(checkout, candidates[winner])).headers.get('location'), orderPath);
 
   const orderId = candidates[winner].id;
-  const headers = { Authorization: auth };
   assert.equal((await post(`/admin/${orderId}/ship`, { tracking: 'CH-DEMO-1' }, headers)).status, 303);
   assert.match(await (await get(orderPath)).text(), /CH-DEMO-1/);
   for (let i = 0; i < 2; i++) {
@@ -65,4 +74,6 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
   assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1 · Pedidos: 1/);
+  assert.equal((await post('/admin/catalog', { ...edit, expectedPrice: '259990', price: '999' }, headers)).status, 303);
+  assert.match(await (await get(orderPath)).text(), /599\.90/);
 });

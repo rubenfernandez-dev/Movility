@@ -50,6 +50,11 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .option{border:1px solid var(--line);border-radius:.4rem;padding:.6rem;cursor:pointer}
 .summary h3{margin-top:.8rem}.form-error{background:#fbe6db;border-left:4px solid #9d401b;padding:.8rem}
 .confirmation{max-width:46rem;padding:clamp(1rem,4vw,2.5rem)}code{overflow-wrap:anywhere}
+.admin-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:1rem;margin:0 0 1.5rem}
+.admin-metrics div{padding:1rem;background:#fff;border:1px solid var(--line);border-radius:.6rem}
+.admin-metrics dd{margin:0;font-weight:800;font-size:1.3rem}
+.admin-catalog{max-width:54rem}
+textarea{display:block;width:100%;padding:.65rem;border:1px solid #66867e;border-radius:.4rem;margin:.3rem 0 .8rem;font:inherit;resize:vertical}
 .timeline{padding-left:1.5rem}.timeline li{padding:.25rem}.timeline [aria-current]{font-weight:800;color:var(--accent)}
 footer{border-top:1px solid var(--line);color:var(--muted)}
 @media(max-width:48rem){.hero,.product,.checkout-grid{grid-template-columns:1fr}.hero{gap:1.5rem}.top-inner{flex-wrap:wrap}.checkout-grid aside{grid-row:1}.summary img{display:none}}

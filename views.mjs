@@ -2,6 +2,7 @@ export const methods = ['TWINT', 'PayPal', 'Visa', 'Mastercard'];
 
 export const copy = {
   'de-CH': {
+    priceChanged: 'Der Preis hat sich geändert. Bitte prüfe den neuen Gesamtbetrag und bestätige erneut.',
     title: 'Movility Schweiz', demo: 'Testshop · Keine echten Zahlungen', catalog: 'Zum Modell',
     category: 'Elektrorollstuhl · Demomodell', description: 'Ein fiktives Modell zum Testen des Einkaufs und der Lieferung innerhalb der Schweiz.',
     checkout: 'Zur Testkasse', email: 'E-Mail für die Simulation', method: 'Zahlungsart',
@@ -10,6 +11,7 @@ export const copy = {
     paid: 'Testzahlung bestätigt', shipped: 'Bestellung versendet', refunded: 'Testzahlung erstattet', tracking: 'Sendungsnummer:',
   },
   'fr-CH': {
+    priceChanged: 'Le prix a changé. Vérifiez le nouveau total et confirmez à nouveau.',
     title: 'Movility Suisse', demo: 'Boutique de test · Aucun paiement réel', catalog: 'Voir le modèle',
     category: 'Fauteuil roulant électrique · Modèle de démonstration', description: 'Un modèle fictif pour tester la commande et la livraison en Suisse.',
     checkout: 'Passer à la caisse de test', email: 'E-mail pour la simulation', method: 'Mode de paiement',

@@ -31,9 +31,14 @@ db.exec(`
     order_id TEXT PRIMARY KEY REFERENCES orders(id), name TEXT NOT NULL,
     street TEXT NOT NULL, zip TEXT NOT NULL, city TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS catalog (
+    id INTEGER PRIMARY KEY, cents INTEGER NOT NULL CHECK (cents > 0),
+    description_de TEXT NOT NULL DEFAULT '', description_fr TEXT NOT NULL DEFAULT ''
+  );
+  INSERT OR IGNORE INTO catalog (id, cents) VALUES (1, 249900);
 `);
 
-const cents = 249900;
+const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -76,12 +81,14 @@ async function form(req) {
   let body = '';
   for await (const part of req) {
     body += part.toString('latin1');
-    if (body.length > 4096) return null;
+    if (body.length > 16384) return null;
   }
   return new URLSearchParams(Buffer.from(body, 'latin1').toString('utf8'));
 }
 
-function adminView() {
+function adminView(message = '') {
+  const model = catalog();
+  const units = stock();
   const orders = db.prepare(`SELECT orders.*, name, street, zip, city FROM orders
     LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id ORDER BY orders.rowid DESC`).all();
   const labels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
@@ -101,8 +108,23 @@ function adminView() {
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
-    <p>Cobros: ${money('es', totals.gross)} · Reembolsos: ${money('es', totals.refunds)} · Neto: ${money('es', totals.gross - totals.refunds)}</p>
+    <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
+      <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
+      <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
+    ${message ? `<p class="form-error" role="alert">${message}</p>` : ''}
+    <form class="admin-catalog" method="post" action="/admin/catalog">
+      <fieldset><legend>Catálogo · Movility One</legend>
+        <input type="hidden" name="expectedUnits" value="${units}">
+        <input type="hidden" name="expectedPrice" value="${model.cents}">
+        <div class="address-row"><label>Precio en CHF <input name="price" inputmode="decimal" required value="${(model.cents / 100).toFixed(2)}"></label>
+        <label>Unidades disponibles <input type="number" name="units" min="0" max="999" step="1" required value="${units}"></label></div>
+        <label>Descripción en alemán<textarea name="descriptionDe" rows="3" maxlength="500" lang="de-CH">${escapeHtml(model.description_de || copy['de-CH'].description)}</textarea></label>
+        <label>Descripción en francés<textarea name="descriptionFr" rows="3" maxlength="500" lang="fr-CH">${escapeHtml(model.description_fr || copy['fr-CH'].description)}</textarea></label>
+        <button>Guardar cambios en la tienda</button>
+      </fieldset>
+    </form>
     ${stock() === 0 ? '<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>' : ''}
+    <h2>Pedidos</h2>
     ${cards || '<p>Todavía no hay pedidos.</p>'}`);
 }
 
@@ -138,6 +160,26 @@ const server = createServer(async (req, res) => {
         return send(res, 401, 'Authentication required');
       }
       if (req.method === 'GET' && path === '/admin') return send(res, 200, adminView());
+      if (req.method === 'POST' && path === '/admin/catalog') {
+        const fields = await form(req);
+        const rawPrice = fields?.get('price')?.trim().replace(',', '.') || '';
+        const rawUnits = fields?.get('units') || '';
+        const descriptionDe = fields?.get('descriptionDe')?.trim() || '';
+        const descriptionFr = fields?.get('descriptionFr')?.trim() || '';
+        if (!/^\d{1,6}(?:\.\d{1,2})?$/.test(rawPrice) || Number(rawPrice) <= 0 ||
+            !/^\d{1,3}$/.test(rawUnits) || descriptionDe.length > 500 || descriptionFr.length > 500) {
+          return send(res, 400, adminView('Introduce un precio positivo, un stock de 0 a 999 y descripciones de hasta 500 caracteres.'));
+        }
+        const saved = transaction(() => {
+          const current = catalog();
+          if (fields.get('expectedUnits') !== String(stock()) || fields.get('expectedPrice') !== String(current.cents)) return false;
+          db.prepare('UPDATE catalog SET cents = ?, description_de = ?, description_fr = ? WHERE id = 1')
+            .run(Math.round(Number(rawPrice) * 100), descriptionDe, descriptionFr);
+          db.prepare('UPDATE stock SET units = ? WHERE id = 1').run(Number(rawUnits));
+          return true;
+        });
+        return saved ? redirect(res, '/admin') : send(res, 409, adminView('El precio o el stock cambió mientras editabas. Revisa los valores actuales y vuelve a guardar.'));
+      }
       if (req.method === 'POST' && path === '/admin/restock') {
         db.exec('UPDATE stock SET units = 1 WHERE id = 1 AND units = 0');
         return redirect(res, '/admin');
@@ -165,17 +207,19 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
-      return render(homepage(locale, cents, stock() > 0));
+      return render(homepage(locale, catalog().cents, stock() > 0));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
-      return render(productPage(locale, cents, stock() > 0));
+      const model = catalog();
+      return render(productPage(locale, model.cents, stock() > 0, model));
     }
     if (req.method === 'GET' && path === `/${locale}/cart`) {
-      return render(cartPage(locale, cents, stock() > 0));
+      return render(cartPage(locale, catalog().cents, stock() > 0));
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
-      if (!stock()) return render(productPage(locale, cents, false), 409);
-      return render(checkoutPage(locale, cents, randomUUID()));
+      const model = catalog();
+      if (!stock()) return render(productPage(locale, model.cents, false, model), 409);
+      return render(checkoutPage(locale, model.cents, randomUUID()));
     }
     if (req.method === 'POST' && path === `/${locale}/checkout`) {
       const fields = await form(req);
@@ -183,6 +227,8 @@ const server = createServer(async (req, res) => {
       const email = fields?.get('email')?.trim() || '';
       const method = fields?.get('method');
       const result = fields?.get('result');
+      const quotedPrice = fields?.get('quotedPrice');
+      const cents = catalog().cents;
       const address = Object.fromEntries(['name', 'street', 'zip', 'city'].map(key => [key, fields?.get(key)?.trim() || '']));
       const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
       const values = { ...address, email, method };
@@ -197,14 +243,17 @@ const server = createServer(async (req, res) => {
       const outcome = transaction(() => {
         const existing = orderById(id);
         if (existing) return existing.email === email && existing.method === method && existing.locale === locale ? 'ok' : 'conflict';
+        const currentPrice = catalog().cents;
+        if (quotedPrice !== String(currentPrice)) return 'price';
         const updated = db.prepare('UPDATE stock SET units = units - 1 WHERE id = 1 AND units > 0').run();
         if (!updated.changes) return 'out';
-        db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cents);
+        db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, currentPrice);
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         notice(id, 'paid');
         return 'ok';
       });
       if (outcome === 'ok') return redirect(res, `/${locale}/orders/${id}`);
+      if (outcome === 'price') return render(checkoutPage(locale, catalog().cents, id, values, t.priceChanged), 409);
       return render(`<h1>${outcome === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
     }
     if (req.method === 'GET' && second === 'orders' && first === locale && path === `/${locale}/orders/${third}`) {
