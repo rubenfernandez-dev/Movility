@@ -163,7 +163,7 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
       </dl></aside></div>`;
 }
 
-export function orderPage(locale, order, events = []) {
+export function orderPage(locale, order, events = [], push = '') {
   const l = labels[locale];
   const t = copy[locale];
   const delivered = events.some(event => event.event_status === 'delivered');
@@ -177,6 +177,7 @@ export function orderPage(locale, order, events = []) {
     <ol class="timeline">${steps.map((step) => `<li ${step === state ? 'aria-current="step"' : ''}>${t[step]}</li>`).join('')}</ol>
     ${order.tracking ? `<p>${t.tracking} ${escapeHtml(order.tracking)}</p>` : ''}
     ${trackingHistory(locale, events)}
+    ${push}
     ${order.lines?.length ? button(href(locale), t.catalog)
       : button(href(locale, order.model_sku ? '/models/' + order.model_sku : '/movility-one'), t.catalog)}</section>`;
 }

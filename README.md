@@ -116,6 +116,21 @@ Envía los segundos en `X-Movility-Timestamp` y el hash en
 `X-Movility-Signature`, con formato `sha256=<hex>`. La solicitud caduca
 a los cinco minutos. Sin secreto configurado, la entrada permanece desactivada.
 
+### Notificaciones push por pedido
+
+En el seguimiento del pedido, cada navegador puede activar o desactivar
+avisos de expedición y entrega. La baja afecta solo a ese pedido. El mensaje
+visible omite el producto y los datos de contacto, y al pulsarlo se abre
+el seguimiento. Las suscripciones caducan a los 30 días.
+
+Genera un par VAPID con `npx web-push generate-vapid-keys` y configura
+`MOVILITY_PUSH_PUBLIC_KEY`, `MOVILITY_PUSH_PRIVATE_KEY` y
+`MOVILITY_PUSH_SUBJECT` (por ejemplo, un contacto en formato `mailto:`).
+`MOVILITY_PUSH_MODE=simulated` muestra los controles y simula la entrega.
+`MOVILITY_PUSH_MODE=web-push` usa el servicio del navegador desde un origen
+seguro. Las suscripciones de simulación no pasan al modo real. El valor
+predeterminado `off` desactiva el módulo. Los correos siguen su propia cola.
+
 En **Conciliación de pedidos** puedes filtrar y exportar cobros y reembolsos
 simulados por fecha UTC y medio de pago. El CSV lleva el identificador del
 pedido, la moneda y el importe firmado; no incluye datos de contacto.

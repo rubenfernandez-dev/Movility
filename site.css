@@ -107,6 +107,9 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .tracking-form select{display:block;min-height:2.8rem;padding:.45rem;margin-top:.3rem;border:1px solid #66867e;border-radius:.4rem;background:white;color:inherit;font:inherit}
 .carrier-history{border-left:.2rem solid var(--accent);padding:.6rem .85rem;margin:1rem 0;background:#f4f8f6}
 .carrier-history ol{margin:0;padding-left:1.4rem}
+.order-push{margin:1.25rem 0;padding:1rem;border:1px solid var(--line);border-radius:.75rem}
+.order-push [data-push-status]{margin:.55rem 0 0}
+.order-push button:disabled{opacity:.6;cursor:default}
 .analytics-choice{max-width:55rem;border:1px solid var(--line);border-radius:.75rem;padding:1rem;margin:0 0 1.25rem;background:white}
 .analytics-choice h1,.analytics-choice h2{font-size:1.25rem;letter-spacing:0;margin-bottom:.45rem}
 .analytics-choice p{margin-bottom:.65rem;color:var(--muted)}

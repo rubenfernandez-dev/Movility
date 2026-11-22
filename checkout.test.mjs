@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { generateVAPIDKeys } from 'web-push';
 import { copyFileSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,6 +31,7 @@ test('accounting import keeps unknown dates and is safe to repeat', () => {
 
 test('French checkout, concurrent stock, shipment and idempotent refund', { timeout: 15000 }, async (t) => {
   const carrierSecret = 'carrier-integration-fixture-not-a-real-secret';
+  const pushKeys = generateVAPIDKeys();
   const media = mkdtempSync(join(tmpdir(), 'movility-media-'));
   writeFileSync(join(media, 'movility-one.mp4'), '0123456789');
   writeFileSync(join(media, 'movility-one.fr-CH.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nExemple\n');
@@ -51,6 +53,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       MOVILITY_FINANCE_PASSWORD: 'finance-fixture',
       MOVILITY_EMAIL_WORKER: 'manual',
       MOVILITY_CARRIER_SECRET: carrierSecret,
+      MOVILITY_PUSH_MODE: 'simulated', MOVILITY_PUSH_WORKER: 'manual',
+      MOVILITY_PUSH_PUBLIC_KEY: pushKeys.publicKey, MOVILITY_PUSH_PRIVATE_KEY: pushKeys.privateKey,
+      MOVILITY_PUSH_SUBJECT: 'mailto:demo@example.com',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -159,6 +164,18 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(checkout, candidates[winner])).headers.get('location'), orderPath);
 
   const orderId = candidates[winner].id;
+  const pushAddress = orderPath + '/push';
+  const pushUpdate = (input, origin = base) => fetch(base + pushAddress, { method: 'POST', body: JSON.stringify(input),
+    headers: { Origin: origin, 'Content-Type': 'application/json' } });
+  const orderWithPush = await get(orderPath);
+  assert.match(orderWithPush.headers.get('content-security-policy'), /worker-src 'self'/);
+  assert.match(await orderWithPush.text(), /Activer les notifications/);
+  assert.match(await (await get('/push-worker.js')).text(), /showNotification/);
+  const subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/fixture',
+    keys: { p256dh: generateVAPIDKeys().publicKey, auth: randomBytes(16).toString('base64url') } };
+  assert.equal((await pushUpdate({ action: 'subscribe', subscription }, 'https://outside.example')).status, 403);
+  assert.deepEqual(await (await pushUpdate({ action: 'status', endpoint: subscription.endpoint })).json(), { active: false });
+  assert.deepEqual(await (await pushUpdate({ action: 'subscribe', subscription })).json(), { active: true });
   const emailPath = (kind) => `/admin/${orderId}/email/${kind}`;
   assert.equal((await get(emailPath('paid'))).status, 401);
   assert.equal((await get(emailPath('shipped'), headers)).status, 404);
@@ -220,6 +237,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await signed({ ...event, eventId: 'carrier-2', status: 'exception' })).status, 200);
   assert.equal((await signed({ ...event, eventId: 'carrier-3' })).status, 200);
   assert.match(await (await get(orderPath)).text(), /<h1 class="page-title">Commande livrée/);
+  assert.doesNotMatch(await (await get(orderPath)).text(), /data-subscribe/);
+  assert.deepEqual(await (await pushUpdate({ action: 'unsubscribe', endpoint: subscription.endpoint })).json(), { active: false });
+  assert.deepEqual(await (await pushUpdate({ action: 'subscribe', subscription })).json(), { active: false });
   assert.match(await (await get(emailPath('delivered'), support)).text(), /Movility · Commande livrée/);
   const trackingOrders = await (await get('/admin', support)).text();
   assert.equal(trackingOrders.match(new RegExp('/admin/' + orderId + '/email/delivered', 'g'))?.length, 1);

@@ -50,12 +50,14 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [ ] Verificar remitente y recepción con cuenta y dirección de prueba autorizadas.
   - [x] Seguimiento simulado y adaptador firmado de eventos de tránsito, entrega e incidencia, con deduplicación y aviso de entrega.
   - [ ] Conectar el transportista elegido y validar eventos en su entorno de pruebas.
-  - [ ] Push voluntario. Permitir suscripción y baja desde el seguimiento del pedido; avisar de expedición y entrega sin incluir el producto ni el destinatario en el mensaje.
+  - [x] Push voluntario para expedición y entrega, con alta y baja por pedido, mensajes genéricos y cola de reintentos.
+  - [ ] Validar la recepción real de push en navegadores y dispositivos del piloto con HTTPS.
 - [ ] **5. Pagos suizos.** Conectar TWINT, PayPal y tarjetas en entorno de
   pruebas, verificar notificaciones firmadas y conciliar devoluciones.
   Aceptación: probar cobro, fallo, cancelación y reembolso para los cuatro
   métodos. La activación comercial depende de la entidad, la cuenta de
   liquidación y la aprobación de los proveedores.
+  - [ ] Separar la confirmación de pago del checkout simulado. Crear una sesión en el proveedor, verificar su notificación firmada y aplicar cada cobro una sola vez.
 - [ ] **6. Preparación del piloto.** Cargar fotos, vídeos, GLB y datos reales.
   Validar fiscalidad suiza, facturas y abonos, devoluciones, clasificación y
   documentación del producto, y transporte de baterías. Verificar privacidad,

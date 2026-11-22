@@ -23,10 +23,13 @@ import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryE
 import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
 import { setupTracking, trackingStart, trackingEvents, applyTrackingEvent, trackingHistory, trackingForm,
   manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody } from './tracking.mjs';
+import { setupPush, purgePush, pushConfig, pushSubscription, pushState, addPushSubscription, removePushSubscription,
+  queuePush, deliverPush, pushControls } from './order-push.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
 const emailTest = emailTestConfig(process.env, siteOrigin);
+const push = pushConfig(process.env);
 const carrierSecret = process.env.MOVILITY_CARRIER_SECRET || '';
 if (carrierSecret && carrierSecret.length < 32) throw new Error('MOVILITY_CARRIER_SECRET needs at least 32 characters.');
 const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
@@ -80,6 +83,8 @@ const assets = new Map([
   [sideImage, ['image/jpeg', readFileSync(new URL('.' + sideImage, import.meta.url))]],
   [modelPath, ['model/gltf-binary', readFileSync(new URL('./assets/movility-one.glb', import.meta.url))]],
   [viewerScript, ['text/javascript; charset=utf-8', readFileSync(new URL('./node_modules/@google/model-viewer/dist/model-viewer.min.js', import.meta.url))]],
+  ['/assets/order-push.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/order-push.js', import.meta.url))]],
+  ['/push-worker.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/push-worker.js', import.meta.url))]],
 ]);
 const mediaFile = path => process.env.MOVILITY_MEDIA_DIR
   ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
@@ -132,11 +137,13 @@ transaction(() => {
   setupFunnel(db);
   setupMailQueue(db);
   setupTracking(db);
+  setupPush(db);
+  purgePush(db);
   purgeFunnel(db);
 });
 setInterval(() => {
-  try { purgeFunnel(db); }
-  catch (error) { console.error('Could not purge expired analytics journeys', error); }
+  try { purgeFunnel(db); purgePush(db); }
+  catch (error) { console.error('Could not purge expired analytics and push state', error); }
 }, 3600000).unref();
 const sendSimulated = simulatedMailProvider(db);
 const sendResendTest = resendTestProvider(emailTest);
@@ -147,6 +154,16 @@ const processMail = () => mailRun ??= deliverBatch(db, transaction, mailProvider
 if (process.env.MOVILITY_EMAIL_WORKER !== 'manual') {
   setInterval(() => {
     processMail().catch(error => console.error('Could not process mail queue', error));
+  }, 3000).unref();
+}
+if (push && process.env.MOVILITY_PUSH_WORKER !== 'manual') {
+  let running = false;
+  setInterval(async () => {
+    if (running) return;
+    running = true;
+    try { await deliverPush(db, transaction, push); }
+    catch (error) { console.error('Could not process push queue', error); }
+    finally { running = false; }
   }, 3000).unref();
 }
 function purchaseModel(sku) {
@@ -191,6 +208,7 @@ const notice = (id, kind) => {
   const order = orderById(id);
   storeEmail(order, kind);
   queueEmail(db, id, kind, undefined, emailTest?.target);
+  queuePush(db, id, kind);
   if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
 const applyCarrierEvent = event => transaction(() => applyTrackingEvent(db, event, id => notice(id, 'delivered')));
@@ -202,7 +220,7 @@ transaction(() => {
   for (const event of previousEvents) storeEmail(orderById(event.id), event.kind);
 });
 
-function send(res, status, body, withViewer = false) {
+function send(res, status, body, withViewer = false, withPush = false) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -211,7 +229,8 @@ function send(res, status, body, withViewer = false) {
     'Referrer-Policy': 'same-origin',
     'Content-Security-Policy': withViewer
       ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-      : "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      : "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" +
+        (withPush ? "; script-src 'self'; connect-src 'self'; worker-src 'self'" : ''),
   });
   res.end(body);
 }
@@ -417,6 +436,8 @@ const server = createServer(async (req, res) => {
     const [, first, second, third] = path.split('/');
     const locale = Object.hasOwn(copy, first) ? first : 'de-CH';
     const t = copy[locale];
+    const orderPageRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}`;
+    const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
     const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics'].includes(suffix) ||
@@ -443,13 +464,37 @@ const server = createServer(async (req, res) => {
           footer: analyticsLink(locale),
           prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
             ? analyticsPrompt(locale, consent, path) : '',
-        }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]));
+        }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute));
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
     const basketCheckout = path === `/${locale}/checkout/cart`;
     if (req.method === 'POST' && !sameOrigin && !codespaceOrigin) {
       return send(res, 403, 'Forbidden');
+    }
+    if (req.method === 'POST' && pushRoute) {
+      if (!push) return carrierResponse(res, 404, 'disabled');
+      const body = await readCarrierBody(req);
+      let input;
+      try { input = body ? JSON.parse(body.toString('utf8')) : null; }
+      catch { return carrierResponse(res, 400, 'invalid'); }
+      const order = orderById(third);
+      if (!order) return carrierResponse(res, 404, 'unknown');
+      let active = false;
+      if (input?.action === 'subscribe') {
+        const sub = pushSubscription(input.subscription);
+        if (!sub) return carrierResponse(res, 400, 'invalid');
+        active = transaction(() => {
+          if (orderById(third).status === 'refunded' || trackingEvents(db, third).some(event => event.event_status === 'delivered')) return false;
+          addPushSubscription(db, third, sub, locale, push.mode);
+          return true;
+        });
+      } else if (input?.action === 'unsubscribe' || input?.action === 'status') {
+        if (input.action === 'unsubscribe') removePushSubscription(db, third, input.endpoint);
+        active = pushState(db, third, input.endpoint, push.mode);
+      } else return carrierResponse(res, 400, 'invalid');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify({ active }));
     }
     if (first === 'admin') {
       const role = adminRole(req.headers.authorization);
@@ -799,9 +844,13 @@ const server = createServer(async (req, res) => {
       }
       return render(`<h1>${outcome === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
     }
-    if (req.method === 'GET' && second === 'orders' && first === locale && path === `/${locale}/orders/${third}`) {
+    if (req.method === 'GET' && orderPageRoute) {
       const order = orderById(third);
-      if (order) return render(orderPage(locale, order, trackingEvents(db, order.id)));
+      if (order) {
+        const events = trackingEvents(db, order.id);
+        const maySubscribe = order.status !== 'refunded' && !events.some(event => event.event_status === 'delivered');
+        return render(orderPage(locale, order, events, pushControls(locale, order, push, maySubscribe)));
+      }
     }
     return render(`<h1>404</h1><a href="/${locale}">${t.catalog}</a>`, 404);
   } catch (error) {
