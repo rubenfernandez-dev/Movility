@@ -1,4 +1,5 @@
 import { copy, methods, money, escapeHtml } from './views.mjs';
+import { compareLabel, viewerLink } from './discovery.mjs';
 
 const labels = {
   'de-CH': {
@@ -43,13 +44,13 @@ const href = (locale, suffix = '') => `/${locale}${suffix}`;
 const button = (url, label) => `<a class="button" href="${url}">${label}</a>`;
 const status = (l, t, available) => `<span class="stock ${available ? 'available' : ''}">${available ? l.stock : t.soldOut}</span>`;
 
-export function navigation(locale, suffix) {
+export function navigation(locale, suffix, query = '') {
   const l = labels[locale];
   const alt = locale === 'de-CH' ? 'fr-CH' : 'de-CH';
   return `<a class="skip" href="#content">${l.skip}</a>
     <header class="top"><div class="top-inner"><a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Movility</a>
-    <nav><a href="/${locale}/movility-one">${l.nav}</a><a href="/${locale}#faq">${l.help}</a></nav>
-    <div class="top-actions"><a href="/${alt}${suffix}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}</a></div></div></header>`;
+    <nav><a href="/${locale}/movility-one">${l.nav}</a><a href="/${locale}/compare">${compareLabel(locale)}</a><a href="/${locale}#faq">${l.help}</a></nav>
+    <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}</a></div></div></header>`;
 }
 
 export function homepage(locale, cents, available) {
@@ -58,7 +59,7 @@ export function homepage(locale, cents, available) {
   const product = href(locale, '/movility-one');
   return `<section class="hero">
     <div class="hero-copy"><p class="eyebrow">${t.category}</p><h1>${l.hero}</h1><p class="lead">${l.intro}</p>
-      ${button(product, l.discover)}</div>
+      <div class="product-actions">${button(product, l.discover)}${viewerLink(locale)}</div></div>
     <figure>${image(l)}<figcaption>${l.sample}</figcaption></figure>
   </section>
   <ul class="benefits">${l.benefits.map((line) => `<li>${line}</li>`).join('')}</ul>
@@ -80,7 +81,8 @@ export function productPage(locale, cents, available, model) {
     <figure class="product-photo"><a href="${productImage}" aria-label="${l.zoom}">${image(l)}</a><figcaption>${l.sample}</figcaption></figure>
     <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
       ${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
-      ${available ? button(href(locale, '/cart'), l.add) : ''}
+      <div class="product-actions">${available ? button(href(locale, '/cart'), l.add) : ''}${viewerLink(locale)}
+        <a href="/${locale}/compare">${compareLabel(locale)}</a></div>
       <h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl></div>
   </section>`;
 }

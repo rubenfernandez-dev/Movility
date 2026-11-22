@@ -3,6 +3,7 @@
 Primer prototipo local del piloto suizo. Requiere Node.js 22.13 o posterior.
 
 ```sh
+npm ci
 npm start
 ```
 
@@ -11,6 +12,11 @@ una unidad disponible, imagen ilustrativa y precios en CHF. Puedes recorrer
 la ficha del producto, el carrito y el seguimiento. En el checkout usa
 datos ficticios, por ejemplo demo@example.com y el código postal 1201.
 Los cuatro métodos de pago son simulados.
+
+El comparador incluye dos perfiles ficticios adicionales. Para sustituir
+el modelo 3D, exporta un GLB autocontenido y sin compresión Draco o KTX2,
+reemplaza `assets/movility-one.glb` y reinicia el servidor. El modelo de
+demostración se puede regenerar con `python tools/generate-chair.py`.
 
 El panel está en http://127.0.0.1:3000/admin. El usuario es `admin` y la contraseña
 temporal aparece al arrancar. Desde el panel puedes registrar un envío, consultar
@@ -27,7 +33,7 @@ Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 ## GitHub Codespaces
 
 Abre **Terminal → New Terminal** en el editor de Codespaces. En la carpeta
-que contiene `package.json`, ejecuta `node -v` y `npm start`. Si Node es
+que contiene `package.json`, ejecuta `node -v`, `npm ci` y `npm start`. Si Node es
 anterior a 22.13, ejecuta antes `nvm install 22` y `nvm use 22`.
 
 Deja la terminal abierta y selecciona **Open in Browser** junto al puerto

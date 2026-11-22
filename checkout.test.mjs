@@ -34,6 +34,16 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
 
   assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
   assert.match(await (await get('/fr-CH/movility-one')).text(), /\/de-CH\/movility-one/);
+  const comparison = await (await get('/fr-CH/compare?first=one&second=tour')).text();
+  assert.match(comparison, /Movility One \/ Movility Tour/);
+  assert.match(comparison, /\/de-CH\/compare\?first=one&amp;second=tour/);
+  assert.match(await (await get('/de-CH/compare?first=one&second=one')).text(), /zwei verschiedene Modelle/);
+  assert.match(await (await get('/fr-CH/movility-one/3d')).text(), /<model-viewer/);
+  const glb = await get('/assets/movility-one.glb');
+  assert.equal(glb.headers.get('content-type'), 'model/gltf-binary');
+  const model = Buffer.from(await glb.arrayBuffer());
+  assert.equal(model.toString('ascii', 0, 4), 'glTF');
+  assert.equal(model.readUInt32LE(8), model.length);
   assert.match(await (await get('/de-CH/cart')).text(), /\/de-CH\/checkout/);
   assert.equal((await get('/site.css')).headers.get('content-type'), 'text/css; charset=utf-8');
   assert.equal((await get('/assets/movility-one.jpg')).headers.get('content-type'), 'image/jpeg');

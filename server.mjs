@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
 import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage, productImage } from './storefront.mjs';
+import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
@@ -42,6 +43,8 @@ const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
+  [modelPath, ['model/gltf-binary', readFileSync(new URL('./assets/movility-one.glb', import.meta.url))]],
+  [viewerScript, ['text/javascript; charset=utf-8', readFileSync(new URL('./node_modules/@google/model-viewer/dist/model-viewer.min.js', import.meta.url))]],
 ]);
 const transaction = (work) => {
   db.exec('BEGIN IMMEDIATE');
@@ -59,14 +62,16 @@ const notice = (id, kind) => db.prepare('INSERT INTO notices VALUES (?, ?)').run
 const orderById = (id) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
 const adminHeader = 'Basic ' + Buffer.from('admin:' + admin).toString('base64');
 
-function send(res, status, body) {
+function send(res, status, body, withViewer = false) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Robots-Tag': 'noindex, nofollow',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
-    'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    'Content-Security-Policy': withViewer
+      ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+      : "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   });
   res.end(body);
 }
@@ -153,9 +158,11 @@ const server = createServer(async (req, res) => {
     const locale = Object.hasOwn(copy, first) ? first : 'de-CH';
     const t = copy[locale];
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
-    const languagePath = ['/movility-one', '/cart', '/checkout'].includes(suffix) || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
+    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout'].includes(suffix) || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
-    const render = (body, status = 200) => send(res, status, page(locale, t.title, body, navigation(locale, languagePath)));
+    const compareQuery = languagePath === '/compare' && searchParams.size ? `?${searchParams}` : '';
+    const render = (body, status = 200) => send(res, status,
+      page(locale, t.title, body, navigation(locale, languagePath, compareQuery)), languagePath === '/movility-one/3d');
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
@@ -229,6 +236,12 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();
       return render(productPage(locale, model.cents, stock() > 0, model));
+    }
+    if (req.method === 'GET' && path === `/${locale}/compare`) {
+      return render(comparisonPage(locale, searchParams, catalog().cents));
+    }
+    if (req.method === 'GET' && path === `/${locale}/movility-one/3d`) {
+      return render(viewerPage(locale, productImage));
     }
     if (req.method === 'GET' && path === `/${locale}/cart`) {
       return render(cartPage(locale, catalog().cents, stock() > 0));
