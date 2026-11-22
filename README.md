@@ -72,6 +72,11 @@ pedidos enviados, abre **Devolución física** en el pedido y registra las
 unidades recibidas por referencia. Solo las marcadas como aptas se vuelven
 a poner a la venta. La recepción y el reembolso son acciones independientes.
 
+En **Conciliación de pedidos** puedes filtrar y exportar cobros y reembolsos
+simulados por fecha UTC y medio de pago. El CSV lleva el identificador del
+pedido, la moneda y el importe firmado; no incluye datos de contacto.
+Las operaciones históricas sin fecha se incluyen cuando no hay filtro de fechas.
+
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 

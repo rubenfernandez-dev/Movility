@@ -90,6 +90,7 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .inventory-table table{border-collapse:collapse;width:100%;min-width:37rem}
 .inventory-table th,.inventory-table td{padding:.65rem;text-align:left;border-bottom:1px solid var(--line)}
 .inventory-table thead{background:#e6efe9}
+.accounting-filter{flex-wrap:wrap}.accounting-filter input[type=date]{margin-bottom:0}
 .returns{margin-top:1rem;border-top:1px solid var(--line);padding-top:.75rem}
 .returns summary{font-weight:750;cursor:pointer}
 .return-line{margin-top:.75rem}

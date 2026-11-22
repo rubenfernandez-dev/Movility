@@ -7,6 +7,26 @@ import { randomUUID } from 'node:crypto';
 import { copyFileSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { setupAccounting, accountingData, accountingFilters } from './accounting.mjs';
+
+test('accounting import keeps unknown dates and is safe to repeat', () => {
+  const ledger = new DatabaseSync(':memory:');
+  try {
+    ledger.exec(`CREATE TABLE orders (id TEXT PRIMARY KEY, method TEXT, cents INTEGER, status TEXT);
+      CREATE TABLE stock_movements (order_id TEXT, reason TEXT, occurred_at TEXT);
+      INSERT INTO orders VALUES ('legacy', 'Visa', 12345, 'refunded');
+      INSERT INTO stock_movements VALUES ('legacy', 'order', '2026-11-22T23:59:59.000Z');`);
+    setupAccounting(ledger);
+    setupAccounting(ledger);
+    const all = accountingData(ledger, accountingFilters(new URLSearchParams()));
+    assert.deepEqual([all.count, all.captures, all.refunds, all.undated], [2, 12345, 12345, 1]);
+    const day = accountingData(ledger, accountingFilters(new URLSearchParams('from=2026-11-22&to=2026-11-22')));
+    assert.deepEqual([day.count, day.captures, day.refunds], [1, 12345, 0]);
+  } finally {
+    ledger.close();
+  }
+});
 
 test('French checkout, concurrent stock, shipment and idempotent refund', { timeout: 15000 }, async (t) => {
   const media = mkdtempSync(join(tmpdir(), 'movility-media-'));
@@ -268,4 +288,11 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const csv = await inventoryDownload.text();
   assert.equal(csv.match(/Devolución recibida y apta/g)?.length, 1);
   assert.doesNotMatch(csv, /"one"/);
+  assert.equal((await get('/admin/accounting.csv')).status, 401);
+  assert.equal((await get('/admin/accounting.csv?from=2026-02-30', headers)).status, 400);
+  assert.match(await (await get('/admin/accounting', headers)).text(), /Conciliación de pedidos/);
+  const ledger = await (await get('/admin/accounting.csv?method=TWINT', headers)).text();
+  assert.match(ledger, new RegExp('"' + basketOrderId + '","Cobro","TWINT","CHF","7497.00"'));
+  assert.equal(ledger.match(new RegExp('"' + basketOrderId + '","Reembolso","TWINT","CHF","-7497.00"', 'g'))?.length, 1);
+  assert.doesNotMatch(ledger, /example\.com|Genève/);
 });

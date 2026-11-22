@@ -13,6 +13,7 @@ import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct } from 
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
 import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
+import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -110,7 +111,10 @@ const transaction = (work) => {
   }
 };
 const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().units;
-transaction(() => setupInventory(db));
+transaction(() => {
+  setupInventory(db);
+  setupAccounting(db);
+});
 function purchaseModel(sku) {
   if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
   const model = extraModel(sku);
@@ -151,7 +155,9 @@ const storeEmail = (order, kind) => {
 };
 const notice = (id, kind) => {
   db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
-  storeEmail(orderById(id), kind);
+  const order = orderById(id);
+  storeEmail(order, kind);
+  if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
 transaction(() => {
   const previousEvents = db.prepare(`SELECT orders.*, notices.kind FROM notices
@@ -251,7 +257,8 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     <p>Unidades disponibles: ${stock()} · Pedidos: ${totals.quantity}</p>
     <div class="product-actions"><a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>
-      <a class="button secondary" href="/admin/inventory">Movimientos de stock</a></div>
+      <a class="button secondary" href="/admin/inventory">Movimientos de stock</a>
+      <a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a></div>
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -385,6 +392,16 @@ const server = createServer(async (req, res) => {
         const models = [{ sku: coreSKU, name: 'Movility One', units: stock() },
           ...db.prepare('SELECT sku, name, units FROM extra_models ORDER BY name, sku').all()];
         return send(res, 200, page('es', 'Movimientos de stock', inventoryPage(models, inventoryRows(sku, 200), sku)));
+      }
+      if (req.method === 'GET' && ['/admin/accounting', '/admin/accounting.csv'].includes(path)) {
+        const filters = accountingFilters(searchParams);
+        if (!filters.invalid && path.endsWith('.csv')) {
+          res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+            'Content-Disposition': 'attachment; filename="movility-conciliacion.csv"', 'X-Content-Type-Options': 'nosniff' });
+          return res.end(accountingCsv(db, filters));
+        }
+        return send(res, filters.invalid ? 400 : 200, page('es', 'Conciliación de pedidos',
+          accountingPage(accountingData(db, filters), filters)));
       }
       const modelEdit = /^\/admin\/models(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
       if (req.method === 'POST' && modelEdit) {
