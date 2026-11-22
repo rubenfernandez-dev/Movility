@@ -38,7 +38,12 @@ También puedes cambiar el precio en CHF, las unidades disponibles y la
 descripción de la ficha en ambos idiomas. Los pedidos conservan su precio original.
 Un reembolso posterior a la expedición conserva el stock hasta que exista un
 flujo de devolución física. El panel permite reponer una unidad cuando
-se agota el stock. Los correos quedan en la bandeja local.
+se agota el stock. Los correos postcompra se generan en el idioma del pedido.
+Abre cualquiera desde la bandeja local para ver destinatario, asunto, texto
+y enlace de seguimiento. La bandeja de prueba no envía correos externos.
+
+Consulta [las tareas del proyecto](TAREAS.md) para ver qué está listo y qué
+queda para el piloto suizo y la expansión a la UE.
 
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.

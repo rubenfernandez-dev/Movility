@@ -8,6 +8,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
   productImage, sideImage, videoPath, captionsPath, transcriptPath } from './storefront.mjs';
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
+import { orderEmail } from './postpurchase.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -31,6 +32,11 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS notices (
     order_id TEXT NOT NULL REFERENCES orders(id), kind TEXT NOT NULL,
     PRIMARY KEY (order_id, kind)
+  );
+  CREATE TABLE IF NOT EXISTS email_previews (
+    order_id TEXT NOT NULL, kind TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL,
+    PRIMARY KEY (order_id, kind),
+    FOREIGN KEY (order_id, kind) REFERENCES notices(order_id, kind)
   );
   CREATE TABLE IF NOT EXISTS delivery_addresses (
     order_id TEXT PRIMARY KEY REFERENCES orders(id), name TEXT NOT NULL,
@@ -78,9 +84,25 @@ const transaction = (work) => {
   }
 };
 const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().units;
-const notice = (id, kind) => db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
 const orderById = (id) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
 const adminHeader = 'Basic ' + Buffer.from('admin:' + admin).toString('base64');
+const noticeKinds = ['paid', 'shipped', 'refunded'];
+
+const storeEmail = (order, kind) => {
+  const { subject, body } = orderEmail(order, kind);
+  db.prepare('INSERT INTO email_previews VALUES (?, ?, ?, ?)').run(order.id, kind, subject, body);
+};
+const notice = (id, kind) => {
+  db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
+  storeEmail(orderById(id), kind);
+};
+transaction(() => {
+  const previousEvents = db.prepare(`SELECT orders.*, notices.kind FROM notices
+    JOIN orders ON orders.id = notices.order_id
+    LEFT JOIN email_previews ON email_previews.order_id = notices.order_id AND email_previews.kind = notices.kind
+    WHERE email_previews.order_id IS NULL AND notices.kind IN ('paid', 'shipped', 'refunded')`).all();
+  for (const event of previousEvents) storeEmail(event, event.kind);
+});
 
 function send(res, status, body, withViewer = false) {
   res.writeHead(status, {
@@ -154,8 +176,8 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END) AS refunds
     FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
-    const events = db.prepare('SELECT kind FROM notices WHERE order_id = ? ORDER BY rowid').all(order.id);
-    const notices = events.map(({ kind }) => `<li>${copy[order.locale][kind]}</li>`).join('');
+    const events = db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id);
+    const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
     return `<article><h2>${order.id}</h2>
       <p>${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
       ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
@@ -197,6 +219,19 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
       </select></label><button class="secondary">Filtrar</button>
     </form>
     ${cards || `<p>${filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.'}</p>`}`);
+}
+
+function emailView(order, preview) {
+  const { orderPath, statusLabel } = orderEmail(order, preview.kind);
+  return page('es', 'Vista previa de correo', `<a href="/admin">Volver a pedidos</a>
+    <h1 class="page-title">Vista previa de correo</h1>
+    <p>Correo de prueba generado automáticamente. Disponible en este panel; envío externo pendiente.</p>
+    <article class="email-preview">
+      <p><strong>Para</strong> ${escapeHtml(order.email)}</p>
+      <h2 lang="${order.locale}">${escapeHtml(preview.subject)}</h2>
+      <div class="email-body" lang="${order.locale}">${escapeHtml(preview.body)}</div>
+      <a href="${orderPath}" lang="${order.locale}">${statusLabel}</a>
+    </article>`);
 }
 
 const server = createServer(async (req, res) => {
@@ -249,6 +284,12 @@ const server = createServer(async (req, res) => {
         const status = searchParams.get('status');
         return send(res, 200, adminView({ saved: searchParams.get('saved') === 'catalog',
           filter: Object.hasOwn(orderLabels, status) ? status : '' }));
+      }
+      const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z]+)$/.exec(path);
+      if (req.method === 'GET' && emailRoute && noticeKinds.includes(emailRoute[2])) {
+        const [, id, kind] = emailRoute;
+        const preview = db.prepare('SELECT kind, subject, body FROM email_previews WHERE order_id = ? AND kind = ?').get(id, kind);
+        return preview ? send(res, 200, emailView(orderById(id), preview)) : send(res, 404, 'Correo desconocido');
       }
       if (req.method === 'POST' && path === '/admin/catalog') {
         const fields = await form(req);

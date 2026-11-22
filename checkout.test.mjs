@@ -112,6 +112,14 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(checkout, candidates[winner])).headers.get('location'), orderPath);
 
   const orderId = candidates[winner].id;
+  const emailPath = (kind) => `/admin/${orderId}/email/${kind}`;
+  assert.equal((await get(emailPath('paid'))).status, 401);
+  assert.equal((await get(emailPath('shipped'), headers)).status, 404);
+  const confirmation = await (await get(emailPath('paid'), headers)).text();
+  assert.match(confirmation, /Movility · Commande confirmée/);
+  assert.match(confirmation, /demo@example\.com/);
+  assert.match(confirmation, /599\.90/);
+  assert.match(confirmation, new RegExp(orderPath));
   assert.equal((await post(`/admin/${orderId}/ship`, { tracking: 'CH-DEMO-1' }, headers)).status, 303);
   assert.match(await (await get(orderPath)).text(), /CH-DEMO-1/);
   for (let i = 0; i < 2; i++) {
@@ -123,6 +131,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(admin, /Desglose por forma de pago/);
   assert.match(admin, new RegExp('<th scope="row">' + candidates[winner].method + '</th><td>1</td>'));
   assert.equal(admin.match(/Paiement de test remboursé/g)?.length, 1);
+  assert.match(await (await get(emailPath('shipped'), headers)).text(), /Numéro de suivi: CH-DEMO-1/);
+  assert.match(await (await get(emailPath('refunded'), headers)).text(), /Movility · Paiement remboursé/);
+  assert.doesNotMatch(await (await get(emailPath('paid'), headers)).text(), /CH-DEMO-1/);
   assert.match(await (await get('/admin?status=paid', headers)).text(), /No hay pedidos con este estado/);
   assert.match(await (await get('/admin?status=refunded', headers)).text(), /1201 Genève/);
   assert.match(await (await get(orderPath)).text(), /Paiement de test remboursé/);
