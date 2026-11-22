@@ -13,6 +13,11 @@ la ficha del producto, el carrito y el seguimiento. En el checkout usa
 datos ficticios, por ejemplo demo@example.com y el código postal 1201.
 Los cuatro métodos de pago son simulados.
 
+Puedes añadir varios modelos al mismo carrito, cambiar cantidades y retirar
+artículos. El carrito se conserva al cambiar de idioma. Al pagar se comprueban
+precio y stock de todas las líneas. El pedido conserva las cantidades, los
+nombres y los precios vigentes en la compra.
+
 El comparador incluye dos perfiles ficticios adicionales. Para sustituir
 el modelo 3D, exporta un GLB autocontenido y sin compresión Draco o KTX2,
 reemplaza `assets/movility-one.glb` y reinicia el servidor. El modelo de

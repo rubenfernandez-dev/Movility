@@ -81,6 +81,11 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .model-editor{max-width:54rem;margin-bottom:1rem;padding:1rem;background:#fff;border:1px solid var(--line);border-radius:.75rem}
 .model-editor summary{cursor:pointer;font-weight:750}.model-editor form{margin-top:1rem}
 .model-editor label:has(input[type=checkbox]){margin:.75rem 0}
+.cart-add{margin:0}
+.basket-lines{max-width:55rem}
+.basket-edit{display:flex;flex-wrap:wrap;align-items:end;gap:.65rem}
+.basket-edit label{max-width:8rem}
+.basket-edit input[name=quantity]{margin-bottom:0}
 textarea{display:block;width:100%;padding:.65rem;border:1px solid #66867e;border-radius:.4rem;margin:.3rem 0 .8rem;font:inherit;resize:vertical}
 .timeline{padding-left:1.5rem}.timeline li{padding:.25rem}.timeline [aria-current]{font-weight:800;color:var(--accent)}
 footer{border-top:1px solid var(--line);color:var(--muted)}

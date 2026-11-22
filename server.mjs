@@ -9,7 +9,9 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { orderEmail } from './postpurchase.mjs';
-import { setupModels, skuPattern, modelAdmin, modelInput, extraCatalog, extraProduct } from './catalog.mjs';
+import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct } from './catalog.mjs';
+import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
+  changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -107,8 +109,24 @@ const transaction = (work) => {
   }
 };
 const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().units;
-const orderById = (id) => db.prepare(`SELECT orders.*, order_models.sku AS model_sku, order_models.name AS model_name
-  FROM orders LEFT JOIN order_models ON orders.id = order_models.order_id WHERE orders.id = ?`).get(id);
+function purchaseModel(sku) {
+  if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
+  const model = extraModel(sku);
+  return model?.active ? model : null;
+}
+const orderLines = id => db.prepare('SELECT sku, name, quantity, cents FROM order_lines WHERE order_id = ? ORDER BY rowid').all(id);
+function orderById(id) {
+  const order = db.prepare(`SELECT orders.*, order_models.sku AS model_sku, order_models.name AS model_name
+    FROM orders LEFT JOIN order_models ON orders.id = order_models.order_id WHERE orders.id = ?`).get(id);
+  return order ? { ...order, lines: orderLines(id) } : null;
+}
+function changeStock(sku, quantity) {
+  if (sku === coreSKU) {
+    return db.prepare('UPDATE stock SET units = units + ? WHERE id = 1 AND units + ? >= 0').run(quantity, quantity).changes;
+  }
+  return db.prepare(`UPDATE extra_models SET units = units + ?, revision = revision + 1
+    WHERE sku = ? AND units + ? >= 0 AND (? > 0 OR active = 1)`).run(quantity, sku, quantity, quantity).changes;
+}
 const adminHeader = 'Basic ' + Buffer.from('admin:' + admin).toString('base64');
 const noticeKinds = ['paid', 'shipped', 'refunded'];
 
@@ -125,7 +143,7 @@ transaction(() => {
     JOIN orders ON orders.id = notices.order_id
     LEFT JOIN email_previews ON email_previews.order_id = notices.order_id AND email_previews.kind = notices.kind
     WHERE email_previews.order_id IS NULL AND notices.kind IN ('paid', 'shipped', 'refunded')`).all();
-  for (const event of previousEvents) storeEmail(event, event.kind);
+  for (const event of previousEvents) storeEmail(orderById(event.id), event.kind);
 });
 
 function send(res, status, body, withViewer = false) {
@@ -201,10 +219,12 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END) AS refunds
     FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
+    const lines = orderLines(order.id);
+    const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
     const events = db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id);
     const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
     return `<article><h2>${order.id}</h2>
-      <p>${escapeHtml(order.model_name || 'Movility One')} · ${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
+      <p>${escapeHtml(productNames)} · ${escapeHtml(order.email)} · ${order.locale} · ${order.method} · ${orderLabels[order.status]}</p>
       ${order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
       ${order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
       <h3>Bandeja de correo simulada</h3><ul>${notices}</ul>
@@ -301,7 +321,7 @@ const server = createServer(async (req, res) => {
     const t = copy[locale];
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
-    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout'].includes(suffix) ||
+    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart'].includes(suffix) ||
       modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
@@ -312,12 +332,14 @@ const server = createServer(async (req, res) => {
       : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
         ? `?view=${galleryView}#gallery` : '';
     const discoverable = first === locale && (suffix === '' || ['/movility-one', '/compare', '/movility-one/3d'].includes(suffix));
+    const cartUnits = [...readCart(req).values()].reduce((sum, quantity) => sum + quantity, 0);
     const render = (body, status = 200) => send(res, status,
-      page(locale, t.title, body, navigation(locale, languagePath, languageQuery),
+      page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]));
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
+    const basketCheckout = path === `/${locale}/checkout/cart`;
     if (req.method === 'POST' && !sameOrigin && !codespaceOrigin) {
       return send(res, 403, 'Forbidden');
     }
@@ -406,8 +428,9 @@ const server = createServer(async (req, res) => {
           if (third === 'refund' && order.status !== 'refunded') {
             db.prepare("UPDATE orders SET status = 'refunded' WHERE id = ?").run(second);
             if (order.status === 'paid') {
-              if (order.model_sku) db.prepare('UPDATE extra_models SET units = units + 1, revision = revision + 1 WHERE sku = ?').run(order.model_sku);
-              else db.exec('UPDATE stock SET units = units + 1 WHERE id = 1');
+              if (order.lines.length) {
+                for (const line of order.lines) changeStock(line.sku, line.quantity);
+              } else changeStock(order.model_sku || coreSKU, 1);
             }
             notice(second, 'refunded');
           }
@@ -444,7 +467,20 @@ const server = createServer(async (req, res) => {
         const model = extraModel(selectedSKU);
         return model?.active ? render(cartPage(locale, model.cents, model.units > 0, model)) : render(`<h1>${t.soldOut}</h1>`, 404);
       }
-      return render(cartPage(locale, catalog().cents, stock() > 0));
+      return render(basketPage(locale, cartLines(readCart(req), purchaseModel)));
+    }
+    if (req.method === 'POST' && path === `/${locale}/cart`) {
+      const cart = readCart(req);
+      if (!changeCart(cart, await form(req), purchaseModel)) {
+        return render(basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable), 409);
+      }
+      res.setHeader('Set-Cookie', cartCookie(cart, Boolean(codespaceOrigin)));
+      return redirect(res, `/${locale}/cart`);
+    }
+    if (req.method === 'GET' && basketCheckout) {
+      const lines = cartLines(readCart(req), purchaseModel);
+      if (!canCheckout(lines)) return render(basketPage(locale, lines, cartText(locale).unavailable), 409);
+      return render(checkoutPage(locale, cartTotal(lines), randomUUID(), {}, '', null, lines));
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
       if (selectedSKU) {
@@ -456,16 +492,18 @@ const server = createServer(async (req, res) => {
       if (!stock()) return render(productPage(locale, model.cents, false, model), 409);
       return render(checkoutPage(locale, model.cents, randomUUID()));
     }
-    if (req.method === 'POST' && path === `/${locale}/checkout`) {
+    if (req.method === 'POST' && (basketCheckout || path === `/${locale}/checkout`)) {
       const fields = await form(req);
       const id = fields?.get('id') || '';
       const email = fields?.get('email')?.trim() || '';
       const method = fields?.get('method');
       const result = fields?.get('result');
       const quotedPrice = fields?.get('quotedPrice');
-      const sku = fields?.get('model') || '';
+      const sku = basketCheckout ? '' : fields?.get('model') || '';
+      const cart = basketCheckout ? readCart(req) : null;
+      const lines = cart ? cartLines(cart, purchaseModel) : null;
       const selected = sku ? extraModel(sku) : null;
-      const cents = selected?.cents ?? catalog().cents;
+      const cents = lines ? cartTotal(lines) : selected?.cents ?? catalog().cents;
       const address = Object.fromEntries(['name', 'street', 'zip', 'city'].map(key => [key, fields?.get(key)?.trim() || '']));
       const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
       const values = { ...address, email, method };
@@ -475,28 +513,53 @@ const server = createServer(async (req, res) => {
           !address.name || address.name.length > 100 || !address.street || address.street.length > 160 ||
           !address.city || address.city.length > 100 || !/^[0-9]{4}$/.test(address.zip) ||
           !methods.includes(method) || !['paid', 'failed'].includes(result)) {
-        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected), 400);
+        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines), 400);
       }
-      if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed, selected));
+      if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed, selected, lines));
       const outcome = transaction(() => {
         const existing = orderById(id);
-        if (existing) return existing.email === email && existing.method === method && existing.locale === locale &&
-          (existing.model_sku || '') === sku ? 'ok' : 'conflict';
+        if (existing) {
+          const sameItems = basketCheckout ? existing.lines.length && cartQuote(existing.lines) === fields.get('cartQuote')
+            : !existing.lines.length && (existing.model_sku || '') === sku;
+          return existing.email === email && existing.method === method && existing.locale === locale && sameItems ? 'repeat' : 'conflict';
+        }
+        if (basketCheckout) {
+          const currentLines = cartLines(cart, purchaseModel);
+          if (!canCheckout(currentLines)) return 'out';
+          if (fields.get('cartQuote') !== cartQuote(currentLines)) return 'price';
+          const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?)');
+          db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(currentLines));
+          for (const line of currentLines) {
+            if (!changeStock(line.sku, -line.quantity)) throw new Error('Cart stock changed during checkout');
+            insertLine.run(id, line.sku, line.name, line.quantity, line.cents);
+          }
+          db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
+          notice(id, 'paid');
+          return 'ok';
+        }
         const currentModel = sku ? extraModel(sku) : null;
         if (sku && !currentModel?.active) return 'out';
         const currentPrice = currentModel?.cents ?? catalog().cents;
         if (quotedPrice !== String(currentPrice)) return 'price';
-        const updated = currentModel
-          ? db.prepare('UPDATE extra_models SET units = units - 1, revision = revision + 1 WHERE sku = ? AND units > 0 AND active = 1').run(sku)
-          : db.prepare('UPDATE stock SET units = units - 1 WHERE id = 1 AND units > 0').run();
-        if (!updated.changes) return 'out';
+        if (!changeStock(sku || coreSKU, -1)) return 'out';
         db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, currentPrice);
         if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?)').run(id, sku, currentModel.name);
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         notice(id, 'paid');
         return 'ok';
       });
-      if (outcome === 'ok') return redirect(res, `/${locale}/orders/${id}`);
+      if (outcome === 'ok' || outcome === 'repeat') {
+        if (basketCheckout && (outcome === 'ok' || cartQuote(lines) === fields.get('cartQuote'))) {
+          res.setHeader('Set-Cookie', cartCookie(new Map(), Boolean(codespaceOrigin)));
+        }
+        return redirect(res, `/${locale}/orders/${id}`);
+      }
+      if (basketCheckout && (outcome === 'out' || outcome === 'price')) {
+        const currentLines = cartLines(cart, purchaseModel);
+        return render(canCheckout(currentLines)
+          ? checkoutPage(locale, cartTotal(currentLines), id, values, cartText(locale).changed, null, currentLines)
+          : basketPage(locale, currentLines, cartText(locale).unavailable), 409);
+      }
       if (outcome === 'price') {
         const current = sku ? extraModel(sku) : null;
         return render(checkoutPage(locale, current?.cents ?? catalog().cents, id, values, t.priceChanged, current), 409);

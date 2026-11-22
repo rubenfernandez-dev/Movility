@@ -1,7 +1,7 @@
 import { escapeHtml, money, copy } from './views.mjs';
 import { productGallery, productVideo } from './storefront.mjs';
+import { addToCart, skuPattern } from './cart.mjs';
 
-export const skuPattern = /^[a-z0-9][a-z0-9-]{1,23}$/;
 const language = {
   'de-CH': { models: 'Weitere Modelle', price: 'Preis', width: 'Breite', weight: 'Gewicht', range: 'Reichweite', fold: 'Faltbar', yes: 'Ja', no: 'Nein', cart: 'Zum Warenkorb', compare: 'Vergleichen' },
   'fr-CH': { models: 'Autres modèles', price: 'Prix', width: 'Largeur', weight: 'Poids', range: 'Autonomie', fold: 'Pliable', yes: 'Oui', no: 'Non', cart: 'Voir le panier', compare: 'Comparer' },
@@ -19,6 +19,11 @@ export function setupModels(db) {
     CREATE TABLE IF NOT EXISTS order_models (
       order_id TEXT PRIMARY KEY REFERENCES orders(id), sku TEXT NOT NULL REFERENCES extra_models(sku),
       name TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS order_lines (
+      order_id TEXT NOT NULL REFERENCES orders(id), sku TEXT NOT NULL, name TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK(quantity > 0), cents INTEGER NOT NULL CHECK(cents > 0),
+      PRIMARY KEY (order_id, sku)
     );
   `);
 }
@@ -87,8 +92,8 @@ export function extraProduct(locale, model, media, view) {
     <p class="lead">${escapeHtml(locale === 'de-CH' ? model.description_de : model.description_fr)}</p>
     <p class="price">${money(locale, model.cents)}</p><dl class="specs">
     ${specs.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>
-    <p class="cart-action">${model.units ? `<a class="button" href="/${locale}/cart?model=${model.sku}">${l.cart}</a>` : copy[locale].soldOut}
+    <div class="product-actions cart-action">${model.units ? addToCart(locale, model.sku) : copy[locale].soldOut}
     ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">3D</a>` : ''}
-    <a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a></p></div></section>
+    <a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a></div></div></section>
     ${productVideo(locale, media.video)}`;
 }

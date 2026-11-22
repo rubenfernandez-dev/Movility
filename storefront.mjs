@@ -1,5 +1,6 @@
 import { copy, methods, money, escapeHtml } from './views.mjs';
 import { compareLabel, viewerLink } from './discovery.mjs';
+import { addToCart, cartQuote, coreSKU } from './cart.mjs';
 
 const labels = {
   'de-CH': {
@@ -52,13 +53,13 @@ const href = (locale, suffix = '') => `/${locale}${suffix}`;
 const button = (url, label) => `<a class="button" href="${url}">${label}</a>`;
 const status = (l, t, available) => `<span class="stock ${available ? 'available' : ''}">${available ? l.stock : t.soldOut}</span>`;
 
-export function navigation(locale, suffix, query = '') {
+export function navigation(locale, suffix, query = '', units = 0) {
   const l = labels[locale];
   const alt = locale === 'de-CH' ? 'fr-CH' : 'de-CH';
   return `<a class="skip" href="#content">${l.skip}</a>
     <header class="top"><div class="top-inner"><a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Movility</a>
     <nav><a href="/${locale}/movility-one">${l.nav}</a><a href="/${locale}/compare">${compareLabel(locale)}</a><a href="/${locale}#faq">${l.help}</a></nav>
-    <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}</a></div></div></header>`;
+    <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}${units ? ` (${units})` : ''}</a></div></div></header>`;
 }
 
 export function homepage(locale, cents, available, extras = '') {
@@ -114,7 +115,7 @@ export function productPage(locale, cents, available, model, { view = 'front', v
     ${productGallery(locale, 'Movility One', '/movility-one', { front: productImage, side: sideImage }, view, true)}
     <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
       ${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
-      <div class="product-actions">${available ? button(href(locale, '/cart'), l.add) : ''}${viewerLink(locale)}
+      <div class="product-actions">${available ? addToCart(locale, coreSKU) : ''}${viewerLink(locale)}
         <a href="/${locale}/compare">${compareLabel(locale)}</a></div>
       <h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl></div>
   </section>${productVideo(locale, video ? {
@@ -132,15 +133,16 @@ export function cartPage(locale, cents, available, model) {
       : button(href(locale, model ? '/models/' + model.sku : '/movility-one'), t.catalog)}</p></div></article>`;
 }
 
-export function checkoutPage(locale, cents, id, values = {}, message = '', model) {
+export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines) {
   const l = labels[locale];
   const t = copy[locale];
   const field = (name, label, attributes) => `<label>${label}<input name="${name}" value="${escapeHtml(values[name] || '')}" required ${attributes}></label>`;
   return `<h1 class="page-title">${t.checkout}</h1><p>${l.demoData}</p>
     ${message ? `<p class="form-error" role="alert">${message}</p>` : ''}
-    <div class="checkout-grid"><form method="post" action="/${locale}/checkout">
+    <div class="checkout-grid"><form method="post" action="/${locale}/checkout${lines ? '/cart' : ''}">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="quotedPrice" value="${cents}">
+      ${lines ? `<input type="hidden" name="cartQuote" value="${escapeHtml(cartQuote(lines))}">` : ''}
       ${model ? `<input type="hidden" name="model" value="${model.sku}">` : ''}
       <fieldset><legend>${l.address} · ${l.country}</legend>
         ${field('email', t.email, 'type="email" maxlength="254" placeholder="demo@example.com"')}
@@ -152,8 +154,10 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
       <button name="result" value="paid">${t.pay}</button>
       <button class="secondary" name="result" value="failed">${t.fail}</button>
     </form><aside class="summary"><h2>${l.summary}</h2>
-      ${model ? '' : image(l)}<h3>${escapeHtml(model?.name || 'Movility One')}</h3><dl class="specs">
-        <div><dt>${l.quantity}</dt><dd>1</dd></div><div><dt>${l.delivery}</dt><dd>${money(locale, 0)}</dd></div>
+      ${lines ? `<ul>${lines.map(line => `<li>${line.quantity} × ${escapeHtml(line.name)} · ${money(locale, line.quantity * line.cents)}</li>`).join('')}</ul>`
+        : `${model ? '' : image(l)}<h3>${escapeHtml(model?.name || 'Movility One')}</h3>`}
+      <dl class="specs">
+        ${lines ? '' : `<div><dt>${l.quantity}</dt><dd>1</dd></div>`}<div><dt>${l.delivery}</dt><dd>${money(locale, 0)}</dd></div>
         <div><dt>${l.total}</dt><dd>${money(locale, cents)}</dd></div>
       </dl></aside></div>`;
 }
@@ -164,9 +168,11 @@ export function orderPage(locale, order) {
   const steps = order.status === 'refunded' && !order.tracking ? ['paid', 'refunded']
     : ['paid', 'shipped', ...(order.status === 'refunded' ? ['refunded'] : [])];
   return `<section class="confirmation"><p class="eyebrow">${l.progress}</p><h1 class="page-title">${t[order.status]}</h1>
-    <p>${escapeHtml(order.model_name || 'Movility One')} · ${money(locale, order.cents)} · ${order.method}</p>
+    ${order.lines?.length ? `<ul>${order.lines.map(line => `<li>${line.quantity} × ${escapeHtml(line.name)}</li>`).join('')}</ul>` : ''}
+    <p>${order.lines?.length ? '' : escapeHtml(order.model_name || 'Movility One') + ' · '}${money(locale, order.cents)} · ${order.method}</p>
     <p>${l.reference} <code>${order.id}</code></p>
     <ol class="timeline">${steps.map((step) => `<li ${step === order.status ? 'aria-current="step"' : ''}>${t[step]}</li>`).join('')}</ol>
     ${order.tracking ? `<p>${t.tracking} ${escapeHtml(order.tracking)}</p>` : ''}
-    ${button(href(locale, order.model_sku ? '/models/' + order.model_sku : '/movility-one'), t.catalog)}</section>`;
+    ${order.lines?.length ? button(href(locale), t.catalog)
+      : button(href(locale, order.model_sku ? '/models/' + order.model_sku : '/movility-one'), t.catalog)}</section>`;
 }

@@ -19,7 +19,7 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   reembolso en el idioma del pedido. Poder abrir el correo completo desde el
   panel y conservar una sola copia por evento. Aceptación: importe y seguimiento
   corresponden al evento y se pueden consultar también en pedidos anteriores.
-- [ ] **2. Catálogo de 1–10 modelos y carrito.** Crear, editar y archivar
+- [x] **2. Catálogo de 1–10 modelos y carrito.** Crear, editar y archivar
   modelos con SKU, existencias, fichas DE/FR, precio, especificaciones, galería,
   vídeo y GLB propios. Conectar el comparador al catálogo publicado y permitir
   un carrito con varias referencias. Aceptación: despublicar un modelo bloquea
@@ -28,7 +28,7 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [x] Modelos con SKU, ficha bilingüe, precio, stock, características, publicación y archivo.
   - [x] Integración con el comparador y compra de un modelo con stock independiente e historial.
   - [x] Galería, vídeo subtitulado, transcripción y visor GLB opcionales por modelo mediante archivos asociados al SKU.
-  - [ ] Carrito con varias referencias.
+  - [x] Carrito con varias referencias, cantidades y comprobación transaccional de stock y precios.
 - [ ] **3. Administración y analítica.** Añadir movimientos de stock y
   devoluciones físicas, trazabilidad por serie cuando aplique, roles, filtros
   y exportación contable. Medir ventas netas y el embudo con el consentimiento

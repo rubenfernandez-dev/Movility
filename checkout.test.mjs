@@ -88,7 +88,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const glbBytes = Buffer.from(await glb.arrayBuffer());
   assert.equal(glbBytes.toString('ascii', 0, 4), 'glTF');
   assert.equal(glbBytes.readUInt32LE(8), glbBytes.length);
-  assert.match(await (await get('/de-CH/cart')).text(), /\/de-CH\/checkout/);
+  assert.match(await (await get('/de-CH/cart')).text(), /Warenkorb ist leer/);
   assert.equal((await get('/site.css')).headers.get('content-type'), 'text/css; charset=utf-8');
   assert.equal((await get('/assets/movility-one.jpg')).headers.get('content-type'), 'image/jpeg');
   assert.equal((await get('/admin')).status, 401);
@@ -188,4 +188,56 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(await (await get(extraOrder)).text(), /Movility Alpine/);
   assert.equal((await post('/admin/' + extraOrder.split('/').at(-1) + '/refund', {}, headers)).status, 303);
   assert.match(await (await get('/admin/models', headers)).text(), /Archivad[o] · 1 ud\./);
+  assert.equal((await post('/admin/models/alpine', { ...model, revision: '3', units: '2' }, headers)).status, 303);
+
+  let cookie = '';
+  const cartHeaders = () => cookie ? { Cookie: cookie } : {};
+  const mutateCart = async (action, sku, quantity = '') => {
+    const response = await post('/fr-CH/cart', { action, sku, quantity }, cartHeaders());
+    assert.equal(response.status, 303);
+    cookie = response.headers.get('set-cookie').split(';')[0];
+  };
+  await mutateCart('add', 'one');
+  await mutateCart('add', 'alpine');
+  await mutateCart('remove', 'alpine');
+  await mutateCart('add', 'alpine');
+  await mutateCart('update', 'alpine', '2');
+  const basket = await (await get('/de-CH/cart', cartHeaders())).text();
+  assert.match(basket, /Movility One/);
+  assert.match(basket, /Movility Alpine/);
+  assert.match(basket, /Warenkorb \(3\)/);
+  assert.match(basket, /name="quantity"[^>]*value="2"/);
+  assert.match(basket, /\/de-CH\/checkout\/cart/);
+  const basketCheckout = '/fr-CH/checkout/cart';
+  const quote = async () => {
+    const html = await (await get(basketCheckout, cartHeaders())).text();
+    return {
+      id: html.match(/name="id" value="([^"]+)"/)[1],
+      cartQuote: html.match(/name="cartQuote" value="([^"]+)"/)[1].replaceAll('&quot;', '"'),
+      email: 'basket@example.com', name: 'Client Demo', street: 'Rue de Test 1',
+      zip: '1201', city: 'Genève', method: 'TWINT', result: 'paid',
+    };
+  };
+  const staleBasket = await quote();
+  assert.equal((await post('/admin/catalog', { ...edit, expectedPrice: '99900', price: '1099' }, headers)).status, 303);
+  const revised = await post(basketCheckout, staleBasket, cartHeaders());
+  assert.equal(revised.status, 409);
+  assert.match(await revised.text(), /un prix a changé/);
+  const baskets = await Promise.all([quote(), quote()]);
+  const purchases = await Promise.all(baskets.map(value => post(basketCheckout, value, cartHeaders())));
+  assert.deepEqual(purchases.map(({ status }) => status).sort(), [303, 409]);
+  const winningIndex = purchases.findIndex(({ status }) => status === 303);
+  const winningBasket = purchases[winningIndex];
+  assert.match(winningBasket.headers.get('set-cookie'), /Max-Age=0/);
+  const basketOrder = winningBasket.headers.get('location');
+  assert.equal((await post(basketCheckout, baskets[winningIndex])).headers.get('location'), basketOrder);
+  const summary = await (await get(basketOrder)).text();
+  assert.match(summary, /1 × Movility One/);
+  assert.match(summary, /2 × Movility Alpine/);
+  const basketOrderId = basketOrder.split('/').at(-1);
+  assert.match(await (await get(`/admin/${basketOrderId}/email/paid`, headers)).text(), /2 × Movility Alpine/);
+  assert.equal((await post(`/admin/${basketOrderId}/refund`, {}, headers)).status, 303);
+  assert.equal((await post(`/admin/${basketOrderId}/refund`, {}, headers)).status, 303);
+  assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1/);
+  assert.match(await (await get('/admin/models', headers)).text(), /Publicado · 2 ud\./);
 });
