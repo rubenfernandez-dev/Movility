@@ -25,9 +25,13 @@ import { setupTracking, trackingStart, trackingEvents, applyTrackingEvent, track
   manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody } from './tracking.mjs';
 import { setupPush, purgePush, pushConfig, pushSubscription, pushState, addPushSubscription, removePushSubscription,
   queuePush, deliverPush, pushControls } from './order-push.mjs';
+import { stripeMode, createCheckout, verifyStripeEvent, stripeOutcome, setupStripePayments, paymentAttempt,
+  reserveStripe, saveStripeSession, applyStripeOutcome, stripeStatus, stripeAdmin, stripeMethodsFor } from './stripe-payments.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
+const stripe = stripeMode(process.env, siteOrigin);
+const stripeHost = stripe ? new URL(stripe.origin).host : '';
 const emailTest = emailTestConfig(process.env, siteOrigin);
 const push = pushConfig(process.env);
 const carrierSecret = process.env.MOVILITY_CARRIER_SECRET || '';
@@ -138,6 +142,7 @@ transaction(() => {
   setupMailQueue(db);
   setupTracking(db);
   setupPush(db);
+  setupStripePayments(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -192,6 +197,28 @@ function recordMovement(sku, delta, reason, orderId = null) {
 function orderStock(sku, quantity, reason, orderId) {
   if (!changeStock(sku, quantity)) throw new Error('Stock changed during order operation');
   recordMovement(sku, quantity, reason, orderId);
+}
+function createPaidOrder(id, method, locale, email, address, items) {
+  db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(items));
+  const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?)');
+  for (const line of items) insertLine.run(id, line.sku, line.name, line.quantity, line.cents);
+  db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
+}
+async function stripeRedirect(res, attempt, locale, render) {
+  if (attempt.state === 'paid') return redirect(res, `/${locale}/orders/${attempt.id}`);
+  if (attempt.expires_at <= Math.floor(Date.now() / 1000)) return render(stripeStatus(locale, attempt));
+  if (attempt.state === 'open' && attempt.checkout_url) return redirect(res, attempt.checkout_url);
+  if (attempt.state !== 'preparing') return render(stripeStatus(locale, attempt));
+  try {
+    const session = await createCheckout(stripe, attempt);
+    if (!saveStripeSession(db, attempt.id, session)) return render(stripeStatus(locale, attempt, true), 502);
+    const current = paymentAttempt(db, attempt.id);
+    if (current.state === 'open' && current.checkout_url) return redirect(res, current.checkout_url);
+    if (current.state === 'paid') return redirect(res, `/${locale}/orders/${attempt.id}`);
+    return render(stripeStatus(locale, current));
+  } catch {
+    return render(stripeStatus(locale, paymentAttempt(db, attempt.id), true), 502);
+  }
 }
 const orderReceipts = id => db.prepare('SELECT sku, quantity, restocked FROM return_receipts WHERE order_id = ?').all(id);
 const orderIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
@@ -323,7 +350,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${supportAccess ? `<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
       ${shippingAccess && order.status === 'paid' ? shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
-      ${financeAccess && order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
+      ${financeAccess && order.status !== 'refunded' && !paymentAttempt(db, order.id) ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
       ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
     </article>`;
   }).join('');
@@ -335,7 +362,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
       ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
       ${supportAccess ? '<a class="button secondary" href="/admin/mail">Cola de correos</a>' : ''}
-      ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a>' : ''}</div>
+      ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a> <a class="button secondary" href="/admin/stripe">Pagos de prueba con Stripe</a>' : ''}</div>
     ${financeAccess ? `<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -387,10 +414,27 @@ const server = createServer(async (req, res) => {
   try {
     const activePort = server.address().port;
     const localHosts = [`127.0.0.1:${activePort}`, `localhost:${activePort}`];
-    if (!localHosts.includes(req.headers.host) && req.headers.host !== codespaceHost) {
+    if (!localHosts.includes(req.headers.host) && req.headers.host !== codespaceHost && req.headers.host !== stripeHost) {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
+    if (req.method === 'POST' && path === '/integrations/stripe/events') {
+      if (!stripe) return carrierResponse(res, 404, 'disabled');
+      const body = await readCarrierBody(req, 131072);
+      if (!body) return carrierResponse(res, 400, 'invalid');
+      const event = verifyStripeEvent(stripe, body, req.headers['stripe-signature']);
+      if (!event) return carrierResponse(res, 401, 'unauthorized');
+      const outcome = stripeOutcome(event);
+      if (!outcome) return carrierResponse(res, 200, 'ignored');
+      const result = transaction(() => applyStripeOutcome(db, outcome, {
+        release: line => orderStock(line.sku, line.quantity, 'release', null),
+        fulfill: (attempt, data) => {
+          createPaidOrder(attempt.id, attempt.method, data.locale, data.email, data.address, data.lines);
+          notice(attempt.id, 'paid');
+        },
+      }));
+      return carrierResponse(res, 200, result);
+    }
     if (req.method === 'POST' && path === '/integrations/carrier/events') {
       if (!carrierSecret) return carrierResponse(res, 404, 'disabled');
       const body = await readCarrierBody(req);
@@ -468,8 +512,9 @@ const server = createServer(async (req, res) => {
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
+    const stripeOrigin = stripe && origin === stripe.origin;
     const basketCheckout = path === `/${locale}/checkout/cart`;
-    if (req.method === 'POST' && !sameOrigin && !codespaceOrigin) {
+    if (req.method === 'POST' && !sameOrigin && !codespaceOrigin && !stripeOrigin) {
       return send(res, 403, 'Forbidden');
     }
     if (req.method === 'POST' && pushRoute) {
@@ -520,6 +565,10 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && path === '/admin/analytics') {
         return send(res, 200, page('es', 'Embudo de compra', funnelReport(db, searchParams)));
+      }
+      if (req.method === 'GET' && path === '/admin/stripe') {
+        const attempts = db.prepare('SELECT * FROM stripe_attempts ORDER BY rowid DESC LIMIT 200').all();
+        return send(res, 200, page('es', 'Pagos de prueba con Stripe', stripeAdmin(attempts)));
       }
       if (req.method === 'GET' && path === '/admin/mail') {
         const state = searchParams.get('result');
@@ -682,6 +731,7 @@ const server = createServer(async (req, res) => {
             notice(second, 'shipped');
           }
           if (third === 'refund' && order.status !== 'refunded') {
+            if (paymentAttempt(db, second)) return 'stripe-refund';
             db.prepare("UPDATE orders SET status = 'refunded' WHERE id = ?").run(second);
             if (order.status === 'paid') {
               for (const line of purchasedLines(order)) orderStock(line.sku, line.quantity, 'refund', second);
@@ -692,6 +742,9 @@ const server = createServer(async (req, res) => {
         });
         if (found === 'invalid') return send(res, 409, rolePanel({
           error: 'Indica un número de serie distinto por unidad. Las series enviadas o en revisión no se pueden volver a asignar.',
+        }));
+        if (found === 'stripe-refund') return send(res, 409, rolePanel({
+          error: 'El reembolso de Stripe se conciliará desde la integración de pagos. La simulación no cambia ese pedido.',
         }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
       }
@@ -754,19 +807,35 @@ const server = createServer(async (req, res) => {
       const lines = cartLines(readCart(req), purchaseModel);
       if (!canCheckout(lines)) return render(basketPage(locale, lines, cartText(locale).unavailable), 409);
       track('checkout');
-      return render(checkoutPage(locale, cartTotal(lines), randomUUID(), {}, '', null, lines));
+      const amount = cartTotal(lines);
+      return render(checkoutPage(locale, amount, randomUUID(), {}, '', null, lines, stripeMethodsFor(stripe, amount)));
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
       if (selectedSKU) {
         const model = extraModel(selectedSKU);
         if (!model?.active || !model.units) return render(`<h1>${t.soldOut}</h1>`, 409);
         track('checkout');
-        return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', model));
+        return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', model, undefined, stripeMethodsFor(stripe, model.cents)));
       }
       const model = catalog();
       if (!stock()) return render(productPage(locale, model.cents, false, model), 409);
       track('checkout');
-      return render(checkoutPage(locale, model.cents, randomUUID()));
+      return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', null, undefined, stripeMethodsFor(stripe, model.cents)));
+    }
+    if (stripe && first === locale && second === 'payment' && orderIdPattern.test(third) && path === `/${locale}/payment/${third}`) {
+      const attempt = paymentAttempt(db, third);
+      if (!attempt || JSON.parse(attempt.payload).locale !== locale) return render('<h1>404</h1>', 404);
+      if (attempt.state === 'paid' && ['GET', 'POST'].includes(req.method)) {
+        track('purchase');
+        const currentCart = readCart(req);
+        const snapshot = JSON.parse(attempt.payload).lines;
+        if (currentCart.size === snapshot.length && snapshot.every(line => currentCart.get(line.sku) === line.quantity)) {
+          res.setHeader('Set-Cookie', cartCookie(new Map(), Boolean(codespaceOrigin || stripeOrigin)));
+        }
+        return redirect(res, `/${locale}/orders/${third}`);
+      }
+      if (req.method === 'GET') return render(stripeStatus(locale, attempt));
+      if (req.method === 'POST') return stripeRedirect(res, attempt, locale, render);
     }
     if (req.method === 'POST' && (basketCheckout || path === `/${locale}/checkout`)) {
       const fields = await form(req);
@@ -788,8 +857,41 @@ const server = createServer(async (req, res) => {
           email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           !address.name || address.name.length > 100 || !address.street || address.street.length > 160 ||
           !address.city || address.city.length > 100 || !/^[0-9]{4}$/.test(address.zip) ||
-          !methods.includes(method) || !['paid', 'failed'].includes(result)) {
-        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines), 400);
+          !(stripe?.methods || methods).includes(method) || !(stripe ? ['stripe'] : ['paid', 'failed']).includes(result)) {
+        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines, stripeMethodsFor(stripe, cents)), 400);
+      }
+      if (stripe) {
+        const matchesQuote = items => basketCheckout ? fields.get('cartQuote') === cartQuote(items)
+          : items.length === 1 && items[0].sku === (sku || coreSKU) && quotedPrice === String(items[0].cents);
+        const reservation = transaction(() => {
+          const existing = paymentAttempt(db, id);
+          if (existing) {
+            const previous = JSON.parse(existing.payload);
+            return existing.method === method && previous.email === email && previous.locale === locale &&
+              JSON.stringify(previous.address) === JSON.stringify(address) && matchesQuote(previous.lines) ? existing : 'conflict';
+          }
+          if (orderById(id)) return 'conflict';
+          const items = cartLines(cart || new Map([[sku || coreSKU, 1]]), purchaseModel);
+          if (!canCheckout(items)) return 'out';
+          if (!matchesQuote(items)) return 'price';
+          if (!stripeMethodsFor(stripe, cartTotal(items)).includes(method)) return 'method';
+          const snapshot = items.map(({ sku, name, quantity, cents }) => ({ sku, name, quantity, cents }));
+          return reserveStripe(db, id, method, { locale, email, address, lines: snapshot }, cartTotal(snapshot),
+            line => orderStock(line.sku, -line.quantity, 'reservation', null));
+        });
+        if (reservation === 'price' || reservation === 'method') {
+          const refreshed = basketCheckout ? cartLines(cart, purchaseModel) : null;
+          const selection = sku ? extraModel(sku) : null;
+          const amount = refreshed ? cartTotal(refreshed) : selection?.cents ?? catalog().cents;
+          return render(checkoutPage(locale, amount, id, values, reservation === 'price' ? t.priceChanged : t.invalid,
+            selection, refreshed, stripeMethodsFor(stripe, amount)), 409);
+        }
+        if (typeof reservation === 'string') {
+          return render(basketCheckout && reservation === 'out'
+            ? basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable)
+            : `<h1>${reservation === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
+        }
+        return stripeRedirect(res, reservation, locale, render);
       }
       if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed, selected, lines));
       const outcome = transaction(() => {
@@ -803,13 +905,10 @@ const server = createServer(async (req, res) => {
           const currentLines = cartLines(cart, purchaseModel);
           if (!canCheckout(currentLines)) return 'out';
           if (fields.get('cartQuote') !== cartQuote(currentLines)) return 'price';
-          const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?)');
-          db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(currentLines));
+          createPaidOrder(id, method, locale, email, address, currentLines);
           for (const line of currentLines) {
             orderStock(line.sku, -line.quantity, 'order', id);
-            insertLine.run(id, line.sku, line.name, line.quantity, line.cents);
           }
-          db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
           notice(id, 'paid');
           return 'ok';
         }

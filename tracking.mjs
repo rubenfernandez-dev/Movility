@@ -95,13 +95,13 @@ export function carrierSignatureValid(secret, unixSeconds, signature, body, now 
   return timingSafeEqual(expected, Buffer.from(signature.slice(7), 'hex'));
 }
 
-export async function readCarrierBody(req) {
+export async function readCarrierBody(req, limit = 4096) {
   if (req.headers['content-type']?.split(';')[0].trim() !== 'application/json') return null;
   const chunks = [];
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
-    if (total > 4096) return null;
+    if (total > limit) return null;
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);

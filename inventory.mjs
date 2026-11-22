@@ -4,6 +4,7 @@ import { escapeHtml } from './views.mjs';
 const reasons = {
   opening: 'Saldo inicial', adjustment: 'Ajuste manual', order: 'Pedido cobrado',
   refund: 'Reembolso antes del envío', return: 'Devolución recibida y apta',
+  reservation: 'Reserva de pago Stripe', release: 'Liberación de reserva Stripe',
 };
 
 export function setupInventory(db) {

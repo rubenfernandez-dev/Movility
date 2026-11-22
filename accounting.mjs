@@ -1,4 +1,5 @@
 import { methods, money } from './views.mjs';
+const reportMethods = [...methods, 'Tarjeta'];
 
 export function setupAccounting(db) {
   db.exec(`
@@ -36,7 +37,7 @@ export function accountingFilters(query) {
   const rawMethod = query.get('method') || '';
   const from = dateInput(rawFrom);
   const to = dateInput(rawTo);
-  const method = methods.includes(rawMethod) ? rawMethod : '';
+  const method = reportMethods.includes(rawMethod) ? rawMethod : '';
   const invalid = Boolean((rawFrom && !from) || (rawTo && !to) || (rawMethod && !method) || (from && to && from > to));
   return { from, to, method, invalid };
 }
@@ -72,7 +73,7 @@ export function accountingPage(data, filters) {
       <label>Desde<input name="from" type="date" value="${from}"></label>
       <label>Hasta<input name="to" type="date" value="${to}"></label>
       <label>Medio de pago<select name="method"><option value="">Todos</option>
-        ${methods.map(value => `<option ${value === method ? 'selected' : ''}>${value}</option>`).join('')}
+        ${reportMethods.map(value => `<option ${value === method ? 'selected' : ''}>${value}</option>`).join('')}
       </select></label><button>Filtrar</button></form>
     ${invalid ? '<p class="form-error" role="alert">Revisa las fechas y el medio de pago. La fecha de inicio debe ser anterior o igual a la final.</p>' : `
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', data.captures)}</dd></div>

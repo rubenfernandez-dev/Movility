@@ -131,6 +131,29 @@ Genera un par VAPID con `npx web-push generate-vapid-keys` y configura
 seguro. Las suscripciones de simulación no pasan al modo real. El valor
 predeterminado `off` desactiva el módulo. Los correos siguen su propia cola.
 
+### Stripe Checkout en modo de prueba
+
+La demo usa pagos simulados por defecto. Para habilitar Stripe Checkout con
+pedidos ficticios, configura estas variables en el entorno del servidor.
+
+| Variable | Valor |
+| --- | --- |
+| `MOVILITY_PAYMENT_MODE` | `stripe-test` |
+| `MOVILITY_STRIPE_SECRET_KEY` | Clave de prueba `sk_test_…` |
+| `MOVILITY_STRIPE_WEBHOOK_SECRET` | Secreto del endpoint `whsec_…` |
+| `MOVILITY_PUBLIC_ORIGIN` | Origen HTTPS del sitio de prueba |
+| `MOVILITY_STRIPE_METHODS` | `card` por defecto. Añade `twint,paypal` cuando estén habilitados en la cuenta |
+
+Configura `/integrations/stripe/events` para los eventos
+`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed` y `checkout.session.expired`.
+El pedido solo se crea tras recibir una confirmación firmada del cobro en CHF.
+El stock se reserva al iniciar el pago y se libera al recibir un fallo o
+caducidad confirmados. Si Stripe no confirma el resultado, la reserva queda
+visible en **Pagos de prueba con Stripe** para revisión. El regreso desde
+Checkout consulta el estado. Las claves de producción se rechazan y la
+simulación de reembolsos queda deshabilitada para pedidos de Stripe.
+
 En **Conciliación de pedidos** puedes filtrar y exportar cobros y reembolsos
 simulados por fecha UTC y medio de pago. El CSV lleva el identificador del
 pedido, la moneda y el importe firmado; no incluye datos de contacto.

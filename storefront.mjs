@@ -134,7 +134,7 @@ export function cartPage(locale, cents, available, model) {
       : button(href(locale, model ? '/models/' + model.sku : '/movility-one'), t.catalog)}</p></div></article>`;
 }
 
-export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines) {
+export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines, stripeMethods) {
   const l = labels[locale];
   const t = copy[locale];
   const field = (name, label, attributes) => `<label>${label}<input name="${name}" value="${escapeHtml(values[name] || '')}" required ${attributes}></label>`;
@@ -151,9 +151,14 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
         <div class="address-row">${field('zip', l.zip, 'inputmode="numeric" pattern="[0-9]{4}" maxlength="4"')}
         ${field('city', l.city, 'maxlength="100"')}</div>
       </fieldset>
-      <fieldset><legend>${t.method}</legend><div class="pay-options">${methods.map((method) => `<label class="option"><input type="radio" name="method" value="${method}" ${values.method === method ? 'checked' : ''} required> ${method}</label>`).join('')}</div></fieldset>
-      <button name="result" value="paid">${t.pay}</button>
-      <button class="secondary" name="result" value="failed">${t.fail}</button>
+      <fieldset><legend>${t.method}</legend><div class="pay-options">${(stripeMethods || methods).map((method) => {
+        const label = method === 'Tarjeta' ? (locale === 'de-CH' ? 'Karte (Visa, Mastercard)' : 'Carte (Visa, Mastercard)') : method;
+        return `<label class="option"><input type="radio" name="method" value="${method}" ${values.method === method ? 'checked' : ''} required> ${label}</label>`;
+      }).join('')}</div></fieldset>
+      ${stripeMethods ? stripeMethods.length
+        ? `<button name="result" value="stripe">${locale === 'de-CH' ? 'Weiter zu Stripe (Test)' : 'Continuer vers Stripe (test)'}</button>`
+        : `<p>${locale === 'de-CH' ? 'Für diesen Betrag ist keine Testzahlungsart verfügbar.' : 'Aucun mode de paiement test disponible pour ce montant.'}</p>`
+        : `<button name="result" value="paid">${t.pay}</button><button class="secondary" name="result" value="failed">${t.fail}</button>`}
     </form><aside class="summary"><h2>${l.summary}</h2>
       ${lines ? `<ul>${lines.map(line => `<li>${line.quantity} × ${escapeHtml(line.name)} · ${money(locale, line.quantity * line.cents)}</li>`).join('')}</ul>`
         : `${model ? '' : image(l)}<h3>${escapeHtml(model?.name || 'Movility One')}</h3>`}
