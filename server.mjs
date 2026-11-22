@@ -65,10 +65,22 @@ const assets = new Map([
 ]);
 const mediaFile = path => process.env.MOVILITY_MEDIA_DIR
   ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
-function modelMedia(sku) {
-  const photo = `/assets/models/${sku}.jpg`;
-  const model = `/assets/models/${sku}.glb`;
-  return { photo: existsSync(mediaFile(photo)) ? photo : '', model: existsSync(mediaFile(model)) ? model : '' };
+function modelVideo(sku, locale) {
+  const base = `/assets/models/${sku}`;
+  const bundle = { video: base + '.mp4', captions: base + '.' + locale + '.vtt', transcript: base + '.' + locale + '.txt' };
+  if (!Object.values(bundle).every(path => existsSync(mediaFile(path)))) return null;
+  const captions = readFileSync(mediaFile(bundle.captions), 'utf8');
+  const transcript = readFileSync(mediaFile(bundle.transcript), 'utf8');
+  return captions.replace(/^\uFEFF/, '').startsWith('WEBVTT') && transcript.trim() ? bundle : null;
+}
+
+function modelMedia(sku, locale) {
+  const base = `/assets/models/${sku}`;
+  const find = extension => existsSync(mediaFile(base + extension)) ? base + extension : '';
+  const photos = { front: find('.jpg'), side: find('.side.jpg'), rear: find('.rear.jpg') };
+  const photo = photos.front || photos.side || photos.rear;
+  const video = modelVideo(sku, locale);
+  return { photo, photos, model: find('.glb'), video: video ? { ...video, poster: photo } : null };
 }
 const videoFile = mediaFile(videoPath);
 const videoLocales = new Set();
@@ -130,8 +142,8 @@ function send(res, status, body, withViewer = false) {
   res.end(body);
 }
 
-function sendVideo(req, res) {
-  const size = statSync(videoFile).size;
+function sendVideo(req, res, file = videoFile) {
+  const size = statSync(file).size;
   const headers = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff' };
   let start = 0;
   let end = size - 1;
@@ -153,7 +165,7 @@ function sendVideo(req, res) {
   }
   res.writeHead(req.headers.range ? 206 : 200, { ...headers, 'Content-Length': Math.max(0, end - start + 1) });
   if (req.method === 'HEAD' || !size) return res.end();
-  const stream = createReadStream(videoFile, { start, end });
+  const stream = createReadStream(file, { start, end });
   stream.on('error', () => res.destroy());
   res.on('close', () => stream.destroy());
   stream.pipe(res);
@@ -256,12 +268,19 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
-    const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(jpg|glb)$/.exec(path);
-    if (req.method === 'GET' && modelAsset && extraModel(modelAsset[1])?.active && existsSync(mediaFile(path))) {
-      const type = modelAsset[2] === 'jpg' ? 'image/jpeg' : 'model/gltf-binary';
-      const data = readFileSync(mediaFile(path));
-      res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
-      return res.end(data);
+    const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(?:(side\.|rear\.)?jpg|glb|mp4|(de-CH|fr-CH)\.(?:vtt|txt))$/.exec(path);
+    if (modelAsset && ['GET', 'HEAD'].includes(req.method) && extraModel(modelAsset[1])?.active && existsSync(mediaFile(path))) {
+      const [, sku, , trackLocale] = modelAsset;
+      if (path.endsWith('.mp4')) {
+        if (Object.keys(copy).some(language => modelVideo(sku, language))) return sendVideo(req, res, mediaFile(path));
+      } else if (!trackLocale || modelVideo(sku, trackLocale)) {
+        const types = { jpg: 'image/jpeg', glb: 'model/gltf-binary', vtt: 'text/vtt; charset=utf-8', txt: 'text/plain; charset=utf-8' };
+        const extension = path.split('.').at(-1);
+        const data = readFileSync(mediaFile(path));
+        res.writeHead(200, { 'Content-Type': types[extension], 'Content-Length': data.length,
+          'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
+        return res.end(req.method === 'HEAD' ? undefined : data);
+      }
     }
     if (req.method === 'GET' && path === '/robots.txt') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -285,11 +304,13 @@ const server = createServer(async (req, res) => {
     const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout'].includes(suffix) ||
       modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
-    const galleryView = searchParams.get('view') === 'side' ? 'side' : 'front';
+    const view = searchParams.get('view');
+    const galleryView = ['side', 'rear'].includes(view) ? view : 'front';
     const selectedSKU = searchParams.get('model') || '';
     const languageQuery = ['/cart', '/checkout'].includes(languagePath) && skuPattern.test(selectedSKU) ? `?model=${selectedSKU}`
       : languagePath === '/compare' && searchParams.size ? `?${searchParams}`
-      : languagePath === '/movility-one' && galleryView === 'side' ? '?view=side#gallery' : '';
+      : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
+        ? `?view=${galleryView}#gallery` : '';
     const discoverable = first === locale && (suffix === '' || ['/movility-one', '/compare', '/movility-one/3d'].includes(suffix));
     const render = (body, status = 200) => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery),
@@ -409,8 +430,8 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && modelRoute) {
       const model = extraModel(modelRoute[1]);
       if (model?.active) {
-        const media = modelMedia(model.sku);
-        if (!modelRoute[2]) return render(extraProduct(locale, model, media));
+        const media = modelMedia(model.sku, locale);
+        if (!modelRoute[2]) return render(extraProduct(locale, model, media, galleryView));
         if (media.model) return render(viewerPage(locale, media.photo,
           { name: model.name, url: media.model, productPath: '/models/' + model.sku }));
       }

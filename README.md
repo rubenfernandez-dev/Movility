@@ -47,9 +47,19 @@ queda para el piloto suizo y la expansión a la UE.
 
 En **Gestionar modelos del catálogo** puedes crear y publicar hasta nueve
 modelos adicionales con stock propio. Desmarca **Publicado en la tienda**
-para archivar un modelo. Para asociar una foto JPG y un GLB autocontenido,
-coloca `<sku>.jpg` y `<sku>.glb` en `assets/models/` o directamente en
-`MOVILITY_MEDIA_DIR` si se configuró ese directorio.
+para archivar un modelo. Coloca sus archivos en `assets/models/` o
+directamente en `MOVILITY_MEDIA_DIR` si se configuró ese directorio.
+
+| Medio | Nombre de archivo para el SKU `alpine` |
+| --- | --- |
+| Galería | `alpine.jpg`, `alpine.side.jpg`, `alpine.rear.jpg` |
+| Visor 3D | `alpine.glb` autocontenido |
+| Vídeo | `alpine.mp4` |
+| Subtítulos y transcripción DE | `alpine.de-CH.vtt`, `alpine.de-CH.txt` |
+| Subtítulos y transcripción FR | `alpine.fr-CH.vtt`, `alpine.fr-CH.txt` |
+
+El vídeo aparece en cada idioma con subtítulos WebVTT y transcripción.
+Los medios de los modelos archivados dejan de servirse.
 
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.

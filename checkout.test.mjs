@@ -14,6 +14,12 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   writeFileSync(join(media, 'movility-one.fr-CH.txt'), 'Transcription de test');
   copyFileSync(new URL('./assets/movility-one.glb', import.meta.url), join(media, 'alpine.glb'));
   copyFileSync(new URL('./assets/movility-one.jpg', import.meta.url), join(media, 'alpine.jpg'));
+  copyFileSync(new URL('./assets/movility-one-side.jpg', import.meta.url), join(media, 'alpine.side.jpg'));
+  writeFileSync(join(media, 'alpine.mp4'), 'alpine-demo-video');
+  writeFileSync(join(media, 'alpine.fr-CH.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nAlpine\n');
+  writeFileSync(join(media, 'alpine.fr-CH.txt'), 'Transcription Alpine');
+  writeFileSync(join(media, 'alpine.de-CH.vtt'), 'invalid');
+  writeFileSync(join(media, 'alpine.de-CH.txt'), 'Alpine Transkript');
   const processHandle = spawn(process.execPath, ['server.mjs'], {
     env: {
       ...process.env, PORT: '0', MOVILITY_DB: ':memory:', MOVILITY_ADMIN_PASSWORD: 'local-test',
@@ -28,7 +34,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       processHandle.kill();
       await exited;
     }
-    for (const name of ['movility-one.mp4', 'movility-one.fr-CH.vtt', 'movility-one.fr-CH.txt', 'alpine.glb', 'alpine.jpg']) {
+    for (const name of ['movility-one.mp4', 'movility-one.fr-CH.vtt', 'movility-one.fr-CH.txt',
+      'alpine.glb', 'alpine.jpg', 'alpine.side.jpg', 'alpine.mp4',
+      'alpine.fr-CH.vtt', 'alpine.fr-CH.txt', 'alpine.de-CH.vtt', 'alpine.de-CH.txt']) {
       rmSync(join(media, name), { force: true });
     }
     rmdirSync(media);
@@ -151,6 +159,16 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post('/admin/models', model, headers)).status, 409);
   assert.match(await (await get('/fr-CH/models/alpine')).text(), /Modèle de test/);
   assert.match(await (await get('/fr-CH/models/alpine')).text(), /\/assets\/models\/alpine.jpg/);
+  const alpineMedia = await (await get('/fr-CH/models/alpine?view=side')).text();
+  assert.match(alpineMedia, /src="\/assets\/models\/alpine\.side\.jpg" alt="Vue de profil/);
+  assert.match(alpineMedia, /\/de-CH\/models\/alpine\?view=side#gallery/);
+  assert.match(alpineMedia, /src="\/assets\/models\/alpine.fr-CH.vtt"/);
+  assert.match(alpineMedia, /href="\/assets\/models\/alpine.fr-CH.txt"/);
+  assert.doesNotMatch(await (await get('/de-CH/models/alpine')).text(), /<video /);
+  assert.equal((await get('/assets/models/alpine.de-CH.vtt')).status, 404);
+  const alpineVideo = await get('/assets/models/alpine.mp4', { Range: 'bytes=0-5' });
+  assert.equal(alpineVideo.status, 206);
+  assert.equal(await alpineVideo.text(), 'alpine');
   assert.match(await (await get('/fr-CH/models/alpine/3d')).text(), /\/assets\/models\/alpine.glb/);
   assert.equal((await get('/assets/models/alpine.glb')).headers.get('content-type'), 'model/gltf-binary');
   assert.match(await (await get('/de-CH')).text(), /Movility Alpine/);
@@ -164,6 +182,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post('/admin/models/alpine', { ...model, revision: '1', name: 'Alpine édition 2', units: '0', active: '0' }, headers)).status, 303);
   assert.equal((await get('/fr-CH/models/alpine')).status, 404);
   assert.equal((await get('/assets/models/alpine.glb')).status, 404);
+  assert.equal((await get('/assets/models/alpine.mp4')).status, 404);
   assert.equal((await get('/fr-CH/checkout?model=alpine')).status, 409);
   assert.doesNotMatch(await (await get('/fr-CH/compare')).text(), /Alpine/);
   assert.match(await (await get(extraOrder)).text(), /Movility Alpine/);

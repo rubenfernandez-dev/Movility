@@ -1,4 +1,5 @@
 import { escapeHtml, money, copy } from './views.mjs';
+import { productGallery, productVideo } from './storefront.mjs';
 
 export const skuPattern = /^[a-z0-9][a-z0-9-]{1,23}$/;
 const language = {
@@ -46,6 +47,7 @@ export function modelAdmin(models, message = '') {
   };
   return `<a href="/admin">Volver a administración</a><h1 class="page-title">Modelos del catálogo</h1>
     <p>El Movility One se gestiona desde el panel principal. Los modelos archivados se conservan para el historial de pedidos.</p>
+    <p>Los archivos de foto, vídeo y 3D se asocian por SKU desde la carpeta de medios.</p>
     ${message}
     <details class="model-editor" open><summary>Crear un modelo</summary>${form()}</details>
     ${models.map(model => `<details class="model-editor"><summary>${escapeHtml(model.name)} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</summary>${form(model)}</details>`).join('')}`;
@@ -74,17 +76,19 @@ export function extraCatalog(locale, models) {
       ${model.units ? '' : `<p>${copy[locale].soldOut}</p>`}</article>`).join('')}</div></section>` : '';
 }
 
-export function extraProduct(locale, model, media = {}) {
+export function extraProduct(locale, model, media, view) {
   const l = language[locale];
   const specs = [[l.width, model.width + ' cm'], [l.weight, model.weight + ' kg'],
     [l.range, model.range + ' km'], [l.fold, model.fold ? l.yes : l.no]];
   const name = escapeHtml(model.name);
-  return `<section class="confirmation"><p class="eyebrow">${model.sku}</p><h1>${name}</h1>
-    ${media.photo ? `<figure><a href="${media.photo}"><img src="${media.photo}" alt="${name}"></a></figure>` : ''}
+  const gallery = productGallery(locale, model.name, '/models/' + model.sku, media.photos, view);
+  return `<section class="${gallery ? 'product' : 'confirmation'}">${gallery}
+    <div><p class="eyebrow">${model.sku}</p><h1>${name}</h1>
     <p class="lead">${escapeHtml(locale === 'de-CH' ? model.description_de : model.description_fr)}</p>
     <p class="price">${money(locale, model.cents)}</p><dl class="specs">
     ${specs.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>
     <p class="cart-action">${model.units ? `<a class="button" href="/${locale}/cart?model=${model.sku}">${l.cart}</a>` : copy[locale].soldOut}
     ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">3D</a>` : ''}
-    <a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a></p></section>`;
+    <a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a></p></div></section>
+    ${productVideo(locale, media.video)}`;
 }

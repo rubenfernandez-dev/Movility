@@ -11,7 +11,7 @@ const labels = {
     stock: 'Auf Lager', details: 'Details ansehen', facts: 'Beispiel-Spezifikationen',
     specs: [['Bauweise', 'Faltbarer Rahmen'], ['Bedienung', 'Joystick'], ['Einsatz', 'Alltag und Reisen']],
     zoom: 'Produktbild vergrössern', add: 'Zum Warenkorb', summary: 'Bestellübersicht', country: 'Schweiz',
-    gallery: 'Produktgalerie', front: 'Schräg von vorn', side: 'Seitenansicht', video: 'Produktvideo',
+    gallery: 'Produktgalerie', front: 'Schräg von vorn', side: 'Seitenansicht', rear: 'Rückansicht', video: 'Produktvideo',
     transcript: 'Transkript zum Produktvideo lesen', videoUnavailable: 'Dieses Video kann in deinem Browser nicht abgespielt werden.',
     delivery: 'Lieferung im Test', total: 'Gesamtbetrag', quantity: 'Menge', demoData: 'Verwende für diese Testbestellung nur fiktive Angaben.',
     address: 'Lieferadresse', name: 'Vor- und Nachname', street: 'Strasse und Hausnummer', zip: 'Postleitzahl', city: 'Ort',
@@ -30,7 +30,7 @@ const labels = {
     stock: 'En stock', details: 'Voir les détails', facts: 'Exemples de caractéristiques',
     specs: [['Structure', 'Châssis pliable'], ['Commande', 'Joystick'], ['Utilisation', 'Quotidien et voyages']],
     zoom: 'Agrandir la photo du fauteuil', add: 'Voir le panier', summary: 'Récapitulatif', country: 'Suisse',
-    gallery: 'Galerie du fauteuil', front: 'Vue de trois quarts', side: 'Vue de profil', video: 'Vidéo du fauteuil',
+    gallery: 'Galerie du fauteuil', front: 'Vue de trois quarts', side: 'Vue de profil', rear: 'Vue arrière', video: 'Vidéo du fauteuil',
     transcript: 'Lire la transcription de la vidéo', videoUnavailable: 'Votre navigateur ne peut pas lire cette vidéo.',
     delivery: 'Livraison simulée', total: 'Total', quantity: 'Quantité', demoData: 'Utilisez uniquement des informations fictives pour cette commande de test.',
     address: 'Adresse de livraison', name: 'Prénom et nom', street: 'Rue et numéro', zip: 'Code postal', city: 'Localité',
@@ -81,32 +81,45 @@ export function homepage(locale, cents, available, extras = '') {
   </section>`;
 }
 
+export function productGallery(locale, name, path, photos, view, demo = false) {
+  const l = labels[locale];
+  const views = Object.entries(photos).filter(([, url]) => url);
+  if (!views.length) return '';
+  const selected = views.some(([key]) => key === view) ? view : views[0][0];
+  const tabs = views.map(([key, url]) =>
+    `<li><a href="/${locale}${path}?view=${key}#gallery" ${key === selected ? 'aria-current="true"' : ''}>
+      <img src="${url}" alt="" width="120" height="90"><span>${l[key]}</span></a></li>`).join('');
+  return `<section class="product-gallery" id="gallery" aria-label="${l.gallery}">
+    <figure class="product-photo"><a href="${photos[selected]}" aria-label="${l.zoom}: ${l[selected]}">
+      <img src="${photos[selected]}" alt="${l[selected]} · ${escapeHtml(name)}" width="1200" height="900"></a>
+      <figcaption>${demo ? l.sample + ' · ' : ''}${l[selected]}</figcaption></figure>
+    ${views.length > 1 ? `<ul class="gallery-options">${tabs}</ul>` : ''}</section>`;
+}
+
+export function productVideo(locale, media) {
+  if (!media) return '';
+  const l = labels[locale];
+  return `<section class="section product-video"><h2>${l.video}</h2>
+    <video controls playsinline preload="none"${media.poster ? ` poster="${media.poster}"` : ''}>
+      <source src="${media.video}" type="video/mp4"><track kind="captions" srclang="${locale}" src="${media.captions}" label="${locale === 'de-CH' ? 'Deutsch' : 'Français'}">
+      ${l.videoUnavailable}
+    </video><p><a href="${media.transcript}">${l.transcript}</a></p></section>`;
+}
+
 export function productPage(locale, cents, available, model, { view = 'front', video = false } = {}) {
   const l = labels[locale];
   const t = copy[locale];
   const description = (locale === 'de-CH' ? model.description_de : model.description_fr) || t.description;
-  const selected = view === 'side' ? 'side' : 'front';
-  const photos = { front: productImage, side: sideImage };
-  const gallery = `<section class="product-gallery" id="gallery" aria-label="${l.gallery}">
-    <figure class="product-photo"><a href="${photos[selected]}" aria-label="${l.zoom}: ${l[selected]}">
-      <img src="${photos[selected]}" alt="${l[selected]} · Movility One" width="1200" height="900"></a>
-      <figcaption>${l.sample} · ${l[selected]}</figcaption></figure>
-    <ul class="gallery-options">${Object.entries(photos).map(([key, url]) =>
-      `<li><a href="/${locale}/movility-one?view=${key}#gallery" ${key === selected ? 'aria-current="true"' : ''}>
-        <img src="${url}" alt="" width="120" height="90"><span>${l[key]}</span></a></li>`).join('')}</ul>
-  </section>`;
   return `<section class="product">
-    ${gallery}
+    ${productGallery(locale, 'Movility One', '/movility-one', { front: productImage, side: sideImage }, view, true)}
     <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
       ${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
       <div class="product-actions">${available ? button(href(locale, '/cart'), l.add) : ''}${viewerLink(locale)}
         <a href="/${locale}/compare">${compareLabel(locale)}</a></div>
       <h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl></div>
-  </section>${video ? `<section class="section product-video"><h2>${l.video}</h2>
-    <video controls playsinline preload="none" poster="${productImage}">
-      <source src="${videoPath}" type="video/mp4"><track kind="captions" srclang="${locale}" src="${captionsPath(locale)}" label="${locale === 'de-CH' ? 'Deutsch' : 'Français'}">
-      ${l.videoUnavailable}
-    </video><p><a href="${transcriptPath(locale)}">${l.transcript}</a></p></section>` : ''}`;
+  </section>${productVideo(locale, video ? {
+    video: videoPath, poster: productImage, captions: captionsPath(locale), transcript: transcriptPath(locale),
+  } : null)}`;
 }
 
 export function cartPage(locale, cents, available, model) {

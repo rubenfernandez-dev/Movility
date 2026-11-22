@@ -27,8 +27,8 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   no venden dos veces la misma unidad.
   - [x] Modelos con SKU, ficha bilingüe, precio, stock, características, publicación y archivo.
   - [x] Integración con el comparador y compra de un modelo con stock independiente e historial.
-  - [x] Foto y visor GLB opcionales por modelo.
-  - [ ] Galería y vídeo por modelo, y carrito con varias referencias.
+  - [x] Galería, vídeo subtitulado, transcripción y visor GLB opcionales por modelo mediante archivos asociados al SKU.
+  - [ ] Carrito con varias referencias.
 - [ ] **3. Administración y analítica.** Añadir movimientos de stock y
   devoluciones físicas, trazabilidad por serie cuando aplique, roles, filtros
   y exportación contable. Medir ventas netas y el embudo con el consentimiento
