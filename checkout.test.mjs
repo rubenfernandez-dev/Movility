@@ -6,7 +6,10 @@ import { test } from 'node:test';
 
 test('French checkout, concurrent stock, shipment and idempotent refund', { timeout: 15000 }, async (t) => {
   const processHandle = spawn(process.execPath, ['server.mjs'], {
-    env: { ...process.env, PORT: '0', MOVILITY_DB: ':memory:', MOVILITY_ADMIN_PASSWORD: 'local-test' },
+    env: {
+      ...process.env, PORT: '0', MOVILITY_DB: ':memory:', MOVILITY_ADMIN_PASSWORD: 'local-test',
+      CODESPACES: 'true', CODESPACE_NAME: 'movility-test', GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: 'app.github.dev',
+    },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   t.after(() => processHandle.kill());
@@ -27,7 +30,10 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
 
   assert.match(await (await get('/de-CH')).text(), /Zur Testkasse/);
   assert.equal((await get('/admin')).status, 401);
-  assert.match(await (await post(checkout, { ...await fields('Visa'), result: 'failed' })).text(), /a échoué/);
+  const failedPayment = { ...await fields('Visa'), result: 'failed' };
+  assert.equal((await post(checkout, failedPayment, { Origin: 'https://other-0.app.github.dev' })).status, 403);
+  const preview = { Origin: 'https://movility-test-0.app.github.dev' };
+  assert.match(await (await post(checkout, failedPayment, preview)).text(), /a échoué/);
   const candidates = await Promise.all([fields('TWINT'), fields('PayPal')]);
   const results = await Promise.all(candidates.map((candidate) => post(checkout, candidate)));
   assert.deepEqual(results.map(({ status }) => status).sort(), [303, 409]);

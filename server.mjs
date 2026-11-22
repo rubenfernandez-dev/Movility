@@ -5,6 +5,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
 
 const port = Number(process.env.PORT || 3000);
+const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
+const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+  ? `${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
+  : null;
 const admin = process.env.MOVILITY_ADMIN_PASSWORD || randomBytes(18).toString('base64url');
 const dbPath = process.env.MOVILITY_DB || 'data/demo.sqlite';
 if (!process.env.MOVILITY_DB) mkdirSync('data', { recursive: true });
@@ -91,13 +95,20 @@ function adminView() {
 
 const server = createServer(async (req, res) => {
   try {
-    if (req.headers.host !== '127.0.0.1:' + server.address().port) return send(res, 403, 'Forbidden');
+    const activePort = server.address().port;
+    const localHosts = [`127.0.0.1:${activePort}`, `localhost:${activePort}`];
+    if (!localHosts.includes(req.headers.host) && req.headers.host !== codespaceHost) {
+      return send(res, 403, 'Forbidden');
+    }
     const path = new URL(req.url, 'http://localhost').pathname;
     const [, first, second, third] = path.split('/');
     const locale = Object.hasOwn(copy, first) ? first : 'de-CH';
     const t = copy[locale];
     const render = (body, status = 200) => send(res, status, page(locale, t.title, body));
-    if (req.method === 'POST' && req.headers.origin !== `http://${req.headers.host}`) {
+    const origin = req.headers.origin;
+    const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
+    const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
+    if (req.method === 'POST' && !sameOrigin && !codespaceOrigin) {
       return send(res, 403, 'Forbidden');
     }
     if (first === 'admin') {

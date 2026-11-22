@@ -19,6 +19,18 @@ flujo de devolución física. Los correos quedan en la bandeja local.
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 
+## GitHub Codespaces
+
+Abre **Terminal → New Terminal** en el editor de Codespaces. En la carpeta
+que contiene `package.json`, ejecuta `node -v` y `npm start`. Si Node es
+anterior a 22.13, ejecuta antes `nvm install 22` y `nvm use 22`.
+
+Deja la terminal abierta y selecciona **Open in Browser** junto al puerto
+**3000** en la pestaña **Ports**. Si el puerto no aparece, usa **Forward a Port**
+e introduce **3000**. Mantén el puerto privado y usa la dirección
+`https://…app.github.dev` que aparece en **Ports**. Para abrir el panel, añade
+`/admin` al final de esa dirección.
+
 Esta primera entrega prueba el recorrido de pedido. Para el piloto comercial
 quedan las integraciones reales, los datos de entrega, la facturación, el
 catálogo y multimedia reales, las notificaciones push y la configuración SEO
