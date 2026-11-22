@@ -1,12 +1,16 @@
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { basename, join } from 'node:path';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
-import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage, productImage } from './storefront.mjs';
+import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
+  productImage, sideImage, videoPath, captionsPath, transcriptPath } from './storefront.mjs';
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
+import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 
 const port = Number(process.env.PORT || 3000);
+const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
 const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } = process.env;
 const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
   ? `${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
@@ -43,9 +47,25 @@ const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
+  [sideImage, ['image/jpeg', readFileSync(new URL('.' + sideImage, import.meta.url))]],
   [modelPath, ['model/gltf-binary', readFileSync(new URL('./assets/movility-one.glb', import.meta.url))]],
   [viewerScript, ['text/javascript; charset=utf-8', readFileSync(new URL('./node_modules/@google/model-viewer/dist/model-viewer.min.js', import.meta.url))]],
 ]);
+const mediaFile = path => process.env.MOVILITY_MEDIA_DIR
+  ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
+const videoFile = mediaFile(videoPath);
+const videoLocales = new Set();
+for (const locale of Object.keys(copy)) {
+  const captions = mediaFile(captionsPath(locale));
+  const transcript = mediaFile(transcriptPath(locale));
+  if (!existsSync(videoFile) || !existsSync(captions) || !existsSync(transcript)) continue;
+  const track = readFileSync(captions, 'utf8');
+  const text = readFileSync(transcript, 'utf8');
+  if (!track.replace(/^\uFEFF/, '').startsWith('WEBVTT') || !text.trim()) continue;
+  videoLocales.add(locale);
+  assets.set(captionsPath(locale), ['text/vtt; charset=utf-8', track]);
+  assets.set(transcriptPath(locale), ['text/plain; charset=utf-8', text]);
+}
 const transaction = (work) => {
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -71,9 +91,38 @@ function send(res, status, body, withViewer = false) {
     'Referrer-Policy': 'same-origin',
     'Content-Security-Policy': withViewer
       ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-      : "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      : "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   });
   res.end(body);
+}
+
+function sendVideo(req, res) {
+  const size = statSync(videoFile).size;
+  const headers = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff' };
+  let start = 0;
+  let end = size - 1;
+  if (req.headers.range) {
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
+    if (range?.[1]) {
+      start = Number(range[1]);
+      if (range[2]) end = Math.min(Number(range[2]), end);
+    } else if (range?.[2]) {
+      start = Math.max(0, size - Number(range[2]));
+    } else {
+      start = size;
+    }
+    if (start > end) {
+      res.writeHead(416, { ...headers, 'Content-Range': `bytes */${size}` });
+      return res.end();
+    }
+    headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+  }
+  res.writeHead(req.headers.range ? 206 : 200, { ...headers, 'Content-Length': Math.max(0, end - start + 1) });
+  if (req.method === 'HEAD' || !size) return res.end();
+  const stream = createReadStream(videoFile, { start, end });
+  stream.on('error', () => res.destroy());
+  res.on('close', () => stream.destroy());
+  stream.pipe(res);
 }
 
 function redirect(res, location) {
@@ -101,6 +150,9 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     WHERE (? = '' OR status = ?) ORDER BY orders.rowid DESC`).all(filter, filter);
   const totals = db.prepare(`SELECT COUNT(*) AS quantity, COALESCE(SUM(cents), 0) AS gross,
     COALESCE(SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END), 0) AS refunds FROM orders`).get();
+  const breakdown = db.prepare(`SELECT method, COUNT(*) AS quantity, SUM(cents) AS gross,
+    SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END) AS refunds
+    FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
     const events = db.prepare('SELECT kind FROM notices WHERE order_id = ? ORDER BY rowid').all(order.id);
     const notices = events.map(({ kind }) => `<li>${copy[order.locale][kind]}</li>`).join('');
@@ -118,6 +170,12 @@ function adminView({ error, saved, draft, filter = '' } = {}) {
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
+    <details class="payment-breakdown"><summary>Desglose por forma de pago</summary>
+      ${breakdown.length ? `<div class="compare-table"><table><thead><tr>
+        <th scope="col">Método</th><th scope="col">Pedidos</th><th scope="col">Neto</th></tr></thead>
+        <tbody>${breakdown.map(row => `<tr><th scope="row">${escapeHtml(row.method)}</th><td>${row.quantity}</td>
+          <td>${money('es', row.gross - row.refunds)}</td></tr>`).join('')}</tbody></table></div>` : '<p>El desglose aparecerá con el primer pedido.</p>'}
+    </details>
     ${error ? `<p class="form-error" role="alert">${error}</p>` : ''}
     ${saved ? '<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>' : ''}
     <form class="admin-catalog" method="post" action="/admin/catalog">
@@ -149,6 +207,15 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
+    if (req.method === 'GET' && path === '/robots.txt') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('User-agent: *\nDisallow: /admin\n');
+    }
+    if (req.method === 'GET' && path === '/sitemap.xml' && siteOrigin) {
+      res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'X-Robots-Tag': 'noindex' });
+      return res.end(sitemap(siteOrigin));
+    }
+    if (['GET', 'HEAD'].includes(req.method) && path === videoPath && videoLocales.size) return sendVideo(req, res);
     if (req.method === 'GET' && assets.has(path)) {
       const [type, data] = assets.get(path);
       res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
@@ -160,9 +227,13 @@ const server = createServer(async (req, res) => {
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout'].includes(suffix) || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
-    const compareQuery = languagePath === '/compare' && searchParams.size ? `?${searchParams}` : '';
+    const galleryView = searchParams.get('view') === 'side' ? 'side' : 'front';
+    const languageQuery = languagePath === '/compare' && searchParams.size ? `?${searchParams}`
+      : languagePath === '/movility-one' && galleryView === 'side' ? '?view=side#gallery' : '';
+    const discoverable = first === locale && (suffix === '' || ['/movility-one', '/compare', '/movility-one/3d'].includes(suffix));
     const render = (body, status = 200) => send(res, status,
-      page(locale, t.title, body, navigation(locale, languagePath, compareQuery)), languagePath === '/movility-one/3d');
+      page(locale, t.title, body, navigation(locale, languagePath, languageQuery),
+        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}), languagePath === '/movility-one/3d');
     const origin = req.headers.origin;
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
@@ -235,7 +306,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();
-      return render(productPage(locale, model.cents, stock() > 0, model));
+      return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView, video: videoLocales.has(locale) }));
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
       return render(comparisonPage(locale, searchParams, catalog().cents));

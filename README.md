@@ -18,6 +18,19 @@ el modelo 3D, exporta un GLB autocontenido y sin compresión Draco o KTX2,
 reemplaza `assets/movility-one.glb` y reinicia el servidor. El modelo de
 demostración se puede regenerar con `python tools/generate-chair.py`.
 
+La ficha tiene una galería de dos imágenes ilustrativas. Añade
+`movility-one.mp4` y, por cada idioma disponible, los subtítulos WebVTT y la
+transcripción de texto. Los archivos se llaman `movility-one.de-CH.vtt` y
+`movility-one.de-CH.txt` para alemán, o `movility-one.fr-CH.vtt` y
+`movility-one.fr-CH.txt` para francés. Se leen de `assets/` o del
+directorio indicado por `MOVILITY_MEDIA_DIR`. Reinicia el servidor después.
+
+La tienda de prueba envía `noindex`. Con `MOVILITY_PUBLIC_ORIGIN` configurado
+como dominio HTTPS se pueden revisar URLs canónicas, alternancias
+`hreflang` absolutas y `/sitemap.xml`, manteniendo la protección
+contra indexación. El sitemap incluye portada, ficha, comparador y visor
+en ambos idiomas.
+
 El panel está en http://127.0.0.1:3000/admin. El usuario es `admin` y la contraseña
 temporal aparece al arrancar. Desde el panel puedes registrar un envío, consultar
 la bandeja simulada de confirmación y seguimiento, y registrar el reembolso.

@@ -3,16 +3,34 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { test } from 'node:test';
+import { mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 test('French checkout, concurrent stock, shipment and idempotent refund', { timeout: 15000 }, async (t) => {
+  const media = mkdtempSync(join(tmpdir(), 'movility-media-'));
+  writeFileSync(join(media, 'movility-one.mp4'), '0123456789');
+  writeFileSync(join(media, 'movility-one.fr-CH.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nExemple\n');
+  writeFileSync(join(media, 'movility-one.fr-CH.txt'), 'Transcription de test');
   const processHandle = spawn(process.execPath, ['server.mjs'], {
     env: {
       ...process.env, PORT: '0', MOVILITY_DB: ':memory:', MOVILITY_ADMIN_PASSWORD: 'local-test',
       CODESPACES: 'true', CODESPACE_NAME: 'movility-test', GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: 'app.github.dev',
+      MOVILITY_MEDIA_DIR: media, MOVILITY_PUBLIC_ORIGIN: 'https://movility.example',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
-  t.after(() => processHandle.kill());
+  t.after(async () => {
+    if (processHandle.exitCode === null && processHandle.signalCode === null) {
+      const exited = once(processHandle, 'exit');
+      processHandle.kill();
+      await exited;
+    }
+    for (const name of ['movility-one.mp4', 'movility-one.fr-CH.vtt', 'movility-one.fr-CH.txt']) {
+      rmSync(join(media, name), { force: true });
+    }
+    rmdirSync(media);
+  });
   const lines = createInterface({ input: processHandle.stdout });
   const [startup] = await once(lines, 'line');
   const base = startup.split(' ')[1];
@@ -34,6 +52,22 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
 
   assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
   assert.match(await (await get('/fr-CH/movility-one')).text(), /\/de-CH\/movility-one/);
+  const side = await get('/fr-CH/movility-one?view=side');
+  assert.equal(side.headers.get('x-robots-tag'), 'noindex, nofollow');
+  const gallery = await side.text();
+  assert.match(gallery, /rel="canonical" href="https:\/\/movility\.example\/fr-CH\/movility-one"/);
+  assert.match(gallery, /hreflang="de-CH" href="https:\/\/movility\.example\/de-CH\/movility-one"/);
+  assert.match(gallery, /\/de-CH\/movility-one\?view=side#gallery/);
+  assert.match(gallery, /aria-current="true"[\s\S]*Vue de profil/);
+  assert.match(gallery, /<track kind="captions" srclang="fr-CH"/);
+  assert.match(gallery, /movility-one.fr-CH.txt/);
+  assert.doesNotMatch(await (await get('/de-CH/movility-one')).text(), /<video /);
+  assert.match(await (await get('/sitemap.xml')).text(), /<loc>https:\/\/movility\.example\/fr-CH\/compare<\/loc>/);
+  const segment = await get('/assets/movility-one.mp4', { Range: 'bytes=2-5' });
+  assert.equal(segment.status, 206);
+  assert.equal(segment.headers.get('content-range'), 'bytes 2-5/10');
+  assert.equal(await segment.text(), '2345');
+  assert.equal((await get('/assets/movility-one.mp4', { Range: 'bytes=10-12' })).status, 416);
   const comparison = await (await get('/fr-CH/compare?first=one&second=tour')).text();
   assert.match(comparison, /Movility One \/ Movility Tour/);
   assert.match(comparison, /\/de-CH\/compare\?first=one&amp;second=tour/);
@@ -86,6 +120,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const admin = await (await get('/admin', headers)).text();
   assert.match(admin, /Unidades disponibles: 0 · Pedidos: 1/);
   assert.match(admin, /1201 Genève/);
+  assert.match(admin, /Desglose por forma de pago/);
+  assert.match(admin, new RegExp('<th scope="row">' + candidates[winner].method + '</th><td>1</td>'));
   assert.equal(admin.match(/Paiement de test remboursé/g)?.length, 1);
   assert.match(await (await get('/admin?status=paid', headers)).text(), /No hay pedidos con este estado/);
   assert.match(await (await get('/admin?status=refunded', headers)).text(), /1201 Genève/);
