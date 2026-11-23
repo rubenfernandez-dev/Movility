@@ -68,6 +68,14 @@ remitente en Resend y configura estas variables en el entorno del servidor.
 | `MOVILITY_EMAIL_TEST_TO` | Una única dirección de prueba bajo tu control |
 | `MOVILITY_PUBLIC_ORIGIN` | Origen HTTPS de una tienda de prueba accesible |
 
+Ejecuta `npm run email:verify-config` para comprobar que la configuración
+está completa sin mostrar credenciales ni enviar mensajes. Después, en la
+instancia HTTPS de prueba, abre un enlace de pedido ficticio en una ventana
+privada y solicita el código con la dirección registrada del pedido. La
+entrega externa se dirige únicamente al buzón de prueba configurado. Abre
+el enlace del correo y verifica el pedido con el código y la dirección
+registrada del pedido. Comprueba que el mismo código falla al reutilizarlo.
+
 Los avisos creados con este modo llevan el prefijo `[TEST]` y solo van
 a la dirección de prueba. Los avisos anteriores en simulación siguen
 siendo locales. Al desactivar el modo se pausa el envío de avisos de Resend

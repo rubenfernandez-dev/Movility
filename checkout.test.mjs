@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { test } from 'node:test';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { request } from 'node:http';
 import { generateVAPIDKeys } from 'web-push';
 import { copyFileSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -93,6 +94,24 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   };
 
   assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
+  const publicHost = { Host: 'movility.example', Origin: 'https://movility.example' };
+  const publicOrder = '/fr-CH/orders/00000000-0000-0000-0000-000000000000';
+  const postForHost = (path, fields, matchingHost) => new Promise((resolve, reject) => {
+    const outgoing = request(base + path, { method: 'POST',
+      headers: { ...matchingHost, 'Content-Type': 'application/x-www-form-urlencoded' } }, async response => {
+      try {
+        const chunks = [];
+        for await (const chunk of response) chunks.push(chunk);
+        resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks).toString() });
+      } catch (error) { reject(error); }
+    });
+    outgoing.on('error', reject);
+    outgoing.end(new URLSearchParams(fields).toString());
+  });
+  const publicRecovery = await postForHost(publicOrder, { email: 'fixture@example.com' }, publicHost);
+  assert.equal(publicRecovery.status, 303);
+  assert.equal(publicRecovery.headers.location, '/fr-CH/guest-access?requested=1');
+  assert.equal((await post(publicOrder, { email: 'fixture@example.com' }, { Origin: publicHost.Origin })).status, 403);
   assert.match(await (await get('/fr-CH/movility-one')).text(), /\/de-CH\/movility-one/);
   const contact = await (await get('/fr-CH/contact')).text();
   assert.match(contact, /<h1 class="page-title">Contact<\/h1>/);
@@ -137,8 +156,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const failedPayment = { ...await fields('Visa'), result: 'failed' };
   assert.equal((await post(checkout, { ...failedPayment, zip: '12345' })).status, 400);
   assert.equal((await post(checkout, failedPayment, { Origin: 'https://other-0.app.github.dev' })).status, 403);
-  const preview = { Origin: 'https://movility-test-0.app.github.dev' };
-  assert.match(await (await post(checkout, failedPayment, preview)).text(), /a échoué/);
+  const preview = { Host: 'movility-test-0.app.github.dev', Origin: 'https://movility-test-0.app.github.dev' };
+  assert.match((await postForHost(checkout, failedPayment, preview)).body, /a échoué/);
   const headers = { Authorization: auth };
   const warehouse = roleHeaders('warehouse');
   const support = roleHeaders('support');

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
+import { orderRecoveryEmail } from './guest-proof.mjs';
 
 const env = {
   MOVILITY_EMAIL_MODE: 'resend-test', MOVILITY_RESEND_API_KEY: 'fixture-key',
@@ -43,4 +44,24 @@ test('Resend adapter distinguishes retryable errors from rejected requests', asy
   }
   const broken = resendTestProvider(config, () => { throw new Error('test network error'); });
   assert.equal((await broken(message)).status, 'temporary');
+});
+
+test('recovery emails use a single test inbox and the HTTPS verification link in the order language', async () => {
+  const calls = [];
+  const send = resendTestProvider(config, (_url, options) => {
+    calls.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({ id: 'recovery-fixture' }), { status: 200 });
+  });
+  for (const locale of ['de-CH', 'fr-CH']) {
+    const code = 'fixture-one-time-code';
+    const recovery = orderRecoveryEmail(locale, code, config.target.origin);
+    const result = await send({ ...message, ...recovery, locale, kind: 'access-00000000-0000-0000-0000-000000000001' });
+    assert.equal(result.status, 'accepted');
+    const body = calls.at(-1);
+    assert.deepEqual(body.to, [config.target.to]);
+    assert.equal(body.subject, '[TEST] ' + recovery.subject);
+    assert.ok(body.text.includes(code));
+    assert.ok(body.text.endsWith(config.target.origin + '/' + locale + '/guest-access'));
+    assert.doesNotMatch(body.text, /\/orders\/|customer@example\.org/);
+  }
 });

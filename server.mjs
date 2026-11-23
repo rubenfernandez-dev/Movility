@@ -50,6 +50,7 @@ import { setupCampaigns, queueCampaign, processCampaigns, campaignPage } from '.
 const port = Number(process.env.PORT || 3000);
 const accountsEnabled = process.env.MOVILITY_STAGE === 'staging';
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
+const publicHost = siteOrigin ? new URL(siteOrigin).host : '';
 const stripe = stripeMode(process.env, siteOrigin);
 const stripeHost = stripe ? new URL(stripe.origin).host : '';
 const emailTest = emailTestConfig(process.env, siteOrigin);
@@ -514,7 +515,7 @@ const server = createServer(async (req, res) => {
   try {
     const activePort = server.address().port;
     const localHosts = [`127.0.0.1:${activePort}`, `localhost:${activePort}`];
-    if (!localHosts.includes(req.headers.host) && req.headers.host !== codespaceHost && req.headers.host !== stripeHost) {
+    if (!req.headers.host || ![...localHosts, codespaceHost, stripeHost, publicHost].includes(req.headers.host)) {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
@@ -629,15 +630,13 @@ const server = createServer(async (req, res) => {
             ? analyticsPrompt(locale, consent, path) : '',
         }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute));
     const origin = req.headers.origin;
-    const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
-    const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
-    const stripeOrigin = stripe && origin === stripe.origin;
     const secureRequest = !localHosts.includes(req.headers.host);
+    const sameOrigin = origin === `${secureRequest ? 'https' : 'http'}://${req.headers.host}`;
     const cookies = req.headers.cookie;
     const canViewOrder = id => hasCheckoutAccess(db, id, cookies) || verifiedGuestOrder(db, cookies) === id ||
       (accountsEnabled && customerOwnsOrder(db, cookies, id));
     const basketCheckout = path === `/${locale}/checkout/cart`;
-    if (req.method === 'POST' && !sameOrigin && !codespaceOrigin && !stripeOrigin) {
+    if (req.method === 'POST' && !sameOrigin) {
       return send(res, 403, 'Forbidden');
     }
     if (req.method === 'POST' && pushRoute) {
@@ -1098,7 +1097,7 @@ const server = createServer(async (req, res) => {
       const fields = await form(req);
       const choice = fields?.get('choice');
       if (!['accept', 'decline'].includes(choice)) return render(analyticsPrompt(locale, consent, path, true), 400);
-      res.setHeader('Set-Cookie', updateAnalytics(db, consent, choice === 'accept', Boolean(codespaceOrigin)));
+      res.setHeader('Set-Cookie', updateAnalytics(db, consent, choice === 'accept', secureRequest));
       return redirect(res, analyticsReturn(locale, fields.get('return') || ''));
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
@@ -1175,7 +1174,7 @@ const server = createServer(async (req, res) => {
         return render(basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable), 409);
       }
       if (canCheckout(cartLines(cart, purchaseModel))) track('cart');
-      res.setHeader('Set-Cookie', cartCookie(cart, Boolean(codespaceOrigin)));
+      res.setHeader('Set-Cookie', cartCookie(cart, secureRequest));
       return redirect(res, `/${locale}/cart`);
     }
     if (req.method === 'GET' && basketCheckout) {
@@ -1207,7 +1206,7 @@ const server = createServer(async (req, res) => {
         const currentCart = readCart(req);
         const snapshot = JSON.parse(attempt.payload).lines;
         if (currentCart.size === snapshot.length && snapshot.every(line => currentCart.get(line.sku) === line.quantity)) {
-          res.setHeader('Set-Cookie', cartCookie(new Map(), Boolean(codespaceOrigin || stripeOrigin)));
+          res.setHeader('Set-Cookie', cartCookie(new Map(), secureRequest));
         }
         return redirect(res, `/${locale}/orders/${third}`);
       }
@@ -1319,7 +1318,7 @@ const server = createServer(async (req, res) => {
       if (outcome === 'ok' || outcome === 'repeat') {
         if (outcome === 'ok') track('purchase');
         if (basketCheckout && (outcome === 'ok' || cartQuote(lines) === fields.get('cartQuote'))) {
-          res.setHeader('Set-Cookie', cartCookie(new Map(), Boolean(codespaceOrigin)));
+          res.setHeader('Set-Cookie', cartCookie(new Map(), secureRequest));
         }
         if (checkoutAccess) res.appendHeader('Set-Cookie', checkoutAccessCookie(id, checkoutAccess, secureRequest));
         return redirect(res, `/${locale}/orders/${id}`);
