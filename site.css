@@ -46,10 +46,8 @@ figcaption{margin-top:.45rem;font-size:.875rem;color:var(--muted)}
   overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
 .discovery-track::-webkit-scrollbar{display:none}
 .discovery-track:focus-visible{outline-offset:-4px}
-.discovery-card{position:relative;isolation:isolate;min-width:0;height:clamp(18rem,68vh,43rem);height:clamp(18rem,68svh,43rem);overflow:hidden;scroll-snap-align:start}
-.discovery-card img{display:block;width:100%;height:100%}
-.discovery-backdrop{position:absolute;inset:0;z-index:-1;object-fit:cover;filter:blur(20px);transform:scale(1.08);opacity:.72}
-.discovery-photo{object-fit:contain}
+.discovery-card{position:relative;min-width:0;height:clamp(18rem,68vh,43rem);height:clamp(18rem,68svh,43rem);overflow:hidden;scroll-snap-align:start}
+.discovery-photo{display:block;width:100%;height:100%;object-fit:cover;object-position:center 56%}
 .discovery-action{position:absolute;left:50%;bottom:clamp(.9rem,3vw,2rem);transform:translateX(-50%);
   max-width:calc(100% - 2rem);text-align:center;background:#fff;color:var(--ink);border-color:#fff;box-shadow:0 2px 14px #142f3440}
 .discovery-action:hover{background:#e6efe9}
@@ -58,7 +56,6 @@ figcaption{margin-top:.45rem;font-size:.875rem;color:var(--muted)}
   .storefront-nav{display:none}
   .storefront-menu{display:block}
   .discovery-card{height:auto;aspect-ratio:4/3}
-  .discovery-backdrop{display:none}
   .discovery-action{padding:.55rem .7rem}}
 @media(max-width:26rem){.top-inner{padding-block:.65rem}
   .storefront-header .brand{font-size:1.1rem;gap:.35rem}
