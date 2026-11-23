@@ -109,13 +109,12 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
       <label><input type="checkbox" name="fold" value="1" ${model?.fold ? 'checked' : ''}> Plegable</label>
       <label><input type="checkbox" name="active" value="1" ${model?.active ? 'checked' : ''}> Publicado en la tienda</label>
       <button>${editing ? 'Guardar modelo' : 'Crear modelo'}</button>
-    </form>${editing ? `<p><a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>` : ''}`;
+    </form>`;
   };
-  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Modelos del catálogo</h1>
-    <p>El Movility One se gestiona desde el panel principal. Los modelos archivados se conservan para el historial de pedidos.</p>
-    <p><a href="/admin/families">Gestionar familias</a> · <a href="/admin/models/one/content">Contenido y medios del Movility One</a></p>
+  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Artículos del catálogo</h1>
+    <p><a href="/admin/families">Gestionar familias</a></p>
     ${message}
-    <details class="model-editor" open><summary>Crear un modelo</summary>${form()}</details>
+    <details class="model-editor"><summary>Crear artículo</summary>${form()}</details>
     <form class="catalog-filters" action="/admin/models" method="get">
       <label>Nombre o SKU <input type="search" name="q" maxlength="80" value="${escapeHtml(search)}"></label>
       <label>Familia <select name="family"><option value="">Todas las familias</option>
@@ -130,7 +129,12 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
     ${visible.length ? families.map(({ id, es }) => {
       const items = visible.filter(model => model.family === id);
       return items.length ? `<section><h2>${escapeHtml(es)}</h2>
-        ${items.map(model => `<details class="model-editor"><summary>${escapeHtml(model.name)} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</summary>${form(model)}</details>`).join('')}</section>` : '';
+        ${items.map(model => `<article class="model-editor">
+          <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</p>
+          <p><a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>
+          ${model.sku === 'one' ? '<p><a href="/admin#catalog-editor">Editar precio, stock y descripciones</a></p>' :
+            `<details><summary>Editar artículo</summary>${form(model)}</details>`}
+          </article>`).join('')}</section>` : '';
     }).join('') : '<p>No hay artículos que coincidan con estos filtros.</p>'}`;
 }
 

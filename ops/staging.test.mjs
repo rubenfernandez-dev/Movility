@@ -156,6 +156,10 @@ test('staging keeps a simulated order after restart and ignores external integra
     const csv = await (await fetch(restarted + '/admin/accounting.csv', { headers: { Authorization: auth } })).text();
     assert.match(csv, /"Cobro","Visa","CHF","2499.00"/);
     assert.equal(csv.match(/"Reembolso","Visa","CHF","-2499.00"/g)?.length, 1);
+    const initialArticles = await (await fetch(restarted + '/admin/models?q=movility&family=wheelchair&status=published',
+      { headers: { Authorization: auth } })).text();
+    assert.match(initialArticles, /<h3>Movility One<\/h3>/);
+    assert.match(initialArticles, /href="\/admin\/models\/one\/content">Características, fotos y vídeo/);
     const accessory = { sku: 'travel-bag', family: 'accessory', name: 'Travel Bag', price: '49', units: '2',
       active: '1', description_de: 'Tasche', description_fr: 'Sac de transport' };
     assert.equal((await submit(restarted + '/admin/models', accessory, { Authorization: auth })).status, 303);
@@ -186,11 +190,11 @@ test('staging keeps a simulated order after restart and ignores external integra
     }, admin);
     assert.equal(archived.headers.get('location'), '/admin/models?q=HOME-DRA&family=home&status=archived&saved=1');
     const adminResults = await (await fetch(restarted + archived.headers.get('location'), { headers: admin })).text();
-    assert.match(adminResults, /Étagère test · Archivado/);
+    assert.match(adminResults, /<h3>Étagère test<\/h3><p>SKU home-draft · Archivado/);
     assert.match(adminResults, /name="q" maxlength="80" value="HOME-DRA"/);
     assert.doesNotMatch(adminResults, /Home 11|Travel Bag/);
     const searchByName = async status => (await fetch(restarted + '/admin/models?q=ETAGERE&status=' + status, { headers: admin })).text();
-    assert.match(await searchByName('archived'), /Étagère test · Archivado/);
+    assert.match(await searchByName('archived'), /<h3>Étagère test<\/h3><p>SKU home-draft · Archivado/);
     assert.match(await searchByName('published'), /No hay artículos que coincidan/);
     const frenchCatalogue = await (await fetch(restarted + '/fr-CH?family=home')).text();
     assert.match(frenchCatalogue, /family=home#catalogue" aria-current="true">Maison/);

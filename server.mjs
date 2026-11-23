@@ -91,8 +91,9 @@ setupModels(db);
 const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
 const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
-const displayModelAdmin = (message, params) => page('es', 'Modelos del catálogo', modelAdmin(
-  db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all(), catalogFamilies(db), message, params));
+const displayModelAdmin = (message, params) => page('es', 'Artículos del catálogo', modelAdmin(
+  [{ sku: 'one', name: 'Movility One', family: 'wheelchair', active: 1, units: stock() },
+    ...db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all()], catalogFamilies(db), message, params));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -415,7 +416,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     <p>Perfil: ${roleNames[role]}</p>
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     <div class="product-actions">
-      ${catalogAccess ? '<a class="button secondary" href="/admin/models">Gestionar modelos del catálogo</a>' : ''}
+      ${catalogAccess ? '<a class="button secondary" href="/admin/models">Artículos del catálogo</a>' : ''}
       ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
       ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
       ${supportAccess ? '<a class="button secondary" href="/admin/mail">Cola de correos</a>' : ''}
@@ -431,7 +432,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     </details>` : ''}
     ${error ? `<p class="form-error" role="alert">${error}</p>` : ''}
     ${catalogAccess && saved ? '<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>' : ''}
-    ${catalogAccess ? `<form class="admin-catalog" method="post" action="/admin/catalog">
+    ${catalogAccess ? `<form id="catalog-editor" class="admin-catalog" method="post" action="/admin/catalog">
       <fieldset><legend>Catálogo · Movility One</legend>
         <input type="hidden" name="expectedUnits" value="${units}">
         <input type="hidden" name="expectedPrice" value="${model.cents}">
