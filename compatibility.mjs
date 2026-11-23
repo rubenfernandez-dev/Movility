@@ -35,6 +35,7 @@ export function compatibilityAdmin(model, candidates, entries, message = '') {
     ${message}<form method="post" action="/admin/models/${model.sku}/compatibility" data-compat-editor>
     ${candidates.length ? `<div class="catalog-filters" data-compat-search hidden>
       <label>Buscar por nombre o SKU <input type="search" data-compat-query></label>
+      <label class="admin-check compat-selected"><input type="checkbox" data-compat-selected> Solo seleccionados</label>
       <p role="status" data-compat-status></p></div>` : ''}
     ${groups.map(([label, items]) => `<section data-compat-group><h2>${label}</h2>
       ${items.length ? `<div class="admin-item-grid">${items.map(card).join('')}</div>` : '<p>Sin artículos en esta familia.</p>'}</section>`).join('')}

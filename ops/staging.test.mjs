@@ -192,6 +192,7 @@ test('staging keeps a simulated order after restart and ignores external integra
     const chairPanelHtml = await chairPanel.text();
     assert.match(chairPanelHtml, /Accesorios[\s\S]*Travel Bag[\s\S]*Recambios[\s\S]*Test Wheel/);
     assert.match(chairPanelHtml, /data-name="Travel Bag" data-sku="travel-bag"/);
+    assert.match(chairPanelHtml, /data-compat-selected> Solo seleccionados/);
     assert.match(chairPanelHtml, /src="\/assets\/compatibility-search.js" defer/);
     assert.match((await fetch(restarted + '/assets/compatibility-search.js')).headers.get('content-type'), /javascript/);
     const addBoth = await fetch(chairEditor, {
