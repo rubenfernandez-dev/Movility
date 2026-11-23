@@ -106,6 +106,9 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       (slide.match(/class="button discovery-action"/g) || []).length === 1));
     assert.ok(homepage.includes('aria-label="' + nextLabel + '"'));
     assert.ok(homepage.includes('href="/' + locale + '?family=spare#catalogue"'));
+    assert.match(homepage, /<details class="storefront-menu">[\s\S]*<summary class="header-control"/);
+    assert.match(homepage, locale === 'de-CH' ? /aria-label="Français">FRA<\/a>/ : /aria-label="Deutsch">DE<\/a>/);
+    assert.match(homepage, new RegExp('href="/' + locale + '/cart" aria-label="(?:Warenkorb|Panier)"[^>]*>\\s*<svg'));
   }
   assert.match((await get('/assets/home-discovery.js')).headers.get('content-type'), /javascript/);
   assert.equal((await get('/assets/discovery-compare.jpg')).headers.get('content-type'), 'image/jpeg');

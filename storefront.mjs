@@ -6,7 +6,7 @@ import { information } from './information.mjs';
 
 const labels = {
   'de-CH': {
-    help: 'Beratung & FAQ', basket: 'Warenkorb', skip: 'Zum Inhalt',
+    help: 'Beratung & FAQ', basket: 'Warenkorb', skip: 'Zum Inhalt', menu: 'Menü', navigation: 'Hauptnavigation',
     image: 'Illustrative Studioaufnahme eines kompakten schwarzen Elektrorollstuhls',
     sample: 'Illustration des Demomodells', benefits: ['Versand innerhalb der Schweiz', 'Preise in Schweizer Franken', 'TWINT, PayPal und Karte'],
     browse: 'Produktkatalog', browseAction: 'Katalog ansehen',
@@ -21,7 +21,7 @@ const labels = {
     faq: 'Häufige Fragen', reference: 'Bestellreferenz', progress: 'Bestellstatus',
   },
   'fr-CH': {
-    help: 'Conseils et FAQ', basket: 'Panier', skip: 'Aller au contenu',
+    help: 'Conseils et FAQ', basket: 'Panier', skip: 'Aller au contenu', menu: 'Menu', navigation: 'Navigation principale',
     image: 'Vue illustrative en studio d’un fauteuil roulant électrique noir et compact',
     sample: 'Illustration du modèle de démonstration', benefits: ['Livraison en Suisse', 'Prix en francs suisses', 'TWINT, PayPal et carte'],
     browse: 'Catalogue de produits', browseAction: 'Voir le catalogue',
@@ -51,10 +51,27 @@ export const productAvailability = (locale, available) => status(labels[locale],
 export function navigation(locale, suffix, query = '', units = 0) {
   const l = labels[locale];
   const alt = locale === 'de-CH' ? 'fr-CH' : 'de-CH';
+  const french = alt === 'fr-CH';
+  const languageName = french ? 'Français' : 'Deutsch';
+  const links = `<a href="/${locale}#catalogue">${l.browseAction}</a><a href="/${locale}/compare">${compareLabel(locale)}</a>
+    <a href="/${locale}#faq">${l.help}</a><a href="/${locale}/contact">${information['/contact'][locale][0]}</a>`;
   return `<a class="skip" href="#content">${l.skip}</a>
-    <header class="top"><div class="top-inner"><a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Movility</a>
-    <nav><a href="/${locale}#catalogue">${l.browseAction}</a><a href="/${locale}/compare">${compareLabel(locale)}</a><a href="/${locale}#faq">${l.help}</a><a href="/${locale}/contact">${information['/contact'][locale][0]}</a></nav>
-    <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}${units ? ` (${units})` : ''}</a></div></div></header>`;
+    <header class="top"><div class="top-inner storefront-header"><a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Movility</a>
+    <nav class="storefront-nav" aria-label="${l.navigation}">${links}</nav>
+    <div class="top-actions">
+      <details class="storefront-menu">
+        <summary class="header-control" aria-label="${l.menu}">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </summary>
+        <nav aria-label="${l.navigation}">${links}</nav>
+      </details>
+      <a class="header-control header-language" href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}" aria-label="${languageName}">${french ? 'FRA' : 'DE'}</a>
+      <a class="header-control basket" href="/${locale}/cart" aria-label="${l.basket}${units ? ` (${units})` : ''}">
+        <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <path d="M2 3h3l2.4 12h12l2.1-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>
+        </svg>${units ? `<span class="basket-count" aria-hidden="true">${units}</span>` : ''}
+      </a>
+    </div></div></header>`;
 }
 
 export function homepage(locale, { filters, products, faqs }) {
