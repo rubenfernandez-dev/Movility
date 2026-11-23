@@ -21,8 +21,10 @@ de cobros reales y la publicación quedan para sus fases respectivas.
 
 El panel permite crear familias bilingües y publicar artículos sin un tope
 de catálogo. Cada artículo admite descripciones y características DE/FR,
-fotos, vídeo y archivos complementarios. Al ampliar el surtido, revisar
-los filtros y las reglas de expedición y fiscalidad de cada familia.
+fotos, vídeo y archivos complementarios. La tienda permite filtrar por
+familia y el panel por familia y estado de publicación. Próxima mejora de
+catálogo: búsqueda por SKU y nombre en administración. Al ampliar el surtido,
+revisar las reglas de expedición y fiscalidad de cada familia.
 
 ## Cuenta de cliente y ofertas
 

@@ -69,12 +69,25 @@ export function familiesAdmin(families, message = '') {
     <h2>Nueva familia</h2>${editor()}${families.map(family => `<details><summary>${escapeHtml(family.es)}</summary>${editor(family)}</details>`).join('')}`;
 }
 
-export function modelAdmin(models, families, message = '') {
+export function catalogFilter(params, families) {
+  const family = params.get('family');
+  return families.some(row => row.id === family) ? family : '';
+}
+
+export function modelAdmin(models, families, message = '', params = new URLSearchParams()) {
+  const family = catalogFilter(params, families);
+  const status = ['published', 'archived'].includes(params.get('status')) ? params.get('status') : '';
+  const visible = models.filter(model => (!family || model.family === family) &&
+    (!status || Boolean(model.active) === (status === 'published')));
+  const filters = new URLSearchParams();
+  if (family) filters.set('family', family);
+  if (status) filters.set('status', status);
+  const query = filters.size ? '?' + escapeHtml(filters.toString()) : '';
   const form = (model) => {
     const editing = Boolean(model);
     const field = (key, label, value, attributes = '') => `<label>${label}<input name="${key}" value="${escapeHtml(String(value))}" ${attributes}></label>`;
     const description = (code, name) => `<label>Descripción en ${name}<textarea name="description_${code}" maxlength="500" required rows="2">${escapeHtml(model?.['description_' + code] ?? '')}</textarea></label>`;
-    return `<form class="admin-catalog" method="post" action="/admin/models${editing ? '/' + model.sku : ''}">
+    return `<form class="admin-catalog" method="post" action="/admin/models${editing ? '/' + model.sku : ''}${query}">
       ${editing ? `<input type="hidden" name="revision" value="${model.revision}">` : ''}
       <div class="address-row">
         <label>Familia<select name="family">${families.map(({ id, es }) =>
@@ -98,8 +111,29 @@ export function modelAdmin(models, families, message = '') {
     <p><a href="/admin/families">Gestionar familias</a> · <a href="/admin/models/one/content">Contenido y medios del Movility One</a></p>
     ${message}
     <details class="model-editor" open><summary>Crear un modelo</summary>${form()}</details>
-    ${families.map(({ id, es }) => `<section><h2>${escapeHtml(es)}</h2>
-      ${models.filter(model => model.family === id).map(model => `<details class="model-editor"><summary>${escapeHtml(model.name)} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</summary>${form(model)}</details>`).join('') || '<p>Sin artículos adicionales.</p>'}</section>`).join('')}`;
+    <form class="catalog-filters" action="/admin/models" method="get">
+      <label>Familia <select name="family"><option value="">Todas las familias</option>
+        ${families.map(({ id, es }) => `<option value="${id}" ${family === id ? 'selected' : ''}>${escapeHtml(es)}</option>`).join('')}
+      </select></label>
+      <label>Estado <select name="status"><option value="">Todos los estados</option>
+        <option value="published" ${status === 'published' ? 'selected' : ''}>Publicado</option>
+        <option value="archived" ${status === 'archived' ? 'selected' : ''}>Archivado</option>
+      </select></label>
+      <button>Filtrar</button>${filters.size ? '<a href="/admin/models">Quitar filtros</a>' : ''}
+    </form>
+    ${visible.length ? families.map(({ id, es }) => {
+      const items = visible.filter(model => model.family === id);
+      return items.length ? `<section><h2>${escapeHtml(es)}</h2>
+        ${items.map(model => `<details class="model-editor"><summary>${escapeHtml(model.name)} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</summary>${form(model)}</details>`).join('')}</section>` : '';
+    }).join('') : '<p>No hay artículos que coincidan con estos filtros.</p>'}`;
+}
+
+export function storefrontFamilyFilters(locale, families, activeFamily) {
+  const french = locale === 'fr-CH';
+  const link = (id, label) => `<li><a href="/${locale}${id ? '?family=' + id : ''}#catalogue"${id === activeFamily ? ' aria-current="true"' : ''}>${escapeHtml(label)}</a></li>`;
+  return `<nav aria-label="${french ? 'Familles de produits' : 'Produktkategorien'}">
+    <ul class="family-filters">${link('', french ? 'Tous les produits' : 'Alle Produkte')}
+    ${families.map(row => link(row.id, row[locale])).join('')}</ul></nav>`;
 }
 
 export function modelInput(fields, sku, families) {

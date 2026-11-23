@@ -10,7 +10,7 @@ import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery
 import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { orderEmail } from './postpurchase.mjs';
 import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
-  catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures } from './catalog.mjs';
+  catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters } from './catalog.mjs';
 import { contentAdmin, receiveMedia } from './catalog-media.mjs';
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
@@ -91,8 +91,8 @@ setupModels(db);
 const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
 const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
-const displayModelAdmin = message => page('es', 'Modelos del catálogo', modelAdmin(
-  db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all(), catalogFamilies(db), message));
+const displayModelAdmin = (message, params) => page('es', 'Modelos del catálogo', modelAdmin(
+  db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all(), catalogFamilies(db), message, params));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -694,7 +694,7 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && path === '/admin/models') {
         return send(res, 200, displayModelAdmin(searchParams.has('saved')
-          ? '<p class="form-success" role="status">Modelo guardado.</p>' : ''));
+          ? '<p class="form-success" role="status">Modelo guardado.</p>' : '', searchParams));
       }
       if (req.method === 'GET' && path === '/admin/serials') {
         return send(res, 200, page('es', 'Historial por número de serie', serialLookup(db, searchParams.get('serial') || '')));
@@ -748,7 +748,7 @@ const server = createServer(async (req, res) => {
         const fields = await form(req);
         const sku = modelEdit[1] || fields?.get('sku')?.trim() || '';
         const input = modelInput(fields, sku, catalogFamilies(db));
-        if (!input) return send(res, 400, displayModelAdmin('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>'));
+        if (!input) return send(res, 400, displayModelAdmin('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>', searchParams));
         const saved = transaction(() => {
           const current = extraModel(sku);
           if (modelEdit[1] ? !current || String(current.revision) !== fields.get('revision') : current) return false;
@@ -763,8 +763,9 @@ const server = createServer(async (req, res) => {
           }
           return true;
         });
-        return saved ? redirect(res, '/admin/models?saved=1') : send(res, 409, displayModelAdmin(
-          '<p class="form-error" role="alert">El SKU ya existe o el artículo cambió mientras editabas.</p>'));
+        searchParams.set('saved', '1');
+        return saved ? redirect(res, '/admin/models?' + searchParams) : send(res, 409, displayModelAdmin(
+          '<p class="form-error" role="alert">El SKU ya existe o el artículo cambió mientras editabas.</p>', searchParams));
       }
       const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z]+)$/.exec(path);
       if (req.method === 'GET' && emailRoute && noticeKinds.includes(emailRoute[2])) {
@@ -972,8 +973,16 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
-      return render(homepage(locale, catalog().cents, stock() > 0,
-        extraCatalog(locale, liveModels(), catalogFamilies(db), sku => Object.values(modelPhotos(sku)).find(Boolean))));
+      const models = liveModels();
+      const families = catalogFamilies(db).filter(row => row.id === 'wheelchair' ||
+        models.some(model => model.family === row.id));
+      const family = catalogFilter(searchParams, families);
+      const visible = family ? families.filter(row => row.id === family) : families;
+      return render(homepage(locale, catalog().cents, stock() > 0, {
+        filters: storefrontFamilyFilters(locale, families, family),
+        showCore: !family || family === 'wheelchair',
+        extras: extraCatalog(locale, models, visible, sku => Object.values(modelPhotos(sku)).find(Boolean)),
+      }));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();

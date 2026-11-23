@@ -181,6 +181,21 @@ test('staging keeps a simulated order after restart and ignores external integra
       }, admin)).status, 303);
     }
     assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Maison[\s\S]*Home 11/);
+    const archived = await submit(restarted + '/admin/models?family=home&status=archived', {
+      ...accessory, sku: 'home-draft', family: 'home', name: 'Home Draft', active: '0',
+    }, admin);
+    assert.equal(archived.headers.get('location'), '/admin/models?family=home&status=archived&saved=1');
+    const adminResults = await (await fetch(restarted + archived.headers.get('location'), { headers: admin })).text();
+    assert.match(adminResults, /Home Draft · Archivado/);
+    assert.doesNotMatch(adminResults, /Home 11|Travel Bag/);
+    const frenchCatalogue = await (await fetch(restarted + '/fr-CH?family=home')).text();
+    assert.match(frenchCatalogue, /family=home#catalogue" aria-current="true">Maison/);
+    assert.match(frenchCatalogue, /Home 11/);
+    assert.doesNotMatch(frenchCatalogue, /Home Draft|Travel Bag|class="catalog-card"/);
+    const germanCatalogue = await (await fetch(restarted + '/de-CH?family=wheelchair')).text();
+    assert.match(germanCatalogue, /family=wheelchair#catalogue" aria-current="true">Elektrorollstühle/);
+    assert.match(germanCatalogue, /class="catalog-card"/);
+    assert.doesNotMatch(germanCatalogue, /Home 11/);
     assert.equal((await submit(restarted + '/admin/models/home-11/content', {
       de: 'Material: Holz', fr: 'Matière : bois',
     }, admin)).status, 303);
