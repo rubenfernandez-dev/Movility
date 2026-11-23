@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
 const lifetime = 15 * 60;
+const checkoutLifetime = 60 * 60;
 const token = () => randomBytes(24).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const seconds = () => Math.floor(Date.now() / 1000);
@@ -11,7 +12,45 @@ export function setupGuestProof(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS guest_order_proofs (
     order_id TEXT PRIMARY KEY REFERENCES orders(id), challenge_hash TEXT UNIQUE,
     expires_at INTEGER NOT NULL, proof_hash TEXT UNIQUE, proof_expires_at INTEGER
-  )`);
+  );
+  CREATE TABLE IF NOT EXISTS checkout_order_access (
+    order_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL, expires_at INTEGER NOT NULL
+  );`);
+}
+
+const checkoutCookieName = id => 'movility_order_' + id;
+
+export function issueCheckoutAccess(db, id, now = seconds()) {
+  const value = token();
+  db.prepare('DELETE FROM checkout_order_access WHERE expires_at <= ?').run(now);
+  db.prepare('INSERT INTO checkout_order_access VALUES (?, ?, ?)').run(id, hash(value), now + checkoutLifetime);
+  return value;
+}
+
+export function checkoutAccessCookie(id, value, secure) {
+  return `${checkoutCookieName(id)}=${value}; Path=/; Max-Age=${checkoutLifetime}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
+export function hasCheckoutAccess(db, id, cookies, now = seconds()) {
+  const name = checkoutCookieName(id) + '=';
+  const value = cookies?.split(';').map(part => part.trim()).find(part => part.startsWith(name))?.slice(name.length);
+  return /^[A-Za-z0-9_-]{32}$/.test(value || '') && Boolean(db.prepare(
+    'SELECT 1 FROM checkout_order_access WHERE order_id = ? AND token_hash = ? AND expires_at > ?'
+  ).get(id, hash(value), now));
+}
+
+export function revokeCheckoutAccess(db, id) {
+  db.prepare('DELETE FROM checkout_order_access WHERE order_id = ?').run(id);
+}
+
+export function orderAccessPage(locale, withAccount) {
+  const de = locale === 'de-CH';
+  return `<h1 class="page-title">${de ? 'Bestellzugriff bestätigen' : 'Vérifier l’accès à la commande'}</h1>
+    <p>${de ? 'Bestätige den Zugriff mit deiner Bestell-E-Mail und einem Einmalcode vom Kundendienst.' :
+      'Confirmez votre accès avec l’adresse e-mail de la commande et un code à usage unique fourni par le service client.'}</p>
+    <p><a class="button" href="/${locale}/guest-access">${de ? 'Einmalcode eingeben' : 'Saisir le code'}</a>
+    <a href="/${locale}/contact">${de ? 'Kundendienst kontaktieren' : 'Contacter le service client'}</a>
+    ${withAccount ? `<a href="/${locale}/account">${de ? 'Mein Konto' : 'Mon compte'}</a>` : ''}</p>`;
 }
 
 export function issueGuestCode(db, id, now = seconds()) {

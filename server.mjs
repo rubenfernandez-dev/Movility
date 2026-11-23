@@ -38,9 +38,10 @@ import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, reque
   sendStripeRefund, saveStripeRefundSubmission, applyStripeRefundEvent, refundControls } from './stripe-refunds.mjs';
 import { setupDocuments, billingInput, saveBillingAddress, issueDocument, documentPage } from './billing-documents.mjs';
 import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, guestProofCookie,
-  verifiedGuestOrder, guestAccessPage, codePage } from './guest-proof.mjs';
+  verifiedGuestOrder, guestAccessPage, codePage, issueCheckoutAccess, checkoutAccessCookie, hasCheckoutAccess,
+  revokeCheckoutAccess, orderAccessPage } from './guest-proof.mjs';
 import { setupAccounts, accountEmail, issueAccountCode, verifyAccountCode, signedInCustomer, endCustomerSession,
-  customerCookie, linkGuestOrder, customerPage, accountMailbox } from './customer-accounts.mjs';
+  customerCookie, linkGuestOrder, customerPage, accountMailbox, customerOwnsOrder } from './customer-accounts.mjs';
 import { setupOffers, requestOffers, confirmOffers, stopOffers, offersPage, offerMailbox } from './offers.mjs';
 import { setupCampaigns, queueCampaign, processCampaigns, campaignPage } from './offer-campaigns.mjs';
 
@@ -620,12 +621,17 @@ const server = createServer(async (req, res) => {
     const sameOrigin = localHosts.includes(req.headers.host) && origin === `http://${req.headers.host}`;
     const codespaceOrigin = codespaceHost && origin === `https://${codespaceHost}`;
     const stripeOrigin = stripe && origin === stripe.origin;
+    const secureRequest = !localHosts.includes(req.headers.host);
+    const cookies = req.headers.cookie;
+    const canViewOrder = id => hasCheckoutAccess(db, id, cookies) || verifiedGuestOrder(db, cookies) === id ||
+      (accountsEnabled && customerOwnsOrder(db, cookies, id));
     const basketCheckout = path === `/${locale}/checkout/cart`;
     if (req.method === 'POST' && !sameOrigin && !codespaceOrigin && !stripeOrigin) {
       return send(res, 403, 'Forbidden');
     }
     if (req.method === 'POST' && pushRoute) {
       if (!push) return carrierResponse(res, 404, 'disabled');
+      if (!canViewOrder(third)) return carrierResponse(res, 403, 'forbidden');
       const body = await readCarrierBody(req);
       let input;
       try { input = body ? JSON.parse(body.toString('utf8')) : null; }
@@ -766,7 +772,10 @@ const server = createServer(async (req, res) => {
         const order = orderById(second);
         if (!order) return send(res, 404, 'Pedido desconocido');
         if (fields?.get('action') === 'revoke') {
-          revokeGuestCode(db, second);
+          transaction(() => {
+            revokeGuestCode(db, second);
+            revokeCheckoutAccess(db, second);
+          });
           return redirect(res, '/admin#order-' + second);
         }
         if (fields?.get('action') !== 'issue') return send(res, 400, 'Acción inválida');
@@ -1053,7 +1062,7 @@ const server = createServer(async (req, res) => {
         const fields = await form(req);
         const proof = redeemGuestCode(db, fields?.get('code')?.trim() || '', fields?.get('email')?.trim() || '');
         if (!proof) return render(guestAccessPage(locale, true), 400);
-        res.setHeader('Set-Cookie', guestProofCookie(proof.proof, Boolean(codespaceOrigin || stripeOrigin)));
+        res.setHeader('Set-Cookie', guestProofCookie(proof.proof, secureRequest));
         return redirect(res, path);
       }
     }
@@ -1162,6 +1171,8 @@ const server = createServer(async (req, res) => {
       return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', null, undefined, stripeMethodsFor(stripe, model.cents)));
     }
     if (stripe && first === locale && second === 'payment' && orderIdPattern.test(third) && path === `/${locale}/payment/${third}`) {
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled), 403);
       const attempt = paymentAttempt(db, third);
       if (!attempt || JSON.parse(attempt.payload).locale !== locale) return render('<h1>404</h1>', 404);
       if (attempt.state === 'paid' && ['GET', 'POST'].includes(req.method)) {
@@ -1192,6 +1203,7 @@ const server = createServer(async (req, res) => {
       const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
       const billing = billingInput(fields);
       const values = { ...address, email, method, billing: billing.values };
+      let checkoutAccess;
       if (sku && !selected) return render(`<h1>${t.soldOut}</h1>`, 409);
       const invalid = [...billing.invalid];
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) invalid.push('email');
@@ -1211,6 +1223,7 @@ const server = createServer(async (req, res) => {
         const reservation = transaction(() => {
           const existing = paymentAttempt(db, id);
           if (existing) {
+            if (!canViewOrder(id)) return 'conflict';
             const previous = JSON.parse(existing.payload);
             return existing.method === method && previous.email === email && previous.locale === locale &&
               JSON.stringify(previous.address) === JSON.stringify(address) &&
@@ -1222,8 +1235,10 @@ const server = createServer(async (req, res) => {
           if (!matchesQuote(items)) return 'price';
           if (!stripeMethodsFor(stripe, cartTotal(items)).includes(method)) return 'method';
           const snapshot = items.map(({ sku, name, quantity, cents, requires_serial }) => ({ sku, name, quantity, cents, requires_serial }));
-          return reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot }, cartTotal(snapshot),
+          const attempt = reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot }, cartTotal(snapshot),
             line => orderStock(line.sku, -line.quantity, 'reservation', null));
+          checkoutAccess = issueCheckoutAccess(db, id);
+          return attempt;
         });
         if (reservation === 'price' || reservation === 'method') {
           const refreshed = basketCheckout ? cartLines(cart, purchaseModel) : null;
@@ -1237,6 +1252,7 @@ const server = createServer(async (req, res) => {
             ? basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable)
             : `<h1>${reservation === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
         }
+        if (checkoutAccess) res.appendHeader('Set-Cookie', checkoutAccessCookie(id, checkoutAccess, secureRequest));
         return stripeRedirect(res, reservation, locale, render);
       }
       if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed, selected, lines));
@@ -1256,6 +1272,7 @@ const server = createServer(async (req, res) => {
             orderStock(line.sku, -line.quantity, 'order', id);
           }
           notice(id, 'paid');
+          checkoutAccess = issueCheckoutAccess(db, id);
           return 'ok';
         }
         const currentModel = sku ? extraModel(sku) : null;
@@ -1269,6 +1286,7 @@ const server = createServer(async (req, res) => {
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         saveBillingAddress(db, id, billing.address);
         notice(id, 'paid');
+        checkoutAccess = issueCheckoutAccess(db, id);
         return 'ok';
       });
       if (outcome === 'ok' || outcome === 'repeat') {
@@ -1276,6 +1294,7 @@ const server = createServer(async (req, res) => {
         if (basketCheckout && (outcome === 'ok' || cartQuote(lines) === fields.get('cartQuote'))) {
           res.setHeader('Set-Cookie', cartCookie(new Map(), Boolean(codespaceOrigin)));
         }
+        if (checkoutAccess) res.appendHeader('Set-Cookie', checkoutAccessCookie(id, checkoutAccess, secureRequest));
         return redirect(res, `/${locale}/orders/${id}`);
       }
       if (basketCheckout && (outcome === 'out' || outcome === 'price')) {
@@ -1292,6 +1311,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && orderPageRoute) {
       res.setHeader('Referrer-Policy', 'no-referrer');
+      if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled), 403);
       const order = orderById(third);
       if (order) {
         const events = trackingEvents(db, order.id);

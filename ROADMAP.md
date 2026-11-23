@@ -29,10 +29,12 @@ Al ampliar el surtido, revisar las reglas de expedición y fiscalidad de cada fa
 
 En la revisión de privacidad, las facturas y los abonos quedan restringidos a
 Administración y Finanzas. Los pedidos y documentos se sirven sin caché, sin
-indexación y sin enviar la URL como referencia al navegar. El enlace de
-seguimiento de prueba concede acceso a quien lo tenga. Antes de activar pedidos
-reales, queda sustituir ese acceso por una verificación caducable entregada por
-correo o una sesión vinculada al pedido, y definir la conservación de datos.
+indexación y sin enviar la URL como referencia al navegar. El seguimiento,
+el estado de pago y el alta de notificaciones requieren acceso al pedido.
+La compra abre el acceso durante una hora y el código de soporte durante
+15 minutos. Una cuenta vinculada también puede consultar su pedido en
+preproducción. Para el piloto queda integrar la recuperación por correo
+verificado y definir la conservación de datos.
 
 ## Cuenta de cliente y ofertas
 

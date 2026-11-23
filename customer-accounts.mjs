@@ -37,6 +37,10 @@ function sessionHash(cookie) {
 }
 export const signedInCustomer = (db, cookie) => db.prepare('SELECT email FROM customer_sessions WHERE token_hash = ? AND expires > ?')
   .get(sessionHash(cookie), now())?.email;
+export function customerOwnsOrder(db, cookie, id) {
+  const email = signedInCustomer(db, cookie);
+  return Boolean(email && db.prepare('SELECT 1 FROM customer_orders WHERE order_id = ? AND email = ?').get(id, email));
+}
 export function endCustomerSession(db, cookie) {
   db.prepare('DELETE FROM customer_sessions WHERE token_hash = ?').run(sessionHash(cookie));
 }

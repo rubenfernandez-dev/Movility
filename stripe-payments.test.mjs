@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { createCheckout, stripeMode, stripeMethodsFor, stripeCheckoutUrl, applyStripeOutcome,
   setupStripePayments, paymentAttempt, reserveStripe } from './stripe-payments.mjs';
 import { requestStripeRefund, sendStripeRefund } from './stripe-refunds.mjs';
+import { checkoutAccessCookie, hasCheckoutAccess, issueCheckoutAccess } from './guest-proof.mjs';
 
 const order = { locale: 'fr-CH', email: 'stripe-fixture@example.com',
   address: { name: 'Client Démo', street: 'Rue Test 1', zip: '1201', city: 'Genève' },
@@ -88,11 +89,16 @@ test('a signed Stripe test notification confirms exactly one stored order', { ti
   const db = new DatabaseSync(dbFile);
   db.exec('PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE');
   reserveStripe(db, id, 'Tarjeta', order, 249900, () => db.exec('UPDATE stock SET units = units - 1 WHERE id = 1'));
+  const now = Math.floor(Date.now() / 1000);
+  const token = issueCheckoutAccess(db, id, now);
+  const buyer = { Cookie: checkoutAccessCookie(id, token, false).split(';')[0] };
+  assert.equal(hasCheckoutAccess(db, id, buyer.Cookie, now + 3600), false);
   db.exec('COMMIT');
   db.close();
   const statusPath = base + '/fr-CH/payment/' + id;
-  assert.match(await (await fetch(statusPath)).text(), /en cours de préparation/);
-  assert.equal((await fetch(base + '/fr-CH/orders/' + id)).status, 404);
+  assert.equal((await fetch(statusPath)).status, 403);
+  assert.match(await (await fetch(statusPath, { headers: buyer })).text(), /en cours de préparation/);
+  assert.equal((await fetch(base + '/fr-CH/orders/' + id, { headers: buyer })).status, 404);
   const fixture = { id: 'evt_stripefixture', livemode: false, type: 'checkout.session.completed', data: { object: {
     object: 'checkout.session', id: 'cs_test_fixture', client_reference_id: id, livemode: false,
     currency: 'chf', amount_total: 249900, payment_method_types: ['card'], payment_status: 'paid', payment_intent: 'pi_fixture',
@@ -110,7 +116,7 @@ test('a signed Stripe test notification confirms exactly one stored order', { ti
   const [first, second] = await Promise.all([event(fixture), event(fixture)]);
   const results = await Promise.all([first.json(), second.json()]);
   assert.deepEqual(results.map(result => result.result).sort(), ['duplicate', 'paid']);
-  assert.equal((await fetch(statusPath, { redirect: 'manual' })).headers.get('location'), '/fr-CH/orders/' + id);
+  assert.equal((await fetch(statusPath, { headers: buyer, redirect: 'manual' })).headers.get('location'), '/fr-CH/orders/' + id);
   const auth = 'Basic ' + Buffer.from('admin:stripe-test-panel').toString('base64');
   const ledger = await (await fetch(base + '/admin/accounting.csv', { headers: { Authorization: auth } })).text();
   assert.equal(ledger.match(/"Cobro","Tarjeta","CHF","2499.00"/g)?.length, 1);

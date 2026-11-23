@@ -170,20 +170,27 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.deepEqual(results.map(({ status }) => status).sort(), [303, 409]);
   const winner = results.findIndex(({ status }) => status === 303);
   const orderPath = results[winner].headers.get('location');
-  assert.match(await (await get(orderPath)).text(), /Paiement de test confirmé/);
-  assert.equal((await post(checkout, candidates[winner])).headers.get('location'), orderPath);
+  const buyer = { Cookie: results[winner].headers.getSetCookie()[0].split(';')[0] };
+  const withoutProof = await get(orderPath);
+  assert.equal(withoutProof.status, 403);
+  assert.doesNotMatch(await withoutProof.text(), /Paiement de test confirmé|599\.90/);
+  assert.match(await (await get(orderPath, buyer)).text(), /Paiement de test confirmé/);
+  const repeat = await post(checkout, candidates[winner]);
+  assert.equal(repeat.headers.get('location'), orderPath);
+  assert.equal(repeat.headers.get('set-cookie'), null);
 
   const orderId = candidates[winner].id;
   const pushAddress = orderPath + '/push';
   const pushUpdate = (input, origin = base) => fetch(base + pushAddress, { method: 'POST', body: JSON.stringify(input),
-    headers: { Origin: origin, 'Content-Type': 'application/json' } });
-  const orderWithPush = await get(orderPath);
+    headers: { Origin: origin, 'Content-Type': 'application/json', ...buyer } });
+  const orderWithPush = await get(orderPath, buyer);
   assert.match(orderWithPush.headers.get('content-security-policy'), /worker-src 'self'/);
   assert.match(await orderWithPush.text(), /Activer les notifications/);
   assert.match(await (await get('/push-worker.js')).text(), /showNotification/);
   const subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/fixture',
     keys: { p256dh: generateVAPIDKeys().publicKey, auth: randomBytes(16).toString('base64url') } };
   assert.equal((await pushUpdate({ action: 'subscribe', subscription }, 'https://outside.example')).status, 403);
+  assert.equal((await fetch(base + pushAddress, { method: 'POST', headers: { Origin: base }, body: '{}' })).status, 403);
   assert.deepEqual(await (await pushUpdate({ action: 'status', endpoint: subscription.endpoint })).json(), { active: false });
   assert.deepEqual(await (await pushUpdate({ action: 'subscribe', subscription })).json(), { active: true });
   const emailPath = (kind) => `/admin/${orderId}/email/${kind}`;
@@ -220,14 +227,14 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, finance)).status, 403);
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, warehouse)).status, 303);
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, headers)).status, 303);
-  assert.match(await (await get(orderPath)).text(), /CH-DEMO-1/);
+  assert.match(await (await get(orderPath, buyer)).text(), /CH-DEMO-1/);
   const trackingPath = `/admin/${orderId}/tracking`;
   const simulated = { eventId: randomUUID(), status: 'transit' };
   assert.equal((await post(trackingPath, simulated, finance)).status, 403);
   assert.equal((await post(trackingPath, simulated, warehouse)).status, 303);
   assert.equal((await post(trackingPath, simulated, warehouse)).status, 303);
   assert.equal((await post(trackingPath, { ...simulated, status: 'exception' }, warehouse)).status, 409);
-  assert.match(await (await get(orderPath)).text(), /En transit/);
+  assert.match(await (await get(orderPath, buyer)).text(), /En transit/);
   const event = {
     eventId: 'carrier-1', orderId, tracking: 'CH-DEMO-1', status: 'delivered', occurredAt: new Date().toISOString(),
   };
@@ -246,8 +253,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await signed({ ...event, status: 'exception' })).status, 409);
   assert.equal((await signed({ ...event, eventId: 'carrier-2', status: 'exception' })).status, 200);
   assert.equal((await signed({ ...event, eventId: 'carrier-3' })).status, 200);
-  assert.match(await (await get(orderPath)).text(), /<h1 class="page-title">Commande livrée/);
-  assert.doesNotMatch(await (await get(orderPath)).text(), /data-subscribe/);
+  assert.match(await (await get(orderPath, buyer)).text(), /<h1 class="page-title">Commande livrée/);
+  assert.doesNotMatch(await (await get(orderPath, buyer)).text(), /data-subscribe/);
   assert.deepEqual(await (await pushUpdate({ action: 'unsubscribe', endpoint: subscription.endpoint })).json(), { active: false });
   assert.deepEqual(await (await pushUpdate({ action: 'subscribe', subscription })).json(), { active: false });
   assert.match(await (await get(emailPath('delivered'), support)).text(), /Movility · Commande livrée/);
@@ -267,12 +274,12 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.doesNotMatch(await (await get(emailPath('paid'), headers)).text(), /CH-DEMO-1/);
   assert.match(await (await get('/admin?status=paid', headers)).text(), /No hay pedidos con este estado/);
   assert.match(await (await get('/admin?status=refunded', headers)).text(), /1201 Genève/);
-  assert.match(await (await get(orderPath)).text(), /Paiement de test remboursé/);
+  assert.match(await (await get(orderPath, buyer)).text(), /Paiement de test remboursé/);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
   assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1 · Pedidos: 1/);
   assert.equal((await post('/admin/catalog', { ...edit, expectedPrice: '259990', price: '999' }, headers)).status, 303);
-  assert.match(await (await get(orderPath)).text(), /599\.90/);
+  assert.match(await (await get(orderPath, buyer)).text(), /599\.90/);
   const model = { sku: 'alpine', name: 'Movility Alpine', price: '3199', units: '1',
     active: '1', description_de: 'Testmodell für den Alltag', description_fr: 'Modèle de test',
     width: '60', weight: '28', range: '24', fold: '1' };
@@ -297,8 +304,10 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const extra = await Promise.all([fields('Visa', 'alpine'), fields('PayPal', 'alpine')]);
   const extraResults = await Promise.all(extra.map(candidate => post(checkout, candidate)));
   assert.deepEqual(extraResults.map(({ status }) => status).sort(), [303, 409]);
-  const extraOrder = extraResults.find(({ status }) => status === 303).headers.get('location');
-  assert.match(await (await get(extraOrder)).text(), /Movility Alpine/);
+  const extraWinner = extraResults.find(({ status }) => status === 303);
+  const extraOrder = extraWinner.headers.get('location');
+  const extraBuyer = { Cookie: extraWinner.headers.getSetCookie()[0].split(';')[0] };
+  assert.match(await (await get(extraOrder, extraBuyer)).text(), /Movility Alpine/);
   assert.equal((await post('/admin/models/alpine', { ...model, revision: '0', active: '0' }, headers)).status, 409);
   assert.equal((await post('/admin/models/alpine', { ...model, revision: '1', name: 'Alpine édition 2', units: '0', active: '0' }, headers)).status, 303);
   assert.equal((await get('/fr-CH/models/alpine')).status, 404);
@@ -306,7 +315,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await get('/assets/models/alpine.mp4')).status, 404);
   assert.equal((await get('/fr-CH/checkout?model=alpine')).status, 409);
   assert.doesNotMatch(await (await get('/fr-CH/compare')).text(), /Alpine/);
-  assert.match(await (await get(extraOrder)).text(), /Movility Alpine/);
+  assert.match(await (await get(extraOrder, extraBuyer)).text(), /Movility Alpine/);
   assert.equal((await post('/admin/' + extraOrder.split('/').at(-1) + '/refund', {}, headers)).status, 303);
   assert.match(await (await get('/admin/models', headers)).text(), /Archivad[o] · 1 ud\./);
   assert.equal((await post('/admin/models/alpine', { ...model, revision: '3', units: '2' }, headers)).status, 303);
@@ -352,7 +361,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(winningBasket.headers.get('set-cookie'), /Max-Age=0/);
   const basketOrder = winningBasket.headers.get('location');
   assert.equal((await post(basketCheckout, baskets[winningIndex])).headers.get('location'), basketOrder);
-  const summary = await (await get(basketOrder)).text();
+  const basketBuyer = { Cookie: winningBasket.headers.getSetCookie().find(value => value.startsWith('movility_order_')).split(';')[0] };
+  const summary = await (await get(basketOrder, basketBuyer)).text();
   assert.match(summary, /1 × Movility One/);
   assert.match(summary, /2 × Movility Alpine/);
   const basketOrderId = basketOrder.split('/').at(-1);

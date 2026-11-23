@@ -71,7 +71,8 @@ test('staging keeps a simulated order after restart and ignores external integra
     }
     await stop();
     const restarted = await start();
-    const orderResponse = await fetch(restarted + orderPath);
+    const buyerCookie = order.headers.getSetCookie()[0].split(';')[0];
+    const orderResponse = await fetch(restarted + orderPath, { headers: { Cookie: buyerCookie } });
     assert.equal(orderResponse.headers.get('referrer-policy'), 'no-referrer');
     assert.equal(orderResponse.headers.get('cache-control'), 'no-store');
     assert.match(await orderResponse.text(), /Paiement de test confirmé/);
@@ -88,6 +89,7 @@ test('staging keeps a simulated order after restart and ignores external integra
     const redeemed = await submit(proofPath, { code, email: 'STAGING@example.com' });
     assert.equal(redeemed.status, 303);
     const proof = redeemed.headers.get('set-cookie').split(';')[0];
+    assert.equal((await fetch(restarted + orderPath, { headers: { Cookie: proof } })).status, 200);
     assert.match(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     assert.equal((await submit(proofPath, { code, email: 'staging@example.com' })).status, 400);
     const account = restarted + '/fr-CH/account';
@@ -109,8 +111,11 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.equal((await submit(account, { action: 'link' }, { Cookie: customer + '; ' + proof })).status, 303);
     const signedIn = await (await fetch(account, { headers: { Cookie: customer } })).text();
     assert.match(signedIn, new RegExp(orderPath));
+    assert.equal((await fetch(restarted + orderPath, { headers: { Cookie: customer } })).status, 200);
+    assert.equal((await fetch(restarted + orderPath, { headers: { Cookie: other } })).status, 403);
     assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: other } })).text(), new RegExp(orderPath));
     assert.equal((await submit(account, { action: 'logout' }, { Cookie: customer })).status, 303);
+    assert.equal((await fetch(restarted + orderPath, { headers: { Cookie: customer } })).status, 403);
     assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: customer } })).text(), new RegExp(orderPath));
     const offers = restarted + '/fr-CH/offers';
     const offerInbox = restarted + '/admin/offer-codes';
@@ -140,6 +145,7 @@ test('staging keeps a simulated order after restart and ignores external integra
       ]);
     } finally { consentDb.close(); }
     assert.equal((await submit(codePath, { action: 'revoke' }, { Authorization: auth })).status, 303);
+    assert.equal((await fetch(restarted + orderPath, { headers: { Cookie: buyerCookie } })).status, 403);
     assert.doesNotMatch(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     const docPath = restarted + '/admin/' + id + '/document/';
     assert.equal((await fetch(docPath + 'invoice')).status, 401);
