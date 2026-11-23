@@ -3,6 +3,8 @@ const search = editor.querySelector('[data-compat-search]');
 const query = editor.querySelector('[data-compat-query]');
 const onlySelected = editor.querySelector('[data-compat-selected]');
 const status = editor.querySelector('[data-compat-status]');
+const unsaved = editor.querySelector('[data-compat-unsaved]');
+const editableFields = [...editor.querySelectorAll('[data-compat-item] input')];
 const normalize = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
 const groups = [...editor.querySelectorAll('[data-compat-group]')].map(group => ({
   group,
@@ -45,5 +47,24 @@ editor.addEventListener('change', event => {
   update();
   if (wasFocused && item?.hidden) onlySelected.focus();
 });
+
+function warnBeforeLeaving(event) {
+  event.preventDefault();
+  event.returnValue = true;
+}
+
+function updateUnsaved() {
+  const changed = editableFields.some(field => field.type === 'checkbox'
+    ? field.checked !== field.defaultChecked : field.value !== field.defaultValue);
+  unsaved.textContent = changed ? 'Hay cambios sin guardar.' : '';
+  if (changed) window.addEventListener('beforeunload', warnBeforeLeaving);
+  else window.removeEventListener('beforeunload', warnBeforeLeaving);
+}
+
+editor.addEventListener('input', updateUnsaved);
+editor.addEventListener('change', updateUnsaved);
+editor.addEventListener('submit', () => window.removeEventListener('beforeunload', warnBeforeLeaving));
+window.addEventListener('pageshow', updateUnsaved);
+updateUnsaved();
 update();
 search.hidden = false;

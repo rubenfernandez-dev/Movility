@@ -23,9 +23,16 @@ El panel permite crear familias bilingües y publicar artículos sin un tope
 de catálogo. Cada artículo admite descripciones y características DE/FR,
 fotos, vídeo y archivos complementarios. La tienda permite filtrar por
 familia y el panel combina familia y estado de publicación con búsqueda
-por SKU o nombre. Próxima mejora de catálogo: paginación en administración.
-Al ampliar el surtido,
-revisar las reglas de expedición y fiscalidad de cada familia.
+por SKU o nombre, paginación y orden manual. La compatibilidad se edita en
+ambos sentidos y el editor avisa al salir con cambios sin guardar.
+Al ampliar el surtido, revisar las reglas de expedición y fiscalidad de cada familia.
+
+En la revisión de privacidad, las facturas y los abonos quedan restringidos a
+Administración y Finanzas. Los pedidos y documentos se sirven sin caché, sin
+indexación y sin enviar la URL como referencia al navegar. El enlace de
+seguimiento de prueba concede acceso a quien lo tenga. Antes de activar pedidos
+reales, queda sustituir ese acceso por una verificación caducable entregada por
+correo o una sesión vinculada al pedido, y definir la conservación de datos.
 
 ## Cuenta de cliente y ofertas
 

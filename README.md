@@ -36,8 +36,11 @@ como dominio HTTPS se pueden revisar URLs canónicas, alternancias
 contra indexación. El sitemap incluye portada, ficha, comparador y visor
 en ambos idiomas.
 
-El panel está en http://127.0.0.1:3000/admin. El usuario es `admin` y la contraseña
-temporal aparece al arrancar. Desde el panel puedes registrar un envío, consultar
+El panel está en http://localhost:3000/admin. El usuario es `admin`. Con
+`npm start` y la base local predeterminada, la contraseña se genera una vez y
+se guarda en `data/admin-password.txt`, excluido de Git. Si defines
+`MOVILITY_ADMIN_PASSWORD`, esa contraseña tiene prioridad. Desde el panel
+puedes registrar un envío, consultar
 la bandeja simulada de confirmación y seguimiento, y registrar el reembolso.
 También puedes cambiar el precio en CHF, las unidades disponibles y la
 descripción de la ficha en ambos idiomas. Los pedidos conservan su precio original.

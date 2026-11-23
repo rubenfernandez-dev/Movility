@@ -71,7 +71,10 @@ test('staging keeps a simulated order after restart and ignores external integra
     }
     await stop();
     const restarted = await start();
-    assert.match(await (await fetch(restarted + orderPath)).text(), /Paiement de test confirmé/);
+    const orderResponse = await fetch(restarted + orderPath);
+    assert.equal(orderResponse.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(orderResponse.headers.get('cache-control'), 'no-store');
+    assert.match(await orderResponse.text(), /Paiement de test confirmé/);
     const auth = 'Basic ' + Buffer.from('admin:staging-fixture').toString('base64');
     const id = orderPath.split('/').at(-1);
     const codePath = restarted + '/admin/' + id + '/guest-code';
@@ -140,7 +143,10 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.doesNotMatch(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     const docPath = restarted + '/admin/' + id + '/document/';
     assert.equal((await fetch(docPath + 'invoice')).status, 401);
-    const invoice = await (await fetch(docPath + 'invoice', { headers: { Authorization: auth } })).text();
+    const invoiceResponse = await fetch(docPath + 'invoice', { headers: { Authorization: auth } });
+    assert.equal(invoiceResponse.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(invoiceResponse.headers.get('cache-control'), 'no-store');
+    const invoice = await invoiceResponse.text();
     assert.match(invoice, /Facture de test TEST-000001/);
     assert.match(invoice, /Rue Facture 2/);
     assert.doesNotMatch(invoice, /Rue Exemple 1<br>1201 Genève<br>.*Client Test/);
@@ -193,6 +199,7 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.match(chairPanelHtml, /Accesorios[\s\S]*Travel Bag[\s\S]*Recambios[\s\S]*Test Wheel/);
     assert.match(chairPanelHtml, /data-name="Travel Bag" data-sku="travel-bag"/);
     assert.match(chairPanelHtml, /data-compat-selected> Solo seleccionados/);
+    assert.match(chairPanelHtml, /role="status" data-compat-unsaved/);
     assert.match(chairPanelHtml, /src="\/assets\/compatibility-search.js" defer/);
     assert.match((await fetch(restarted + '/assets/compatibility-search.js')).headers.get('content-type'), /javascript/);
     const addBoth = await fetch(chairEditor, {

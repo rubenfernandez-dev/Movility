@@ -21,7 +21,7 @@ import { setupInventory, purchasedLines, returnControls, inventoryPage, inventor
 import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
 import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
   readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
-import { adminAuth, adminRouteAllowed, can, roleNames } from './admin-access.mjs';
+import { adminAuth, adminRouteAllowed, can, localAdminPassword, roleNames } from './admin-access.mjs';
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
 import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
@@ -55,11 +55,14 @@ const { CODESPACES, CODESPACE_NAME, GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN } =
 const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
   ? `${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
   : null;
-const admin = process.env.MOVILITY_ADMIN_PASSWORD || randomBytes(18).toString('base64url');
-const adminRole = adminAuth({ admin, warehouse: process.env.MOVILITY_WAREHOUSE_PASSWORD,
-  support: process.env.MOVILITY_SUPPORT_PASSWORD, finance: process.env.MOVILITY_FINANCE_PASSWORD });
 const dbPath = process.env.MOVILITY_DB || 'data/demo.sqlite';
 if (!process.env.MOVILITY_DB) mkdirSync('data', { recursive: true });
+const fixedLocalPassword = !process.env.MOVILITY_DB && CODESPACES !== 'true' && !siteOrigin && !stripe
+  ? resolve('data/admin-password.txt') : '';
+const configuredAdmin = process.env.MOVILITY_ADMIN_PASSWORD;
+const admin = configuredAdmin || (fixedLocalPassword ? localAdminPassword(fixedLocalPassword) : randomBytes(24).toString('base64url'));
+const adminRole = adminAuth({ admin, warehouse: process.env.MOVILITY_WAREHOUSE_PASSWORD,
+  support: process.env.MOVILITY_SUPPORT_PASSWORD, finance: process.env.MOVILITY_FINANCE_PASSWORD });
 const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA busy_timeout = 5000;
@@ -314,7 +317,7 @@ function send(res, status, body, withViewer = false, withPush = false, withAdmin
     'Cache-Control': 'no-store',
     'X-Robots-Tag': 'noindex, nofollow',
     'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'same-origin',
+    'Referrer-Policy': res.getHeader('Referrer-Policy') || 'same-origin',
     'Content-Security-Policy': withViewer
       ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
       : "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" +
@@ -744,6 +747,7 @@ const server = createServer(async (req, res) => {
         return send(res, 200, page('es', 'Código de pedido invitado', codePage(order, issueGuestCode(db, second))));
       }
       if (req.method === 'GET' && docPath && can(role, 'finance')) {
+        res.setHeader('Referrer-Policy', 'no-referrer');
         const doc = db.prepare('SELECT * FROM billing_documents WHERE order_id = ? AND kind = ?').get(docPath[1], docPath[2]);
         if (!doc) return send(res, 404, 'Documento no disponible');
         const { locale, title, html } = documentPage(doc);
@@ -1260,6 +1264,7 @@ const server = createServer(async (req, res) => {
       return render(`<h1>${outcome === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
     }
     if (req.method === 'GET' && orderPageRoute) {
+      res.setHeader('Referrer-Policy', 'no-referrer');
       const order = orderById(third);
       if (order) {
         const events = trackingEvents(db, order.id);
@@ -1277,5 +1282,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`Movility: http://127.0.0.1:${server.address().port}`);
-  console.log('Administración local (/admin): admin / ' + admin);
+  if (configuredAdmin) console.log('Administración (/admin): usuario admin, contraseña configurada.');
+  else if (fixedLocalPassword) console.log('Administración local (/admin): usuario admin. Contraseña en ' + fixedLocalPassword);
+  else console.log('Administración temporal (/admin): admin / ' + admin);
 });

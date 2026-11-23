@@ -39,7 +39,7 @@ export function compatibilityAdmin(model, candidates, entries, message = '') {
       <p role="status" data-compat-status></p></div>` : ''}
     ${groups.map(([label, items]) => `<section data-compat-group><h2>${label}</h2>
       ${items.length ? `<div class="admin-item-grid">${items.map(card).join('')}</div>` : '<p>Sin artículos en esta familia.</p>'}</section>`).join('')}
-    ${candidates.length ? '<button>Guardar compatibilidad</button>' : ''}</form>
+    ${candidates.length ? '<p role="status" data-compat-unsaved></p><button>Guardar compatibilidad</button>' : ''}</form>
     ${candidates.length ? '<script src="/assets/compatibility-search.js" defer></script>' : ''}`;
 }
 

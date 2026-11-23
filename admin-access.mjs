@@ -1,4 +1,30 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { linkSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+
+export function localAdminPassword(file) {
+  const read = () => {
+    const password = readFileSync(file, 'utf8').trim();
+    if (!/^[A-Za-z0-9_-]{24,}$/.test(password)) throw new Error('Invalid local admin password file: ' + file);
+    return password;
+  };
+  try {
+    return read();
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const password = randomBytes(24).toString('base64url');
+  const temp = file + '.' + randomBytes(8).toString('hex') + '.tmp';
+  writeFileSync(temp, password + '\n', { flag: 'wx', mode: 0o600 });
+  try {
+    linkSync(temp, file);
+    return password;
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    return read();
+  } finally {
+    unlinkSync(temp);
+  }
+}
 
 const permissions = {
   admin: ['catalog', 'stock', 'serials', 'shipping', 'address', 'support', 'finance'],
