@@ -10,6 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { createCheckout, stripeMode, stripeMethodsFor, stripeCheckoutUrl, applyStripeOutcome,
   setupStripePayments, paymentAttempt, reserveStripe } from './stripe-payments.mjs';
+import { requestStripeRefund, sendStripeRefund } from './stripe-refunds.mjs';
 
 const order = { locale: 'fr-CH', email: 'stripe-fixture@example.com',
   address: { name: 'Client Démo', street: 'Rue Test 1', zip: '1201', city: 'Genève' },
@@ -116,4 +117,34 @@ test('a signed Stripe test notification confirms exactly one stored order', { ti
   const refund = await fetch(base + '/admin/' + id + '/refund', { method: 'POST', body: new URLSearchParams(),
     headers: { Origin: base, Authorization: auth }, redirect: 'manual' });
   assert.equal(refund.status, 409);
+  const requests = [];
+  const fake = { client: { refunds: { create: (...args) => requests.push(args) } } };
+  const refundDb = new DatabaseSync(dbFile);
+  const attempt = paymentAttempt(refundDb, id);
+  requestStripeRefund(refundDb, id);
+  refundDb.close();
+  sendStripeRefund(fake, attempt);
+  sendStripeRefund(fake, attempt);
+  assert.deepEqual(requests[0], requests[1]);
+  assert.equal(requests[0][0].payment_intent, 'pi_fixture');
+  const shipment = await fetch(base + '/admin/' + id + '/ship', { method: 'POST',
+    body: new URLSearchParams({ tracking: 'TEST', serial_one: 'TEST-123' }),
+    headers: { Origin: base, Authorization: auth }, redirect: 'manual' });
+  assert.equal(shipment.status, 409);
+  const refundEvent = { livemode: false, type: 'refund.updated', data: { object: {
+    object: 'refund', id: 're_fixture', payment_intent: 'pi_fixture', amount: 249900, currency: 'chf',
+    metadata: { movility_refund: id }, status: 'pending',
+  } } };
+  assert.equal((await (await event(refundEvent)).json()).result, 'pending');
+  const settled = { ...refundEvent, data: { object: { ...refundEvent.data.object, status: 'succeeded' } } };
+  const partial = { ...settled, data: { object: { ...settled.data.object, amount: 100 } } };
+  assert.equal((await (await event(partial)).json()).result, 'ignored');
+  const settledResults = await Promise.all([event(settled), event(settled)]);
+  assert.deepEqual((await Promise.all(settledResults.map(response => response.json()))).map(result => result.result).sort(),
+    ['duplicate', 'refunded']);
+  const updated = await (await fetch(base + '/admin/accounting.csv', { headers: { Authorization: auth } })).text();
+  assert.equal(updated.match(/"Reembolso","Tarjeta","CHF","-2499.00"/g)?.length, 1);
+  const check = new DatabaseSync(dbFile);
+  assert.equal(check.prepare('SELECT units FROM stock WHERE id = 1').get().units, 1);
+  check.close();
 });

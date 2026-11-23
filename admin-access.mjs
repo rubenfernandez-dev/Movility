@@ -21,7 +21,7 @@ export function adminAuth(passwords) {
   };
 }
 
-const orderAction = /^\/admin\/[0-9a-f-]{36}\/(ship|refund|return|tracking)$/;
+const orderAction = /^\/admin\/[0-9a-f-]{36}\/(ship|refund|stripe-refund|return|tracking)$/;
 const orderEmail = /^\/admin\/[0-9a-f-]{36}\/email\/(paid|shipped|refunded|delivered)$/;
 
 export function adminRouteAllowed(role, method, path) {
@@ -36,7 +36,7 @@ export function adminRouteAllowed(role, method, path) {
   }
   if (method === 'POST') {
     const action = orderAction.exec(path)?.[1];
-    if (action) return can(role, action === 'refund' ? 'finance' : 'shipping');
+    if (action) return can(role, ['refund', 'stripe-refund'].includes(action) ? 'finance' : 'shipping');
   }
   return false;
 }

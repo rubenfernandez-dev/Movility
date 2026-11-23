@@ -58,7 +58,7 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   métodos. La activación comercial depende de la entidad, la cuenta de
   liquidación y la aprobación de los proveedores.
   - [x] Stripe Checkout de prueba en CHF con reserva de stock, firma de eventos y registro único por cobro. Tarjeta por defecto; TWINT y PayPal sujetos a la configuración de la cuenta.
-  - [ ] Reembolsos y conciliación Stripe. Usar el identificador del PaymentIntent guardado, verificar el resultado firmado y reponer stock una sola vez si el pedido no salió.
+  - [x] Reembolso total de Stripe desde Finanzas, conciliación tras confirmación firmada y reposición una sola vez si el pedido no salió.
   - [ ] Probar Visa, Mastercard, TWINT y PayPal de extremo a extremo con una cuenta de prueba que tenga los métodos habilitados.
 - [ ] **6. Preparación del piloto.** Cargar fotos, vídeos, GLB y datos reales.
   Validar fiscalidad suiza, facturas y abonos, devoluciones, clasificación y

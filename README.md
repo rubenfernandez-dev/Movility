@@ -153,6 +153,11 @@ caducidad confirmados. Si Stripe no confirma el resultado, la reserva queda
 visible en **Pagos de prueba con Stripe** para revisión. El regreso desde
 Checkout consulta el estado. Las claves de producción se rechazan y la
 simulación de reembolsos queda deshabilitada para pedidos de Stripe.
+Finanzas puede solicitar un reembolso total de prueba desde el pedido.
+Añade al mismo endpoint los eventos `refund.created`, `refund.updated`
+y `refund.failed`. El panel registra el reembolso tras la confirmación
+firmada y solo repone stock si el pedido todavía no salió. Los reembolsos
+parciales o iniciados fuera de Movility requieren conciliación manual.
 
 En **Conciliación de pedidos** puedes filtrar y exportar cobros y reembolsos
 simulados por fecha UTC y medio de pago. El CSV lleva el identificador del

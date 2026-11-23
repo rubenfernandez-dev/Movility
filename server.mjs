@@ -27,6 +27,8 @@ import { setupPush, purgePush, pushConfig, pushSubscription, pushState, addPushS
   queuePush, deliverPush, pushControls } from './order-push.mjs';
 import { stripeMode, createCheckout, verifyStripeEvent, stripeOutcome, setupStripePayments, paymentAttempt,
   reserveStripe, saveStripeSession, applyStripeOutcome, stripeStatus, stripeAdmin, stripeMethodsFor } from './stripe-payments.mjs';
+import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, requestStripeRefund,
+  sendStripeRefund, saveStripeRefundSubmission, applyStripeRefundEvent, refundControls } from './stripe-refunds.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -143,6 +145,7 @@ transaction(() => {
   setupTracking(db);
   setupPush(db);
   setupStripePayments(db);
+  setupStripeRefunds(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -239,6 +242,15 @@ const notice = (id, kind) => {
   if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
 const applyCarrierEvent = event => transaction(() => applyTrackingEvent(db, event, id => notice(id, 'delivered')));
+function finishRefund(id) {
+  const order = orderById(id);
+  if (!order || order.status === 'refunded') return;
+  db.prepare("UPDATE orders SET status = 'refunded' WHERE id = ?").run(id);
+  if (order.status === 'paid') {
+    for (const line of purchasedLines(order)) orderStock(line.sku, line.quantity, 'refund', id);
+  }
+  notice(id, 'refunded');
+}
 transaction(() => {
   const previousEvents = db.prepare(`SELECT orders.*, notices.kind FROM notices
     JOIN orders ON orders.id = notices.order_id
@@ -335,6 +347,8 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END) AS refunds
     FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
+    const refund = stripeRefund(db, order.id);
+    const stripeOrder = financeAccess && paymentAttempt(db, order.id);
     const lines = orderLines(order.id);
     const serials = serialAccess ? shipmentSerials(db, order.id) : [];
     const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
@@ -348,9 +362,11 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${(shippingAccess || supportAccess) ? trackingHistory('es', trackingEvents(db, order.id)) : ''}
       ${shippingAccess ? trackingForm(order) : ''}
       ${supportAccess ? `<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
-      ${shippingAccess && order.status === 'paid' ? shipmentForm({ ...order, lines }) : ''}
+      ${shippingAccess && order.status === 'paid' ? refundPending(refund)
+        ? '<p>Expedición en pausa por reembolso pendiente.</p>' : shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
-      ${financeAccess && order.status !== 'refunded' && !paymentAttempt(db, order.id) ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
+      ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
+        : financeAccess && order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
       ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
     </article>`;
   }).join('');
@@ -424,6 +440,9 @@ const server = createServer(async (req, res) => {
       if (!body) return carrierResponse(res, 400, 'invalid');
       const event = verifyStripeEvent(stripe, body, req.headers['stripe-signature']);
       if (!event) return carrierResponse(res, 401, 'unauthorized');
+      if (['refund.created', 'refund.updated', 'refund.failed'].includes(event.type)) {
+        return carrierResponse(res, 200, transaction(() => applyStripeRefundEvent(db, event, finishRefund)));
+      }
       const outcome = stripeOutcome(event);
       if (!outcome) return carrierResponse(res, 200, 'ignored');
       const result = transaction(() => applyStripeOutcome(db, outcome, {
@@ -713,6 +732,23 @@ const server = createServer(async (req, res) => {
         return received ? redirect(res, `/admin#order-${second}`)
           : send(res, 409, rolePanel({ error: 'Revisa las unidades pendientes y que los números de serie correspondan a este modelo y pedido.' }));
       }
+      if (req.method === 'POST' && third === 'stripe-refund' && orderIdPattern.test(second) && path === `/admin/${second}/stripe-refund`) {
+        if (!stripe) return send(res, 409, rolePanel({ error: 'Activa Stripe en modo de prueba para solicitar este reembolso.' }));
+        const attempt = paymentAttempt(db, second);
+        const refund = transaction(() => {
+          const order = orderById(second);
+          if (!order || order.status === 'refunded' || attempt?.state !== 'paid') return null;
+          return requestStripeRefund(db, second);
+        });
+        if (!refund || !refundRetryable(refund)) return redirect(res, `/admin#order-${second}`);
+        try {
+          const result = await sendStripeRefund(stripe, attempt);
+          if (!saveStripeRefundSubmission(db, attempt, result)) throw new Error('Unexpected refund');
+          return redirect(res, `/admin#order-${second}`);
+        } catch {
+          return send(res, 502, rolePanel({ error: 'No se pudo verificar la solicitud. Revisa Stripe o reintenta desde el pedido.' }));
+        }
+      }
       if (req.method === 'POST' && /^\/admin\/[0-9a-f-]{36}\/(ship|refund)$/.test(path)) {
         const fields = await form(req, third === 'ship' ? 262144 : undefined);
         const tracking = fields?.get('tracking')?.trim();
@@ -721,6 +757,7 @@ const server = createServer(async (req, res) => {
           const order = orderById(second);
           if (!order) return 'missing';
           if (third === 'ship') {
+            if (order.status === 'paid' && refundPending(stripeRefund(db, second))) return 'refund-pending';
             const serials = readShipmentSerials(order, fields);
             if (!serials) return 'invalid';
             if (order.status !== 'paid') return order.tracking === tracking &&
@@ -732,11 +769,7 @@ const server = createServer(async (req, res) => {
           }
           if (third === 'refund' && order.status !== 'refunded') {
             if (paymentAttempt(db, second)) return 'stripe-refund';
-            db.prepare("UPDATE orders SET status = 'refunded' WHERE id = ?").run(second);
-            if (order.status === 'paid') {
-              for (const line of purchasedLines(order)) orderStock(line.sku, line.quantity, 'refund', second);
-            }
-            notice(second, 'refunded');
+            finishRefund(second);
           }
           return 'ok';
         });
@@ -746,6 +779,7 @@ const server = createServer(async (req, res) => {
         if (found === 'stripe-refund') return send(res, 409, rolePanel({
           error: 'El reembolso de Stripe se conciliará desde la integración de pagos. La simulación no cambia ese pedido.',
         }));
+        if (found === 'refund-pending') return send(res, 409, rolePanel({ error: 'Espera la confirmación de Stripe antes de expedir este pedido.' }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
       }
     }
