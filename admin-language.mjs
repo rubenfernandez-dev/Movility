@@ -65,6 +65,7 @@ const navigationGroups = [
     ['/admin/faqs', 'Preguntas frecuentes'],
     ['/admin/content/about', 'Quiénes somos'],
     ['/admin/content/contact', 'Datos públicos de contacto'],
+    ['/admin/content/delivery-returns-warranty', 'Envíos, devoluciones y garantía'],
   ]],
   ['Configuración', [['/admin/security', 'Seguridad del panel']]],
 ];

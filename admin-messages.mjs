@@ -36,6 +36,10 @@ Completa los textos en ambos idiomas y revisa los datos de contacto.|Fülle die 
 Completa el título y la introducción en ambos idiomas. Cada bloque debe estar completo o vacío en los dos idiomas.|Fülle Titel und Einleitung in beiden Sprachen aus. Jeder Abschnitt muss in beiden Sprachen vollständig oder leer sein.|Renseignez le titre et l’introduction dans les deux langues. Chaque bloc doit être complet ou vide dans les deux langues.
 El contenido cambió mientras lo editabas. Revisa los datos actuales y vuelve a guardar.|Die Inhalte wurden inzwischen geändert. Prüfe die aktuellen Angaben und speichere erneut.|Le contenu a changé entre-temps. Vérifiez les informations actuelles et enregistrez à nouveau.
 Envíos, devoluciones y garantía|Lieferung, Rückgabe und Garantie|Livraison, retours et garantie
+Envíos|Lieferung|Livraison
+Devoluciones|Rückgabe|Retours
+Garantía|Garantie|Garantie
+Completa el título, la introducción y los tres bloques en ambos idiomas.|Fülle Titel, Einleitung und die drei Abschnitte in beiden Sprachen aus.|Renseignez le titre, l’introduction et les trois blocs dans les deux langues.
 Texto del enlace en alemán|Linktext auf Deutsch|Texte du lien en allemand
 Texto del enlace en francés|Linktext auf Französisch|Texte du lien en français
 Posición|Position|Position

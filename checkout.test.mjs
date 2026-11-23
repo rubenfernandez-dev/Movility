@@ -191,6 +191,27 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(service, /<h1 class="page-title">Livraison, retours et garantie<\/h1>/);
   assert.match(service, /href="\/de-CH\/delivery-returns-warranty" lang="de-CH"/);
   assert.match(await (await get('/de-CH/delivery-returns-warranty')).text(), /Garantie und Kundendienst/);
+  const serviceEditor = '/admin/content/delivery-returns-warranty';
+  assert.equal((await get(serviceEditor)).status, 401);
+  assert.equal((await get(serviceEditor, roleHeaders('support'))).status, 403);
+  assert.match(await (await get(serviceEditor, editorAuth)).text(), /name="heading_de_0"[^>]*value="Lieferung"/);
+  const serviceChanges = {
+    revision: '0', title_de: 'Serviceinformationen', intro_de: 'Informationen zur Testbestellung.',
+    title_fr: 'Informations de service', intro_fr: 'Informations pour la commande de test.',
+    heading_de_0: 'Testlieferung', body_de_0: 'Lieferung wird hier erläutert.',
+    heading_de_1: 'Testrückgabe', body_de_1: 'Rückgabe wird hier erläutert.',
+    heading_de_2: 'Testgarantie', body_de_2: 'Garantie wird hier erläutert.',
+    heading_fr_0: 'Livraison de test', body_fr_0: 'Texte de livraison.',
+    heading_fr_1: 'Retour de test', body_fr_1: 'Texte de retour.',
+    heading_fr_2: 'Garantie de test', body_fr_2: 'Texte <b>écrit</b> pour la garantie.',
+  };
+  assert.equal((await post(serviceEditor, { ...serviceChanges, body_fr_1: '' }, editorAuth)).status, 400);
+  assert.equal((await post(serviceEditor, serviceChanges, editorAuth)).status, 303);
+  const editedService = await (await get('/fr-CH/delivery-returns-warranty')).text();
+  assert.match(editedService, /<title>Informations de service \| Movility<\/title>/);
+  assert.match(editedService, /Livraison de test[\s\S]*Retour de test[\s\S]*Texte &lt;b&gt;écrit&lt;\/b&gt; pour la garantie/);
+  assert.match(await (await get('/de-CH/delivery-returns-warranty')).text(), /Testlieferung[\s\S]*Testrückgabe[\s\S]*Testgarantie/);
+  assert.equal((await post(serviceEditor, serviceChanges, editorAuth)).status, 409);
   assert.match(await (await get('/sitemap.xml')).text(), /<loc>https:\/\/movility\.example\/fr-CH\/about<\/loc>/);
   const side = await get('/fr-CH/movility-one?view=side');
   assert.equal(side.headers.get('x-robots-tag'), 'noindex, nofollow');

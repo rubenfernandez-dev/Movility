@@ -1,15 +1,18 @@
 import { adminHtml, adminText } from './admin-language.mjs';
-import { aboutSections, information, validContactEmail, validContactPhone } from './information.mjs';
+import { information, informationBlocks, validContactEmail, validContactPhone } from './information.mjs';
 import { escapeHtml } from './views.mjs';
 
 const languages = [['de', 'de-CH', 'Alemán'], ['fr', 'fr-CH', 'Francés']];
-const pages = { about: 'Quiénes somos', contact: 'Datos públicos de contacto' };
+export const informationAdminTitles = {
+  about: 'Quiénes somos', contact: 'Datos públicos de contacto',
+  'delivery-returns-warranty': 'Envíos, devoluciones y garantía',
+};
 
 export function setupInformation(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS information_settings (
     page TEXT PRIMARY KEY, content TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0
   );
-  INSERT OR IGNORE INTO information_settings (page,content) VALUES ('about','{}'),('contact','{}');`);
+  INSERT OR IGNORE INTO information_settings (page,content) VALUES ('about','{}'),('contact','{}'),('delivery-returns-warranty','{}');`);
 }
 
 export function informationSettings(db, page, configuredEmail) {
@@ -18,7 +21,7 @@ export function informationSettings(db, page, configuredEmail) {
   const defaults = {};
   for (const [code, locale] of languages) {
     [defaults['title_' + code], defaults['intro_' + code]] = information['/' + page][locale];
-    if (page === 'about') aboutSections[locale].forEach(([heading, body], index) => {
+    informationBlocks[page]?.[locale].forEach(([heading, body], index) => {
       defaults['heading_' + code + '_' + index] = heading;
       defaults['body_' + code + '_' + index] = body;
     });
@@ -36,7 +39,7 @@ function fieldsFor(page) {
     keys['title_' + code] = 100;
     keys['intro_' + code] = 400;
     if (page === 'contact') keys['hours_' + code] = 400;
-    else aboutSections['de-CH'].forEach((_, index) => {
+    else informationBlocks[page]['de-CH'].forEach((_, index) => {
       keys['heading_' + code + '_' + index] = 100;
       keys['body_' + code + '_' + index] = 2000;
     });
@@ -54,9 +57,9 @@ export function saveInformation(db, page, fields) {
   const invalidContact = page === 'contact' && (
     (values.email && !validContactEmail(values.email)) || (values.phone && !validContactPhone(values.phone)) ||
     Boolean(values.hours_de) !== Boolean(values.hours_fr));
-  const invalidSections = page === 'about' && aboutSections['de-CH'].some((_, index) => {
+  const invalidSections = informationBlocks[page]?.['de-CH'].some((_, index) => {
     const filled = languages.flatMap(([code]) => ['heading', 'body'].map(field => Boolean(values[field + '_' + code + '_' + index])));
-    return filled.some(Boolean) && !filled.every(Boolean);
+    return (page !== 'about' || filled.some(Boolean)) && !filled.every(Boolean);
   });
   if (incomplete || invalidContact || invalidSections || !/^\d{1,12}$/.test(revision) ||
       Object.keys(limits).some(key => values[key].length > limits[key])) return { status: 'invalid', values };
@@ -74,11 +77,15 @@ export function informationAdmin(page, settings, result = {}) {
     <textarea name="${key}" rows="3" maxlength="${limits[key]}" ${attrs}>${text(key)}</textarea></label>`;
   const messages = {
     saved: 'Cambios publicados.',
-    invalid: page === 'contact' ? 'Completa los textos en ambos idiomas y revisa los datos de contacto.' :
-      'Completa el título y la introducción en ambos idiomas. Cada bloque debe estar completo o vacío en los dos idiomas.',
+    invalid: {
+      contact: 'Completa los textos en ambos idiomas y revisa los datos de contacto.',
+      about: 'Completa el título y la introducción en ambos idiomas. Cada bloque debe estar completo o vacío en los dos idiomas.',
+      'delivery-returns-warranty': 'Completa el título, la introducción y los tres bloques en ambos idiomas.',
+    }[page],
     conflict: 'El contenido cambió mientras lo editabas. Revisa los datos actuales y vuelve a guardar.',
   };
-  return adminHtml`<h1>${adminText(pages[page])}</h1><p><a href="/de-CH/${page}">Deutsch</a> · <a href="/fr-CH/${page}">Français</a></p>
+  const serviceLabels = ['Envíos', 'Devoluciones', 'Garantía'];
+  return adminHtml`<h1>${adminText(informationAdminTitles[page])}</h1><p><a href="/de-CH/${page}">Deutsch</a> · <a href="/fr-CH/${page}">Français</a></p>
     ${result.status ? `<p class="${result.status === 'saved' ? 'form-success' : 'form-error'}" role="${result.status === 'saved' ? 'status' : 'alert'}">${adminText(messages[result.status])}</p>` : ''}
     <form class="admin-catalog information-editor" method="post" action="/admin/content/${page}">
       <input type="hidden" name="revision" value="${settings.revision}">
@@ -90,9 +97,12 @@ export function informationAdmin(page, settings, result = {}) {
         ${input('title_' + code, 'Título', `lang="${locale}" required`)}
         ${area('intro_' + code, 'Introducción', `lang="${locale}" required`)}
         ${page === 'contact' ? area('hours_' + code, 'Horario opcional', `lang="${locale}"`) :
-          aboutSections[locale].map((_, index) => adminHtml`<h2>Bloque ${index + 1}</h2>
-            ${input('heading_' + code + '_' + index, 'Título del bloque', `lang="${locale}"`)}
-            ${area('body_' + code + '_' + index, 'Texto del bloque', `lang="${locale}"`)}`).join('')}
+          informationBlocks[page][locale].map((_, index) => {
+            const attrs = `lang="${locale}"` + (page === 'about' ? '' : ' required');
+            return adminHtml`<h2>${page === 'about' ? adminText('Bloque') + ' ' + (index + 1) : adminText(serviceLabels[index])}</h2>
+              ${input('heading_' + code + '_' + index, 'Título del bloque', attrs)}
+              ${area('body_' + code + '_' + index, 'Texto del bloque', attrs)}`;
+          }).join('')}
       </fieldset>`).join('')}
       <button>Guardar y publicar</button>
     </form>`;

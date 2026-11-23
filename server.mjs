@@ -10,7 +10,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
-import { informationAdmin, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
+import { informationAdmin, informationAdminTitles, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
 import { faqAdmin, faqFeedback, setupFaq, shopFaqs, updateFaq } from './faq.mjs';
 import { orderEmail } from './postpurchase.mjs';
@@ -654,7 +654,7 @@ const server = createServer(async (req, res) => {
       : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
         ? `?view=${galleryView}#gallery` : '';
     const discoverable = first === locale && isPublicPage(suffix);
-    const editorial = first === locale && ['/about', '/contact'].includes(suffix)
+    const editorial = first === locale && suffix === '/' + second && Object.hasOwn(informationAdminTitles, second)
       ? informationSettings(db, second, process.env.MOVILITY_CONTACT_EMAIL) : null;
     const editorialLocale = locale === 'de-CH' ? 'de' : 'fr';
     const cartUnits = [...readCart(req).values()].reduce((sum, quantity) => sum + quantity, 0);
@@ -732,10 +732,10 @@ const server = createServer(async (req, res) => {
             result === 'invalid' ? { id, fields } : undefined));
         }
       }
-      const contentRouteMatch = /^\/admin\/content\/(about|contact)$/.exec(path);
-      if (contentRouteMatch && ['GET', 'POST'].includes(req.method)) {
+      const contentRouteMatch = /^\/admin\/content\/([a-z-]+)$/.exec(path);
+      if (contentRouteMatch && Object.hasOwn(informationAdminTitles, contentRouteMatch[1]) && ['GET', 'POST'].includes(req.method)) {
         const key = contentRouteMatch[1];
-        const panel = result => adminPage(key === 'about' ? 'Quiénes somos' : 'Datos públicos de contacto',
+        const panel = result => adminPage(informationAdminTitles[key],
           informationAdmin(key, informationSettings(db, key, process.env.MOVILITY_CONTACT_EMAIL), result));
         if (req.method === 'GET') return send(res, 200, panel(searchParams.has('saved') ? { status: 'saved' } : {}));
         const result = saveInformation(db, key, await form(req, 100000));
