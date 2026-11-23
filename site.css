@@ -98,6 +98,23 @@ input:not([type=radio]){display:block;width:100%;padding:.65rem;border:1px solid
 .viewer model-viewer{display:block;width:100%;height:clamp(21rem,65vh,38rem);background:radial-gradient(ellipse at 50% 45%,#f7f9f4,#dceae1);border:1px solid var(--line);border-radius:1rem;--poster-color:transparent}
 .viewer-poster{width:100%;height:100%;object-fit:contain}
 .product-gallery{min-width:0;scroll-margin-top:1rem}
+.product{align-items:start}
+.product-no-gallery{grid-template-columns:minmax(0,42rem)}
+.product-photo>a{display:block;position:relative;border:1px solid var(--line);border-radius:1rem;background:#eef1ea}
+.product-photo img{aspect-ratio:4/3;object-fit:contain}
+.product-photo-action{position:absolute;right:.65rem;bottom:.65rem;padding:.35rem .65rem;border-radius:2rem;background:#fff;color:var(--accent);font-size:.85rem;font-weight:700}
+.product-photo>a:hover .product-photo-action{text-decoration:underline}
+.product-overview{min-width:0}
+.product-overview .lead{max-width:52ch}
+.product-purchase,.technical-card{background:white;border:1px solid var(--line);border-radius:1rem;padding:clamp(1rem,3vw,1.5rem)}
+.product-purchase .price{margin:.35rem 0 .9rem}
+.product-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem;margin-top:clamp(1.5rem,4vw,3rem)}
+.technical-card h2{margin:0 0 1rem}
+.technical-card ul{margin:0;padding-left:1.25rem}
+.technical-specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr));gap:.65rem;margin:0}
+.technical-specs div{background:#eef3ec;border-radius:.65rem;padding:.7rem;overflow-wrap:anywhere}
+.technical-specs dt{font-size:.9rem;color:var(--muted)}
+.technical-specs dd{margin:.25rem 0 0;font-weight:750}
 .gallery-options{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0;margin:.65rem 0 0}
 .gallery-options a{display:grid;grid-template-columns:3rem 1fr;align-items:center;gap:.45rem;min-height:3.1rem;padding:.2rem .55rem .2rem .2rem;border:1px solid var(--line);border-radius:.5rem;background:white;font-size:.875rem}
 .gallery-options a[aria-current]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);font-weight:700}

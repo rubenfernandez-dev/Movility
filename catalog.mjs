@@ -1,6 +1,6 @@
 import { adminFragment, adminHtml, adminLocale, adminText } from './admin-language.mjs';
 import { escapeHtml, money, copy } from './views.mjs';
-import { productGallery, productVideo } from './storefront.mjs';
+import { productAvailability, productDetails, productGallery, productVideo } from './storefront.mjs';
 import { addToCart, coreSKU, skuPattern } from './cart.mjs';
 import { isPart } from './compatibility.mjs';
 
@@ -15,6 +15,7 @@ const language = {
   'de-CH': { models: 'Weitere Modelle', price: 'Preis', width: 'Breite', weight: 'Gewicht', range: 'Reichweite', fold: 'Faltbar', yes: 'Ja', no: 'Nein', cart: 'Zum Warenkorb', compare: 'Vergleichen' },
   'fr-CH': { models: 'Autres modèles', price: 'Prix', width: 'Largeur', weight: 'Poids', range: 'Autonomie', fold: 'Pliable', yes: 'Oui', no: 'Non', cart: 'Voir le panier', compare: 'Comparer' },
 };
+const view3dLabel = { 'de-CH': '3D-Ansicht öffnen', 'fr-CH': 'Ouvrir la vue 3D' };
 
 export function setupModels(db) {
   db.exec(`
@@ -265,16 +266,17 @@ export function extraProduct(locale, model, media, view, features, compatibility
     [l.range, model.range + ' km'], [l.fold, model.fold ? l.yes : l.no]];
   const name = escapeHtml(model.name);
   const gallery = productGallery(locale, model.name, '/models/' + model.sku, media.photos, view);
-  return `<section class="${gallery ? 'product' : 'confirmation'}">${gallery}
-    <div><p class="eyebrow">${model.sku}</p><h1>${name}</h1>
+  const wheelchair = isWheelchair(model);
+  return `<section class="${gallery ? 'product' : 'product product-no-gallery'}">${gallery}
+    <div class="product-overview"><p class="eyebrow">${model.sku}</p><h1>${name}</h1>
     <p class="lead">${escapeHtml(locale === 'de-CH' ? model.description_de : model.description_fr)}</p>
-    <p class="price">${money(locale, model.cents)}</p>${isWheelchair(model) ? `<dl class="specs">
-    ${specs.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>` : ''}
     ${isPart(model) ? compatibility : ''}
-    <div class="product-actions cart-action">${model.units ? addToCart(locale, model.sku) : copy[locale].soldOut}
-    ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">3D</a>` : ''}
-    ${isWheelchair(model) ? `<a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a>` : ''}</div>${renderFeatures(locale, features)}</div></section>
-    ${productVideo(locale, media.video)}${isWheelchair(model) ? compatibility : ''}`;
+    <div class="product-purchase">${productAvailability(locale, model.units)}<p class="price">${money(locale, model.cents)}</p>
+    <div class="product-actions">${model.units ? addToCart(locale, model.sku) : ''}
+    ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">${view3dLabel[locale]}</a>` : ''}
+    ${wheelchair ? `<a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a>` : ''}</div></div></div></section>
+    ${productDetails(locale, wheelchair ? specs : [], renderFeatures(locale, features))}
+    ${productVideo(locale, media.video)}${wheelchair ? compatibility : ''}`;
 }
 
 export function renderFeatures(locale, features) {

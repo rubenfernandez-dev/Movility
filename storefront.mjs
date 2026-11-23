@@ -14,7 +14,8 @@ const labels = {
     browse: 'Produktkatalog', browseAction: 'Katalog ansehen',
     stock: 'Auf Lager', facts: 'Beispiel-Spezifikationen',
     specs: [['Bauweise', 'Faltbarer Rahmen'], ['Bedienung', 'Joystick'], ['Einsatz', 'Alltag und Reisen']],
-    zoom: 'Produktbild vergrössern', add: 'Zum Warenkorb', summary: 'Bestellübersicht', country: 'Schweiz',
+    add: 'Zum Warenkorb', summary: 'Bestellübersicht', country: 'Schweiz',
+    zoomAction: 'Bild vergrössern', technical: 'Technische Daten',
     gallery: 'Produktgalerie', front: 'Schräg von vorn', side: 'Seitenansicht', rear: 'Rückansicht', video: 'Produktvideo',
     transcript: 'Transkript zum Produktvideo lesen', videoUnavailable: 'Dieses Video kann in deinem Browser nicht abgespielt werden.',
     delivery: 'Lieferung im Test', total: 'Gesamtbetrag', quantity: 'Menge', demoData: 'Verwende für diese Testbestellung nur fiktive Angaben.',
@@ -29,7 +30,8 @@ const labels = {
     browse: 'Catalogue de produits', browseAction: 'Voir le catalogue',
     stock: 'En stock', facts: 'Exemples de caractéristiques',
     specs: [['Structure', 'Châssis pliable'], ['Commande', 'Joystick'], ['Utilisation', 'Quotidien et voyages']],
-    zoom: 'Agrandir la photo du fauteuil', add: 'Voir le panier', summary: 'Récapitulatif', country: 'Suisse',
+    add: 'Voir le panier', summary: 'Récapitulatif', country: 'Suisse',
+    zoomAction: 'Agrandir l’image', technical: 'Caractéristiques techniques',
     gallery: 'Galerie du fauteuil', front: 'Vue de trois quarts', side: 'Vue de profil', rear: 'Vue arrière', video: 'Vidéo du fauteuil',
     transcript: 'Lire la transcription de la vidéo', videoUnavailable: 'Votre navigateur ne peut pas lire cette vidéo.',
     delivery: 'Livraison simulée', total: 'Total', quantity: 'Quantité', demoData: 'Utilisez uniquement des informations fictives pour cette commande de test.',
@@ -47,6 +49,7 @@ const image = (l, cls = '') => `<img class="${cls}" src="${productImage}" width=
 const href = (locale, suffix = '') => `/${locale}${suffix}`;
 const button = (url, label) => `<a class="button" href="${url}">${label}</a>`;
 const status = (l, t, available) => `<span class="stock ${available ? 'available' : ''}">${available ? l.stock : t.soldOut}</span>`;
+export const productAvailability = (locale, available) => status(labels[locale], copy[locale], available);
 
 export function navigation(locale, suffix, query = '', units = 0) {
   const l = labels[locale];
@@ -86,10 +89,22 @@ export function productGallery(locale, name, path, photos, view, demo = false) {
     `<li><a href="/${locale}${path}?view=${key}#gallery" ${key === selected ? 'aria-current="true"' : ''}>
       <img src="${url}" alt="" width="120" height="90"><span>${l[key]}</span></a></li>`).join('');
   return `<section class="product-gallery" id="gallery" aria-label="${l.gallery}">
-    <figure class="product-photo"><a href="${photos[selected]}" aria-label="${l.zoom}: ${l[selected]}">
-      <img src="${photos[selected]}" alt="${l[selected]} · ${escapeHtml(name)}" width="1200" height="900"></a>
+    <figure class="product-photo"><a href="${photos[selected]}" aria-label="${l.zoomAction}: ${l[selected]}">
+      <img src="${photos[selected]}" alt="${l[selected]} · ${escapeHtml(name)}" width="1200" height="900">
+      <span class="product-photo-action" aria-hidden="true">${l.zoomAction}</span></a>
       <figcaption>${demo ? l.sample + ' · ' : ''}${l[selected]}</figcaption></figure>
     ${views.length > 1 ? `<ul class="gallery-options">${tabs}</ul>` : ''}</section>`;
+}
+
+export function productDetails(locale, specs, features, demo = false) {
+  if (!specs.length && !features) return '';
+  const l = labels[locale];
+  return `<div class="product-details">
+    ${specs.length ? `<section class="technical-card"><h2>${demo ? l.facts : l.technical}</h2>
+      <dl class="technical-specs">${specs.map(([label, value]) =>
+        `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl></section>` : ''}
+    ${features ? `<section class="technical-card">${features}</section>` : ''}
+  </div>`;
 }
 
 export function productVideo(locale, media) {
@@ -108,12 +123,11 @@ export function productPage(locale, cents, available, model, { view = 'front', v
   const description = (locale === 'de-CH' ? model.description_de : model.description_fr) || t.description;
   return `<section class="product">
     ${productGallery(locale, 'Movility One', '/movility-one', photos || { front: productImage, side: sideImage }, view, !photos)}
-    <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
-      ${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
+    <div class="product-overview"><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
+      <div class="product-purchase">${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
       <div class="product-actions">${available ? addToCart(locale, coreSKU) : ''}${viewerLink(locale)}
-        <a href="/${locale}/compare">${compareLabel(locale)}</a></div>
-      ${features || `<h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl>`}</div>
-  </section>${productVideo(locale, video === true ? {
+        <a href="/${locale}/compare">${compareLabel(locale)}</a></div></div></div>
+  </section>${productDetails(locale, l.specs, features, true)}${productVideo(locale, video === true ? {
     video: videoPath, poster: productImage, captions: captionsPath(locale), transcript: transcriptPath(locale),
   } : video || null)}`;
 }

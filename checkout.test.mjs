@@ -232,6 +232,8 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(gallery, /hreflang="de-CH" href="https:\/\/movility\.example\/de-CH\/movility-one"/);
   assert.match(gallery, /\/de-CH\/movility-one\?view=side#gallery/);
   assert.match(gallery, /aria-current="true"[\s\S]*Vue de profil/);
+  assert.match(gallery, /class="product-photo-action" aria-hidden="true">Agrandir l’image/);
+  assert.match(gallery, /class="product-purchase"[\s\S]*class="technical-specs"/);
   assert.match(gallery, /<track kind="captions" srclang="fr-CH"/);
   assert.match(gallery, /movility-one.fr-CH.txt/);
   assert.doesNotMatch(await (await get('/de-CH/movility-one')).text(), /<video /);
