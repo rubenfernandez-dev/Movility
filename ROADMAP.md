@@ -36,6 +36,8 @@ compra como invitado sigue disponible y el piloto puede comenzar con ella.
    suscripción por correo y permitir cambiar idioma o darse de baja sin
    iniciar sesión. La baja bloquea campañas futuras y el correo de pedido
    sigue funcionando.
+   - [x] Alta voluntaria, confirmación y baja sin iniciar sesión con un código en el buzón simulado. Registro de idioma, origen, versión y fecha.
+   - [ ] Entrega real de confirmaciones y enlace de baja desde cada campaña.
 3. **Campañas.** Empezar con ofertas generales y novedades en DE/FR. Verificar
    consentimiento y bajas antes del envío, con audiencias de prueba primero.
    Usar el idioma elegido y evitar deducir condiciones de salud a partir de

@@ -69,6 +69,7 @@ export function customerPage(db, locale, email, state = '') {
     <button name="action" value="verify">${de ? 'Anmelden' : 'Se connecter'}</button></form>`;
   const orders = db.prepare('SELECT orders.id FROM customer_orders JOIN orders ON orders.id = customer_orders.order_id WHERE customer_orders.email = ? ORDER BY orders.rowid DESC').all(email);
   return `<h1 class="page-title">${title}</h1><p>${escapeHtml(email)}</p>${feedback}
+    <p><a href="/${locale}/offers">${de ? 'Angebote verwalten' : 'Gérer les offres'}</a></p>
     <h2>${de ? 'Meine Bestellungen' : 'Mes commandes'}</h2>
     ${orders.length ? '<ul>' + orders.map(order => `<li><a href="/${locale}/orders/${order.id}">${order.id}</a></li>`).join('') + '</ul>'
       : `<p>${de ? 'Noch keine verknüpfte Bestellung.' : 'Aucune commande associée.'}</p>`}

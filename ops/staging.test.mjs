@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { stagingEnvironment } from './staging.mjs';
 
 test('staging keeps a simulated order after restart and ignores external integration settings', { timeout: 15000 }, async () => {
@@ -108,6 +109,30 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: other } })).text(), new RegExp(orderPath));
     assert.equal((await submit(account, { action: 'logout' }, { Cookie: customer })).status, 303);
     assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: customer } })).text(), new RegExp(orderPath));
+    const offers = restarted + '/fr-CH/offers';
+    const offerInbox = restarted + '/admin/offer-codes';
+    const offerEmail = 'offers@example.com';
+    assert.equal((await fetch(offerInbox)).status, 401);
+    assert.equal((await submit(offers, { action: 'request', email: offerEmail })).status, 400);
+    assert.equal((await submit(offers, { action: 'request', email: offerEmail, consent: 'yes' })).status, 303);
+    const offerCode = async () => (await (await fetch(offerInbox, { headers: { Authorization: auth } })).text())
+      .match(/<code>([A-Za-z0-9_-]{32})<\/code>/)[1];
+    const confirmationCode = await offerCode();
+    assert.equal((await submit(offers, { action: 'confirm', email: 'wrong@example.com', code: confirmationCode })).status, 400);
+    assert.equal((await submit(offers, { action: 'confirm', email: offerEmail, code: confirmationCode })).status, 303);
+    assert.equal((await submit(offers, { action: 'confirm', email: offerEmail, code: confirmationCode })).status, 400);
+    const stopCode = await offerCode();
+    assert.equal((await submit(offers, { action: 'stop', code: stopCode })).status, 303);
+    assert.equal((await submit(offers, { action: 'stop', code: stopCode })).status, 400);
+    const consentDb = new DatabaseSync(database, { readOnly: true });
+    try {
+      assert.equal(consentDb.prepare('SELECT state FROM offer_subscriptions WHERE email=?').get(offerEmail).state, 'revoked');
+      const consent = consentDb.prepare('SELECT action, locale, source, version FROM offer_consent_events WHERE email=? ORDER BY id').all(offerEmail);
+      assert.deepEqual(consent.map(row => [row.action, row.locale, row.source, row.version]), [
+        ['requested', 'fr-CH', 'guest', 'offers-v1'], ['confirmed', 'fr-CH', 'guest', 'offers-v1'],
+        ['revoked', 'fr-CH', 'guest', 'offers-v1'],
+      ]);
+    } finally { consentDb.close(); }
     assert.equal((await submit(codePath, { action: 'revoke' }, { Authorization: auth })).status, 303);
     assert.doesNotMatch(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     const docPath = restarted + '/admin/' + id + '/document/';

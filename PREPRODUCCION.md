@@ -27,6 +27,11 @@ verifícalo como invitado con el mismo correo y elige **Asociar el pedido**
 en Mi cuenta. El correo permanece en simulación y esta función solo se
 habilita en preproducción.
 
+Las preferencias de ofertas están en `/fr-CH/offers` y `/de-CH/offers`.
+Confirma el alta mediante el código de `/admin/offer-codes`; el buzón
+también muestra el código para probar la baja sin cuenta. No hay campañas
+ni correo externo en esta instancia.
+
 ## Primer pedido y factura
 
 | Bloque | Datos disponibles | Pendiente para el piloto |

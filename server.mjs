@@ -34,6 +34,7 @@ import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, gues
   verifiedGuestOrder, guestAccessPage, codePage } from './guest-proof.mjs';
 import { setupAccounts, accountEmail, issueAccountCode, verifyAccountCode, signedInCustomer, endCustomerSession,
   customerCookie, linkGuestOrder, customerPage, accountMailbox } from './customer-accounts.mjs';
+import { setupOffers, requestOffers, confirmOffers, stopOffers, offersPage, offerMailbox } from './offers.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const accountsEnabled = process.env.MOVILITY_STAGE === 'staging';
@@ -155,6 +156,7 @@ transaction(() => {
   setupDocuments(db);
   setupGuestProof(db);
   setupAccounts(db);
+  setupOffers(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -390,7 +392,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     </article>`;
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
-    ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a></p>' : ''}
+    ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a></p>' : ''}
     <p>Perfil: ${roleNames[role]}</p>
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     <div class="product-actions">
@@ -531,7 +533,7 @@ const server = createServer(async (req, res) => {
     const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
-    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access'].includes(suffix) ||
+    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
       modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
@@ -553,7 +555,8 @@ const server = createServer(async (req, res) => {
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}, {
           footer: analyticsLink(locale) + (accountsEnabled
-            ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>` : ''),
+            ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>
+              · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),
           prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
             ? analyticsPrompt(locale, consent, path) : '',
         }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute));
@@ -601,6 +604,9 @@ const server = createServer(async (req, res) => {
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
       if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/customer-codes') {
         return send(res, 200, page('es', 'Buzón simulado de clientes', accountMailbox(db)));
+      }
+      if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/offer-codes') {
+        return send(res, 200, page('es', 'Buzón de ofertas de prueba', offerMailbox(db)));
       }
       if (req.method === 'POST' && role === 'admin' && third === 'guest-code' && orderIdPattern.test(second) &&
           path === `/admin/${second}/guest-code`) {
@@ -832,6 +838,27 @@ const server = createServer(async (req, res) => {
         }));
         if (found === 'refund-pending') return send(res, 409, rolePanel({ error: 'Espera la confirmación de Stripe antes de expedir este pedido.' }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
+      }
+    }
+    if (accountsEnabled && path === `/${locale}/offers`) {
+      const customer = signedInCustomer(db, req.headers.cookie);
+      if (req.method === 'GET') return render(offersPage(locale, customer, searchParams.get('result')));
+      if (req.method === 'POST') {
+        const fields = await form(req);
+        const action = fields?.get('action');
+        const email = customer || accountEmail(fields?.get('email')?.trim());
+        const code = fields?.get('code')?.trim() || '';
+        if (action === 'request' && email && fields.get('consent') === 'yes') {
+          transaction(() => requestOffers(db, email, locale, Boolean(customer)));
+          return redirect(res, path + '?result=requested');
+        }
+        if (action === 'confirm' && email && transaction(() => confirmOffers(db, email, code))) {
+          return redirect(res, path + '?result=active');
+        }
+        if (action === 'stop' && transaction(() => stopOffers(db, customer, code))) {
+          return redirect(res, path + '?result=off');
+        }
+        return render(offersPage(locale, customer, 'error'), 400);
       }
     }
     if (accountsEnabled && path === `/${locale}/account`) {
