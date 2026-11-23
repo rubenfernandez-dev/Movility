@@ -51,7 +51,6 @@ figcaption{margin-top:.45rem;font-size:.875rem;color:var(--muted)}
 .discovery-photo{display:block;width:100%;height:100%;object-fit:contain}
 .discovery-action{position:absolute;left:50%;bottom:clamp(.9rem,3vw,2rem);transform:translateX(-50%);
   max-width:calc(100% - 2rem);text-align:center;background:#fff;color:var(--ink);border-color:#fff;box-shadow:0 2px 14px #142f3440}
-@supports(height:1svh){.discovery-action{top:min(calc(100% - 4rem),55svh);bottom:auto}}
 .discovery-action:hover{background:#e6efe9}
 @media(max-width:55rem){.top-inner{flex-wrap:wrap;gap:.65rem 1rem}
   .top-inner.storefront-header{flex-wrap:nowrap;gap:.5rem}
