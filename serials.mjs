@@ -30,6 +30,7 @@ export function shipmentSerials(db, orderId) {
 export function readShipmentSerials(order, fields) {
   const entries = [];
   for (const line of purchasedLines(order)) {
+    if (line.requires_serial === 0) continue;
     const values = (fields.get('serial_' + line.sku) || '').split(/\r?\n/).map(normalize).filter(Boolean);
     if (values.length !== line.quantity || values.some(serial => !format.test(serial))) return null;
     for (const serial of values) entries.push({ sku: line.sku, serial });
@@ -72,7 +73,7 @@ export function receiptMatches(db, id, serials) {
 }
 
 export function validReturnSelection(records, sku, quantity, serials) {
-  if (!records.length) return !serials.length;
+  if (!records.some(record => record.sku === sku)) return !serials.length;
   return serials.length === quantity && serials.every(serial => records.some(record =>
     record.sku === sku && record.serial === serial && !record.receipt_id));
 }
@@ -87,12 +88,13 @@ export function markSerialsReceived(db, orderId, receiptId, serials, restocked) 
 }
 
 export function shipmentForm(order) {
+  const tracked = purchasedLines(order).filter(line => line.requires_serial !== 0);
   return `<form class="shipment-form" method="post" action="/admin/${order.id}/ship">
     <label>Referencia de seguimiento <input name="tracking" required maxlength="80"></label>
-    ${purchasedLines(order).map(line => `<label>${escapeHtml(line.name)} · ${line.quantity} números de serie
+    ${tracked.map(line => `<label>${escapeHtml(line.name)} · ${line.quantity} números de serie
       <textarea name="serial_${line.sku}" rows="${Math.min(4, line.quantity + 1)}" required></textarea>
     </label>`).join('')}
-    <p>Escribe un número de serie por línea. Se guardan en mayúsculas.</p>
+    ${tracked.length ? '<p>Escribe un número de serie por línea. Se guardan en mayúsculas.</p>' : ''}
     <button>Registrar envío</button></form>`;
 }
 

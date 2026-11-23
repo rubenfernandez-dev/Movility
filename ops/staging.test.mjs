@@ -156,6 +156,21 @@ test('staging keeps a simulated order after restart and ignores external integra
     const csv = await (await fetch(restarted + '/admin/accounting.csv', { headers: { Authorization: auth } })).text();
     assert.match(csv, /"Cobro","Visa","CHF","2499.00"/);
     assert.equal(csv.match(/"Reembolso","Visa","CHF","-2499.00"/g)?.length, 1);
+    const accessory = { sku: 'travel-bag', family: 'accessory', name: 'Travel Bag', price: '49', units: '2',
+      active: '1', description_de: 'Tasche', description_fr: 'Sac de transport' };
+    assert.equal((await submit(restarted + '/admin/models', accessory, { Authorization: auth })).status, 303);
+    assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Accessoires[\s\S]*Travel Bag/);
+    assert.doesNotMatch(await (await fetch(restarted + '/fr-CH/compare')).text(), /Travel Bag/);
+    const accessoryCheckout = await (await fetch(restarted + '/fr-CH/checkout?model=travel-bag')).text();
+    const accessoryOrder = await submit(restarted + '/fr-CH/checkout', {
+      id: accessoryCheckout.match(/name="id" value="([^"]+)"/)[1], quotedPrice: '4900', model: 'travel-bag',
+      email: 'staging@example.com', name: 'Client Test', street: 'Rue Exemple 1',
+      zip: '1201', city: 'Genève', method: 'Visa', result: 'paid',
+    });
+    assert.equal(accessoryOrder.status, 303);
+    const accessoryId = accessoryOrder.headers.get('location').split('/').at(-1);
+    assert.equal((await submit(restarted + '/admin/' + accessoryId + '/ship', { tracking: 'STAGING-BAG' },
+      { Authorization: auth })).status, 303);
   } finally {
     await stop();
     unlinkSync(database);

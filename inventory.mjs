@@ -30,7 +30,7 @@ export function setupInventory(db) {
 }
 
 export const purchasedLines = order => order.lines.length ? order.lines : [{
-  sku: order.model_sku || 'one', name: order.model_name || 'Movility One', quantity: 1,
+  sku: order.model_sku || 'one', name: order.model_name || 'Movility One', quantity: 1, requires_serial: order.requires_serial ?? 1,
 }];
 
 export function returnControls(order, receipts, serials = []) {
@@ -45,7 +45,7 @@ export function returnControls(order, receipts, serials = []) {
       <p>Recibidas: ${received} de ${line.quantity} · Repuestas: ${restocked} · En revisión: ${received - restocked}</p>
       ${remaining > 0 ? `<form method="post" action="/admin/${order.id}/return">
         <input type="hidden" name="receipt" value="${randomUUID()}"><input type="hidden" name="sku" value="${line.sku}">
-        ${serials.length ? `<fieldset class="serial-selection"><legend>Números de serie recibidos</legend>
+        ${serials.some(record => record.sku === line.sku) ? `<fieldset class="serial-selection"><legend>Números de serie recibidos</legend>
           ${outstanding.map(record => `<label><input type="checkbox" name="serial" value="${escapeHtml(record.serial)}"> ${escapeHtml(record.serial)}</label>`).join('')}
         </fieldset>` : `<label>Unidades recibidas<input name="quantity" type="number" min="1" max="${remaining}" value="1" required></label>`}
         <label>Estado de las unidades<select name="disposition" required>

@@ -9,7 +9,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { orderEmail } from './postpurchase.mjs';
-import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct } from './catalog.mjs';
+import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair } from './catalog.mjs';
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
 import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
@@ -196,11 +196,11 @@ if (push && process.env.MOVILITY_PUSH_WORKER !== 'manual') {
 function purchaseModel(sku) {
   if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
   const model = extraModel(sku);
-  return model?.active ? model : null;
+  return model?.active ? { ...model, requires_serial: Number(isWheelchair(model)) } : null;
 }
-const orderLines = id => db.prepare('SELECT sku, name, quantity, cents FROM order_lines WHERE order_id = ? ORDER BY rowid').all(id);
+const orderLines = id => db.prepare('SELECT sku, name, quantity, cents, requires_serial FROM order_lines WHERE order_id = ? ORDER BY rowid').all(id);
 function orderById(id) {
-  const order = db.prepare(`SELECT orders.*, order_models.sku AS model_sku, order_models.name AS model_name
+  const order = db.prepare(`SELECT orders.*, order_models.sku AS model_sku, order_models.name AS model_name, order_models.requires_serial
     FROM orders LEFT JOIN order_models ON orders.id = order_models.order_id WHERE orders.id = ?`).get(id);
   return order ? { ...order, lines: orderLines(id) } : null;
 }
@@ -222,8 +222,8 @@ function orderStock(sku, quantity, reason, orderId) {
 }
 function createPaidOrder(id, method, locale, email, address, items, billing) {
   db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(items));
-  const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?)');
-  for (const line of items) insertLine.run(id, line.sku, line.name, line.quantity, line.cents);
+  const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?, ?)');
+  for (const line of items) insertLine.run(id, line.sku, line.name, line.quantity, line.cents, line.requires_serial ?? 1);
   db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
   saveBillingAddress(db, id, billing);
 }
@@ -358,7 +358,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
   const model = catalog();
   const units = stock();
   const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city,
-    order_models.name AS model_name, order_models.sku AS model_sku FROM orders
+    order_models.name AS model_name, order_models.sku AS model_sku, order_models.requires_serial FROM orders
     LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id
     LEFT JOIN order_models ON orders.id = order_models.order_id
     WHERE (? = '' OR status = ?) ORDER BY orders.rowid DESC`).all(filter, filter);
@@ -712,11 +712,11 @@ const server = createServer(async (req, res) => {
           if (input[3] && !current?.active && liveModels().length >= 9) return false;
           if (current) {
             db.prepare(`UPDATE extra_models SET name = ?, cents = ?, units = ?, active = ?, description_de = ?,
-              description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
+              description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, family = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
             if (input[2] !== current.units) recordMovement(sku, input[2] - current.units, 'adjustment');
           } else {
             db.prepare(`INSERT INTO extra_models (name, cents, units, active, description_de, description_fr,
-              width, weight, range, fold, sku) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...input, sku);
+              width, weight, range, fold, family, sku) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...input, sku);
             recordMovement(sku, input[2], 'opening');
           }
           return true;
@@ -938,7 +938,7 @@ const server = createServer(async (req, res) => {
       return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView, video: videoLocales.has(locale) }));
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
-      return render(comparisonPage(locale, searchParams, catalog().cents, liveModels()));
+      return render(comparisonPage(locale, searchParams, catalog().cents, liveModels().filter(isWheelchair)));
     }
     if (req.method === 'GET' && modelRoute) {
       const model = extraModel(modelRoute[1]);
@@ -1053,7 +1053,7 @@ const server = createServer(async (req, res) => {
           if (!canCheckout(items)) return 'out';
           if (!matchesQuote(items)) return 'price';
           if (!stripeMethodsFor(stripe, cartTotal(items)).includes(method)) return 'method';
-          const snapshot = items.map(({ sku, name, quantity, cents }) => ({ sku, name, quantity, cents }));
+          const snapshot = items.map(({ sku, name, quantity, cents, requires_serial }) => ({ sku, name, quantity, cents, requires_serial }));
           return reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot }, cartTotal(snapshot),
             line => orderStock(line.sku, -line.quantity, 'reservation', null));
         });
@@ -1097,7 +1097,7 @@ const server = createServer(async (req, res) => {
         if (!changeStock(sku || coreSKU, -1)) return 'out';
         db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, currentPrice);
         recordMovement(sku || coreSKU, -1, 'order', id);
-        if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?)').run(id, sku, currentModel.name);
+        if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?, ?)').run(id, sku, currentModel.name, Number(isWheelchair(currentModel)));
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         saveBillingAddress(db, id, billing.address);
         notice(id, 'paid');

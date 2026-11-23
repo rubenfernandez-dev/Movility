@@ -45,6 +45,7 @@ export function cartLines(cart, product) {
   return [...cart].map(([sku, quantity]) => {
     const model = product(sku);
     return { sku, quantity, name: model?.name || sku, cents: model?.cents ?? 0,
+      requires_serial: model?.requires_serial ?? 1,
       units: model?.units ?? 0, available: Boolean(model && model.units >= quantity) };
   });
 }
