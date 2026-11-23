@@ -974,15 +974,17 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
-      const models = liveModels();
+      const models = [{ ...purchaseModel(coreSKU), sku: coreSKU, family: 'wheelchair' }, ...liveModels()];
+      const featuredPhoto = modelPhotos(coreSKU).front || productImage;
       const families = catalogFamilies(db).filter(row => row.id === 'wheelchair' ||
         models.some(model => model.family === row.id));
       const family = catalogFilter(searchParams, families);
       const visible = family ? families.filter(row => row.id === family) : families;
-      return render(homepage(locale, catalog().cents, stock() > 0, {
+      return render(homepage(locale, {
         filters: storefrontFamilyFilters(locale, families, family),
-        showCore: !family || family === 'wheelchair',
-        extras: extraCatalog(locale, models, visible, sku => Object.values(modelPhotos(sku)).find(Boolean)),
+        featuredPhoto,
+        products: extraCatalog(locale, models, visible, sku => sku === coreSKU
+          ? featuredPhoto : Object.values(modelPhotos(sku)).find(Boolean)),
       }));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {

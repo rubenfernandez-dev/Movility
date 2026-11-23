@@ -63,23 +63,18 @@ export function navigation(locale, suffix, query = '', units = 0) {
     <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}${units ? ` (${units})` : ''}</a></div></div></header>`;
 }
 
-export function homepage(locale, cents, available, { filters, showCore, extras }) {
+export function homepage(locale, { filters, products, featuredPhoto = productImage }) {
   const l = labels[locale];
   const t = copy[locale];
   const product = href(locale, '/movility-one');
   return `<section class="hero">
     <div class="hero-copy"><p class="eyebrow">${t.category}</p><h1>${l.hero}</h1><p class="lead">${l.intro}</p>
       <div class="product-actions">${button(product, l.discover)}${viewerLink(locale)}</div></div>
-    <figure>${image(l)}<figcaption>${l.sample}</figcaption></figure>
+    <figure><img src="${featuredPhoto}" width="1200" height="900" alt="${l.image}"><figcaption>${l.sample}</figcaption></figure>
   </section>
   <ul class="benefits">${l.benefits.map((line) => `<li>${line}</li>`).join('')}</ul>
-  <section class="section" id="catalogue"><h2>${l.browse}</h2>${filters}
-  ${showCore ? `<article class="catalog-card">
-    <a href="${product}" aria-label="${l.discover}">${image(l)}</a><div>
-      ${status(l, t, available)}<h3>Movility One</h3><p>${l.fit} · ${l.drive}</p>
-      <p class="price">${money(locale, cents)}</p><a href="${product}">${l.details}</a></div>
-  </article>` : ''}</section>
-  ${extras}<section class="section faq" id="faq"><h2>${l.faq}</h2>
+  <section class="section" id="catalogue"><h2>${l.browse}</h2>${filters}${products}</section>
+  <section class="section faq" id="faq"><h2>${l.faq}</h2>
     ${l.questions.map(([question, answer]) => `<details><summary>${question}</summary><p>${answer}</p></details>`).join('')}
   </section>`;
 }

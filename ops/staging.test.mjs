@@ -199,10 +199,10 @@ test('staging keeps a simulated order after restart and ignores external integra
     const frenchCatalogue = await (await fetch(restarted + '/fr-CH?family=home')).text();
     assert.match(frenchCatalogue, /family=home#catalogue" aria-current="true">Maison/);
     assert.match(frenchCatalogue, /Home 11/);
-    assert.doesNotMatch(frenchCatalogue, /Étagère test|Travel Bag|class="catalog-card"/);
+    assert.doesNotMatch(frenchCatalogue, /Étagère test|Travel Bag|<h4><a href="\/fr-CH\/movility-one"/);
     const germanCatalogue = await (await fetch(restarted + '/de-CH?family=wheelchair')).text();
     assert.match(germanCatalogue, /family=wheelchair#catalogue" aria-current="true">Elektrorollstühle/);
-    assert.match(germanCatalogue, /class="catalog-card"/);
+    assert.match(germanCatalogue, /<div class="model-grid">\s*<article>[\s\S]*?<h4><a href="\/de-CH\/movility-one">Movility One/);
     assert.doesNotMatch(germanCatalogue, /Home 11/);
     assert.equal((await submit(restarted + '/admin/models/home-11/content', {
       de: 'Material: Holz', fr: 'Matière : bois',

@@ -1,6 +1,6 @@
 import { escapeHtml, money, copy } from './views.mjs';
 import { productGallery, productVideo } from './storefront.mjs';
-import { addToCart, skuPattern } from './cart.mjs';
+import { addToCart, coreSKU, skuPattern } from './cart.mjs';
 
 const initialFamilies = {
   wheelchair: { es: 'Sillas de ruedas', 'de-CH': 'Elektrorollstühle', 'fr-CH': 'Fauteuils roulants électriques' },
@@ -167,11 +167,11 @@ export function modelInput(fields, sku, families) {
 export function extraCatalog(locale, models, families, photoFor) {
   return families.map(({ id, [locale]: label }) => {
     const items = models.filter(model => model.family === id);
-    return items.length ? `<section class="section"><h2>${escapeHtml(label)}</h2><div class="model-grid">
+    return items.length ? `<section class="section"><h3>${escapeHtml(label)}</h3><div class="model-grid">
       ${items.map(model => { const photo = photoFor(model.sku); return `<article>
         ${photo ? `<img class="model-thumb" src="${photo}" alt="" loading="lazy">` : ''}
-        <h3><a href="/${locale}/models/${model.sku}">${escapeHtml(model.name)}</a></h3>
-        ${isWheelchair(model) ? `<p>${model.width} cm · ${model.weight} kg · ${model.range} km</p>` : ''}
+        <h4><a href="/${locale}${model.sku === coreSKU ? '/movility-one' : '/models/' + model.sku}">${escapeHtml(model.name)}</a></h4>
+        ${isWheelchair(model) && model.width ? `<p>${model.width} cm · ${model.weight} kg · ${model.range} km</p>` : ''}
         <p class="price">${money(locale, model.cents)}</p>
         ${model.units ? '' : `<p>${copy[locale].soldOut}</p>`}</article>`; }).join('')}</div></section>` : '';
   }).join('');
