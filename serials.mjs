@@ -119,7 +119,7 @@ export function serialLookup(db, raw) {
       <button>Buscar</button>
     </form>
     ${history.length ? adminHtml`<ul class="serial-history">${history.map(row => adminHtml`<li>
-      <a href="/admin#order-${row.order_id}">Pedido ${row.order_id.slice(0, 8)}</a> · SKU ${row.sku} · ${escapeHtml(row.tracking || '')}
+      <a href="/admin/orders/${row.order_id}">Pedido ${row.order_id.slice(0, 8)}</a> · SKU ${row.sku} · ${escapeHtml(row.tracking || '')}
       <br>${row.receipt_id ? (row.restocked ? 'Devuelto y repuesto' : 'Devuelto y en revisión') + ' · ' +
         adminHtml`<time datetime="${row.received_at}">${row.received_at.slice(0, 16).replace('T', ' ')} UTC</time>` : 'Enviado'}</li>`).join('')}</ul>`
       : raw ? adminFragment('<p>No se encontraron envíos con ese número de serie.</p>') : ''}`;

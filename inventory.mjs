@@ -72,7 +72,7 @@ export function inventoryPage(models, movements, selected) {
       <th scope="col">Saldo</th><th scope="col">Motivo</th><th scope="col">Pedido</th></tr></thead>
       <tbody>${movements.map(move => adminHtml`<tr><td><time datetime="${move.occurred_at}">${move.occurred_at.slice(0, 16).replace('T', ' ')}</time></td>
         <th scope="row">${move.sku}</th><td>${move.delta > 0 ? '+' : ''}${move.delta}</td><td>${move.balance}</td>
-        <td>${adminText(reasons[move.reason])}</td><td>${move.order_id ? adminHtml`<a href="/admin#order-${move.order_id}">${move.order_id.slice(0, 8)}</a>` : '—'}</td></tr>`).join('')}</tbody>
+        <td>${adminText(reasons[move.reason])}</td><td>${move.order_id ? adminHtml`<a href="/admin/orders/${move.order_id}">${move.order_id.slice(0, 8)}</a>` : '—'}</td></tr>`).join('')}</tbody>
     </table></div><p>Se muestran los últimos 200 movimientos. El CSV incluye todos los del filtro.</p>`;
 }
 

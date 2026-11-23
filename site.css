@@ -181,6 +181,10 @@ footer{border-top:1px solid var(--line);color:var(--muted)}
 .admin-overview-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:.75rem;margin-bottom:1rem}
 .admin-overview-links a{display:flex;flex-direction:column;gap:.25rem;padding:.85rem;background:white;border:1px solid var(--line);border-radius:.65rem}
 .admin-overview-links strong{font-size:1.25rem}
+.admin-orders-list{display:grid;gap:.65rem;list-style:none;padding:0}
+.admin-orders-list li{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;padding:.85rem;background:#fff;border:1px solid var(--line);border-radius:.65rem;overflow-wrap:anywhere}
+.admin-orders-list li>a{flex:1 1 16rem;min-width:0}
+.admin-orders-list small{display:block;color:var(--muted)}
 @media(min-width:52.01rem){.admin-sidebar{position:sticky;top:0;max-height:100vh;overflow:auto}}
 @media(max-width:52rem){.admin-layout{grid-template-columns:minmax(0,1fr)}.admin-sidebar{padding-bottom:0}.admin-nav-desktop{display:none}.admin-nav-mobile{display:block}}
 [data-compat-search][hidden]{display:none}

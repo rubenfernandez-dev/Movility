@@ -82,6 +82,7 @@ export function adminRouteAllowed(role, method, path) {
   if (path === '/admin/contact' && ['GET', 'POST'].includes(method)) return can(role, 'support');
   if (method === 'GET') {
     if (path === '/admin') return true;
+    if (/^\/admin\/orders(?:\/[0-9a-f-]{36})?$/.test(path)) return true;
     if (path === '/admin/serials') return can(role, 'serials');
     if (path === '/admin/inventory' || path === '/admin/inventory.csv') return can(role, 'stock');
     if (['/admin/accounting', '/admin/accounting.csv', '/admin/analytics', '/admin/stripe'].includes(path)) return can(role, 'finance');

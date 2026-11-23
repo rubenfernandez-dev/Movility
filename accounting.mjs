@@ -85,7 +85,7 @@ export function accountingPage(data, filters) {
     ${data.entries.length ? adminHtml`<div class="inventory-table"><table>
       <thead><tr><th scope="col">Fecha</th><th scope="col">Pedido</th><th scope="col">Operación</th><th scope="col">Método</th><th scope="col">Importe</th></tr></thead>
       <tbody>${data.entries.map(entry => adminHtml`<tr><td>${entry.occurred_at ? entry.occurred_at.slice(0, 16).replace('T', ' ') : 'Sin fecha registrada'}</td>
-        <th scope="row"><a href="/admin#order-${entry.order_id}">${entry.order_id.slice(0, 8)}</a></th>
+        <th scope="row"><a href="/admin/orders/${entry.order_id}">${entry.order_id.slice(0, 8)}</a></th>
         <td>${adminText(kindLabel[entry.kind])}</td><td>${entry.method}</td><td>${money('es', signed(entry))}</td></tr>`).join('')}</tbody>
     </table></div><p>${data.count} operaciones. La tabla muestra hasta 200; el CSV las incluye todas.</p>` : adminFragment('<p>No hay operaciones para este filtro.</p>')}`}`;
 }

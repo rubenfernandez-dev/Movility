@@ -392,12 +392,97 @@ async function form(req, limit = 16384) {
 
 const orderLabels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
 
-function adminView({ role, error, saved, draft, filter = '' }) {
-  const catalogAccess = can(role, 'catalog');
-  const stockAccess = can(role, 'stock');
+function adminOrderDetails(order, role, error) {
   const serialAccess = can(role, 'serials');
   const shippingAccess = can(role, 'shipping');
   const addressAccess = can(role, 'address');
+  const supportAccess = can(role, 'support');
+  const financeAccess = can(role, 'finance');
+  const address = addressAccess ? db.prepare('SELECT * FROM delivery_addresses WHERE order_id=?').get(order.id) : null;
+  const documents = financeAccess ? db.prepare('SELECT kind FROM billing_documents WHERE order_id = ? ORDER BY number').all(order.id) : [];
+  const refund = stripeRefund(db, order.id);
+  const stripeOrder = financeAccess && paymentAttempt(db, order.id);
+  const lines = order.lines;
+  const serials = serialAccess ? shipmentSerials(db, order.id) : [];
+  const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
+  const events = supportAccess ? db.prepare(`SELECT kind FROM email_previews WHERE order_id = ?
+    AND kind IN ('paid','shipped','delivered','refunded') ORDER BY rowid`).all(order.id) : [];
+  const notices = events.map(({ kind }) => adminHtml`<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
+  const card = adminHtml`<article id="order-${order.id}"><h2>${order.id}</h2>
+    <p>${escapeHtml(productNames)} · ${supportAccess ? escapeHtml(order.email) + ' · ' : ''}${order.locale} ·
+      ${financeAccess ? escapeHtml(order.method) + ' · ' + money(adminLocale(), order.cents) + ' · ' : ''}${adminText(orderLabels[order.status])}</p>
+    ${address ? adminHtml`<p>${escapeHtml(address.name)} · ${escapeHtml(address.street)} · ${escapeHtml(address.zip)} ${escapeHtml(address.city)} · Suiza</p>` : ''}
+    ${(shippingAccess || supportAccess) && order.tracking ? adminHtml`<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
+    ${(shippingAccess || supportAccess) ? trackingHistory(adminLocale(), trackingEvents(db, order.id)) : ''}
+    ${shippingAccess ? trackingForm(order) : ''}
+    ${supportAccess ? adminHtml`<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
+    ${shippingAccess && order.status === 'paid' ? refundPending(refund)
+      ? adminFragment('<p>Expedición en pausa por reembolso pendiente.</p>') : shipmentForm({ ...order, lines }) : ''}
+    ${serialSummary(serials)}
+    ${role === 'admin' ? adminHtml`<details><summary>Verificación de pedido invitado</summary>
+      <form method="post" action="/admin/${order.id}/guest-code">
+        <button class="secondary" name="action" value="issue">Generar código</button>
+        <button class="secondary" name="action" value="revoke">Revocar código y verificación</button>
+      </form></details>` : ''}
+    ${documents.length ? adminHtml`<p>${documents.map(({ kind }) =>
+      `<a href="/admin/${order.id}/document/${kind}">${adminText(kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba')}</a>`).join(' · ')}</p>` : ''}
+    ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
+      : financeAccess && order.status !== 'refunded' ? adminHtml`<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
+    ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
+  </article>`;
+  return adminPage('Detalle del pedido', adminHtml`<p><a href="/admin/orders">Volver a pedidos</a></p>
+    <h1>Detalle del pedido</h1>${error ? adminHtml`<p class="form-error" role="alert">${adminText(error)}</p>` : ''}${card}`);
+}
+
+function adminOrdersPage(role, params) {
+  const status = Object.hasOwn(orderLabels, params.get('status')) ? params.get('status') : '';
+  const search = (params.get('q') || '').trim().slice(0, 80);
+  const trackingAccess = can(role, 'shipping') || can(role, 'support');
+  const financeAccess = can(role, 'finance');
+  const where = `WHERE (? = '' OR status = ?) AND
+    (instr(lower(id), lower(?)) > 0 OR (? = 1 AND instr(lower(coalesce(tracking, '')), lower(?)) > 0))`;
+  const binding = [status, status, search, Number(trackingAccess), search];
+  const total = db.prepare('SELECT count(*) AS total FROM orders ' + where).get(...binding).total;
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const rawPage = params.get('page') || '';
+  const currentPage = /^\d+$/.test(rawPage) ? Math.max(1, Math.min(Number(rawPage), pageCount)) : 1;
+  const rows = db.prepare(`SELECT id, status, tracking, cents,
+    COALESCE((SELECT name FROM order_lines WHERE order_id=orders.id ORDER BY rowid LIMIT 1),
+      (SELECT name FROM order_models WHERE order_id=orders.id), 'Movility One') AS product
+    FROM orders ${where}
+    ORDER BY rowid DESC LIMIT ? OFFSET ?`).all(...binding, pageSize, (currentPage - 1) * pageSize);
+  const pageLink = number => {
+    const query = new URLSearchParams();
+    if (status) query.set('status', status);
+    if (search) query.set('q', search);
+    if (number > 1) query.set('page', String(number));
+    return '/admin/orders' + (query.size ? '?' + escapeHtml(query.toString()) : '');
+  };
+  return adminPage('Pedidos', adminHtml`<h1>Pedidos</h1>
+    <form class="catalog-filters" method="get" action="/admin/orders">
+      <label>${adminText(trackingAccess ? 'Referencia o número de seguimiento' : 'Referencia del pedido')}
+        <input type="search" name="q" value="${escapeHtml(search)}" maxlength="80"></label>
+      <label>Estado del pedido <select name="status"><option value="">Todos</option>
+        ${Object.entries(orderLabels).map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
+      </select></label><button>Buscar</button>
+      ${status || search ? adminFragment('<a href="/admin/orders">Limpiar búsqueda y filtros</a>') : ''}</form>
+    ${rows.length ? adminHtml`<ul class="admin-orders-list">${rows.map(row => adminHtml`<li>
+      <a href="/admin/orders/${row.id}"><strong>${escapeHtml(row.product)}</strong><small>${row.id}</small></a>
+      <span>${adminText(orderLabels[row.status])}</span>
+      ${trackingAccess && row.tracking ? `<span>${escapeHtml(row.tracking)}</span>` : ''}
+      ${financeAccess ? `<span>${money(adminLocale(), row.cents)}</span>` : ''}</li>`).join('')}</ul>`
+      : adminHtml`<p>${adminText(status ? 'No hay pedidos con este estado.' : search ?
+        'No hay pedidos que coincidan con la búsqueda.' : 'Todavía no hay pedidos.')}</p>`}
+    ${pageCount > 1 ? adminHtml`<nav class="product-actions" aria-label="Páginas de pedidos">
+      ${currentPage > 1 ? adminHtml`<a class="button secondary" href="${pageLink(currentPage - 1)}">Anterior</a>` : ''}
+      <span>Página ${currentPage} de ${pageCount}</span>
+      ${currentPage < pageCount ? adminHtml`<a class="button secondary" href="${pageLink(currentPage + 1)}">Siguiente</a>` : ''}
+    </nav>` : ''}`);
+}
+function adminView({ role, error, saved, draft }) {
+  const catalogAccess = can(role, 'catalog');
+  const stockAccess = can(role, 'stock');
   const supportAccess = can(role, 'support');
   const financeAccess = can(role, 'finance');
   const model = catalog();
@@ -405,65 +490,20 @@ function adminView({ role, error, saved, draft, filter = '' }) {
   const pendingOrders = db.prepare("SELECT count(*) AS total FROM orders WHERE status='paid'").get().total;
   const pendingContacts = supportAccess && db.prepare('SELECT count(*) AS total FROM contact_messages WHERE resolved=0').get().total;
   const failedMail = supportAccess && db.prepare("SELECT count(*) AS total FROM mail_jobs WHERE status='failed'").get().total;
-  const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city,
-    order_models.name AS model_name, order_models.sku AS model_sku, order_models.requires_serial FROM orders
-    LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id
-    LEFT JOIN order_models ON orders.id = order_models.order_id
-    WHERE (? = '' OR status = ?) ORDER BY orders.rowid DESC`).all(filter, filter);
   const totals = db.prepare(`SELECT COUNT(*) AS quantity, COALESCE(SUM(cents), 0) AS gross,
     COALESCE(SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END), 0) AS refunds FROM orders`).get();
   const breakdown = db.prepare(`SELECT method, COUNT(*) AS quantity, SUM(cents) AS gross,
     SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END) AS refunds
     FROM orders GROUP BY method ORDER BY method`).all();
-  const cards = orders.map((order) => {
-    const documents = financeAccess ? db.prepare('SELECT kind FROM billing_documents WHERE order_id = ? ORDER BY number').all(order.id) : [];
-    const refund = stripeRefund(db, order.id);
-    const stripeOrder = financeAccess && paymentAttempt(db, order.id);
-    const lines = orderLines(order.id);
-    const serials = serialAccess ? shipmentSerials(db, order.id) : [];
-    const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
-    const events = supportAccess ? db.prepare(`SELECT kind FROM email_previews WHERE order_id = ?
-      AND kind IN ('paid','shipped','delivered','refunded') ORDER BY rowid`).all(order.id) : [];
-    const notices = events.map(({ kind }) => adminHtml`<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
-    return adminHtml`<article id="order-${order.id}"><h2>${order.id}</h2>
-      <p>${escapeHtml(productNames)} · ${supportAccess ? escapeHtml(order.email) + ' · ' : ''}${order.locale} ·
-        ${financeAccess ? escapeHtml(order.method) + ' · ' + money(adminLocale(), order.cents) + ' · ' : ''}${adminText(orderLabels[order.status])}</p>
-      ${addressAccess && order.street ? adminHtml`<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
-      ${(shippingAccess || supportAccess) && order.tracking ? adminHtml`<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
-      ${(shippingAccess || supportAccess) ? trackingHistory(adminLocale(), trackingEvents(db, order.id)) : ''}
-      ${shippingAccess ? trackingForm(order) : ''}
-      ${supportAccess ? adminHtml`<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
-      ${shippingAccess && order.status === 'paid' ? refundPending(refund)
-        ? adminFragment('<p>Expedición en pausa por reembolso pendiente.</p>') : shipmentForm({ ...order, lines }) : ''}
-      ${serialSummary(serials)}
-      ${role === 'admin' ? adminHtml`<details><summary>Verificación de pedido invitado</summary>
-        <form method="post" action="/admin/${order.id}/guest-code">
-          <button class="secondary" name="action" value="issue">Generar código</button>
-          <button class="secondary" name="action" value="revoke">Revocar código y verificación</button>
-        </form></details>` : ''}
-      ${documents.length ? adminHtml`<p>${documents.map(({ kind }) =>
-        `<a href="/admin/${order.id}/document/${kind}">${adminText(kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba')}</a>`).join(' · ')}</p>` : ''}
-      ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
-        : financeAccess && order.status !== 'refunded' ? adminHtml`<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
-      ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
-    </article>`;
-  }).join('');
   return adminPage('Administración de prueba', adminHtml`<h1>Administración de prueba</h1>
     <p>Perfil: ${adminText(roleNames[role])}</p>
     <section aria-labelledby="admin-work"><h2 id="admin-work">Pendientes de atención</h2>
       <div class="admin-overview-links">
-        <a href="/admin?status=paid#admin-orders"><strong>${pendingOrders}</strong>Pedidos por expedir</a>
+        <a href="/admin/orders?status=paid"><strong>${pendingOrders}</strong>Pedidos por expedir</a>
         ${supportAccess ? adminHtml`<a href="/admin/contact"><strong>${pendingContacts}</strong>Consultas sin resolver</a>
           <a href="/admin/mail"><strong>${failedMail}</strong>Correos con errores</a>` : ''}
       </div></section>
     <p>${stockAccess ? adminHtml`Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
-    <h2 id="admin-orders" tabindex="-1">Pedidos</h2>
-    <form class="order-filter" method="get" action="/admin#admin-orders">
-      <label>Estado del pedido <select name="status"><option value="">Todos</option>
-      ${Object.entries(orderLabels).map(([value, label]) => adminHtml`<option value="${value}" ${filter === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
-      </select></label><button class="secondary">Filtrar</button>
-    </form>
-    ${cards || adminHtml`<p>${adminText(filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.')}</p>`}
     ${financeAccess ? adminHtml`<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -496,7 +536,7 @@ function emailView(order, preview) {
     statusLabel: order.locale === 'de-CH' ? 'Einmalcode eingeben' : 'Saisir le code',
   } : orderEmail(order, preview.kind, emailShipmentPath(order, preview.kind));
   const state = deliveryStatus(db, order.id, preview.kind);
-  return adminPage('Vista previa de correo', adminHtml`<a href="/admin">Volver a pedidos</a>
+  return adminPage('Vista previa de correo', adminHtml`<a href="/admin/orders">Volver a pedidos</a>
     <h1 class="page-title">Vista previa de correo</h1>
     <p>${state || 'Aviso histórico disponible como vista previa.'}</p>
     <p><a href="/admin/mail">Ver cola de correos</a></p>
@@ -796,7 +836,7 @@ const server = createServer(async (req, res) => {
             revokeCheckoutAccess(db, second);
             retireRecoveryMail(db, second);
           });
-          return redirect(res, '/admin#order-' + second);
+          return redirect(res, '/admin/orders/' + second);
         }
         if (fields?.get('action') !== 'issue') return send(res, 400, 'Acción inválida');
         const code = transaction(() => {
@@ -812,11 +852,23 @@ const server = createServer(async (req, res) => {
         const { locale, title, html } = documentPage(doc);
         return send(res, 200, page(locale, title, html));
       }
-      const rolePanel = options => adminView({ ...options, role });
+      const rolePanel = options => {
+        const order = orderIdPattern.test(second) ? orderById(second) : null;
+        return order ? adminOrderDetails(order, role, options.error) : adminView({ ...options, role });
+      };
       if (req.method === 'GET' && path === '/admin') {
-        const status = searchParams.get('status');
-        return send(res, 200, rolePanel({ saved: searchParams.get('saved') === 'catalog',
-          filter: Object.hasOwn(orderLabels, status) ? status : '' }));
+        if (searchParams.has('status') || searchParams.get('view') === 'orders') {
+          return send(res, 200, adminOrdersPage(role, searchParams));
+        }
+        return send(res, 200, rolePanel({ saved: searchParams.get('saved') === 'catalog' }));
+      }
+      if (req.method === 'GET' && path === '/admin/orders') {
+        return send(res, 200, adminOrdersPage(role, searchParams));
+      }
+      if (req.method === 'GET' && second === 'orders' && orderIdPattern.test(third) && path === `/admin/orders/${third}`) {
+        const order = orderById(third);
+        return order ? send(res, 200, adminOrderDetails(order, role)) :
+          send(res, 404, adminPage('Pedidos', adminFragment('<p>Pedido desconocido</p><a href="/admin/orders">Volver a pedidos</a>')));
       }
       if (req.method === 'GET' && path === '/admin/models') {
         return send(res, 200, displayModelAdmin(searchParams.has('saved')
@@ -947,7 +999,7 @@ const server = createServer(async (req, res) => {
         const event = manualTrackingEvent(db, order, eventId, fields.get('status'));
         if (!event) return send(res, 400, rolePanel({ error: 'Selecciona un evento de seguimiento válido.' }));
         const outcome = applyCarrierEvent(event);
-        return ['applied', 'duplicate'].includes(outcome) ? redirect(res, `/admin#order-${second}`)
+        return ['applied', 'duplicate'].includes(outcome) ? redirect(res, `/admin/orders/${second}`)
           : send(res, 409, rolePanel({ error: 'El evento no coincide con el envío registrado.' }));
       }
       if (req.method === 'POST' && third === 'return' && orderIdPattern.test(second) && path === `/admin/${second}/return`) {
@@ -978,7 +1030,7 @@ const server = createServer(async (req, res) => {
           if (restocked) orderStock(sku, quantity, 'return', second);
           return true;
         });
-        return received ? redirect(res, `/admin#order-${second}`)
+        return received ? redirect(res, `/admin/orders/${second}`)
           : send(res, 409, rolePanel({ error: 'Revisa las unidades pendientes y que los números de serie correspondan a este modelo y pedido.' }));
       }
       if (req.method === 'POST' && third === 'stripe-refund' && orderIdPattern.test(second) && path === `/admin/${second}/stripe-refund`) {
@@ -989,11 +1041,11 @@ const server = createServer(async (req, res) => {
           if (!order || order.status === 'refunded' || attempt?.state !== 'paid') return null;
           return requestStripeRefund(db, second);
         });
-        if (!refund || !refundRetryable(refund)) return redirect(res, `/admin#order-${second}`);
+        if (!refund || !refundRetryable(refund)) return redirect(res, `/admin/orders/${second}`);
         try {
           const result = await sendStripeRefund(stripe, attempt);
           if (!saveStripeRefundSubmission(db, attempt, result)) throw new Error('Unexpected refund');
-          return redirect(res, `/admin#order-${second}`);
+          return redirect(res, `/admin/orders/${second}`);
         } catch {
           return send(res, 502, rolePanel({ error: 'No se pudo verificar la solicitud. Revisa Stripe o reintenta desde el pedido.' }));
         }
@@ -1029,7 +1081,7 @@ const server = createServer(async (req, res) => {
           error: 'El reembolso de Stripe se conciliará desde la integración de pagos. La simulación no cambia ese pedido.',
         }));
         if (found === 'refund-pending') return send(res, 409, rolePanel({ error: 'Espera la confirmación de Stripe antes de expedir este pedido.' }));
-        return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
+        return found === 'ok' ? redirect(res, '/admin/orders/' + second) : send(res, 404, 'Pedido desconocido');
       }
       return send(res, 404, adminPage('404', adminFragment('<h1>404</h1>')));
     });

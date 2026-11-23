@@ -194,7 +194,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const edit = { expectedUnits: '1', expectedPrice: '249900', price: '2599,90', units: '1',
     descriptionDe: 'Neuer Testtext', descriptionFr: 'Description révisée <test>' };
   const panel = await get('/admin', headers);
-  assert.match(await panel.clone().text(), /href="\/admin\?view=orders#admin-orders">Pedidos[\s\S]*id="admin-orders"/);
+  assert.match(await panel.clone().text(), /href="\/admin\/orders">Pedidos/);
   const overview = await panel.clone().text();
   assert.match(overview, /Pendientes de atención[\s\S]*Consultas sin resolver/);
   assert.match(await (await get('/admin/models?family=spare', headers)).text(),
@@ -260,13 +260,14 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await get(emailPath('paid'), support)).status, 200);
   assert.equal((await get(emailPath('paid'), finance)).status, 403);
   assert.equal((await get(emailPath('paid'), warehouse)).status, 403);
-  const warehouseOrders = await (await get('/admin', warehouse)).text();
+  const adminOrderPath = '/admin/orders/' + orderId;
+  const warehouseOrders = await (await get(adminOrderPath, warehouse)).text();
   assert.match(warehouseOrders, /1201 Genève/);
   assert.doesNotMatch(warehouseOrders, /demo@example\.com|Reembolsar en la simulación|Neto/);
-  const supportOrders = await (await get('/admin', support)).text();
+  const supportOrders = await (await get(adminOrderPath, support)).text();
   assert.match(supportOrders, /demo@example\.com/);
   assert.doesNotMatch(supportOrders, /1201 Genève|Registrar envío|Reembolsar en la simulación/);
-  const financeOrders = await (await get('/admin', finance)).text();
+  const financeOrders = await (await get(adminOrderPath, finance)).text();
   assert.match(financeOrders, /Reembolsar en la simulación/);
   assert.doesNotMatch(financeOrders, /1201 Genève|demo@example\.com|Registrar envío/);
   assert.equal((await post(`/admin/${orderId}/refund`, {}, warehouse)).status, 403);
@@ -320,22 +321,26 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(deliveryEmail, /Movility · Commande livrée/);
   assert.ok(deliveryEmail.includes('href="' + trackingLink + '"'));
   assert.match(await (await get(trackingLink)).text(), /<strong>Livré<\/strong>/);
-  const trackingOrders = await (await get('/admin', support)).text();
+  const trackingOrders = await (await get(adminOrderPath, support)).text();
   assert.equal(trackingOrders.match(new RegExp('/admin/' + orderId + '/email/delivered', 'g'))?.length, 1);
   for (let i = 0; i < 2; i++) {
     assert.equal((await post(`/admin/${orderId}/refund`, {}, headers)).status, 303);
   }
   const admin = await (await get('/admin', headers)).text();
   assert.match(admin, /Unidades disponibles: 0 · Pedidos: 1/);
-  assert.match(admin, /1201 Genève/);
+  assert.doesNotMatch(admin, /1201 Genève/);
   assert.match(admin, /Desglose por forma de pago/);
   assert.match(admin, new RegExp('<th scope="row">' + candidates[winner].method + '</th><td>1</td>'));
-  assert.equal(admin.match(/Paiement de test remboursé/g)?.length, 1);
+  assert.equal((await (await get(adminOrderPath, headers)).text()).match(/Paiement de test remboursé/g)?.length, 1);
   assert.match(await (await get(emailPath('shipped'), headers)).text(), /Numéro de suivi: CH-DEMO-1/);
   assert.match(await (await get(emailPath('refunded'), headers)).text(), /Movility · Paiement remboursé/);
   assert.doesNotMatch(await (await get(emailPath('paid'), headers)).text(), /CH-DEMO-1/);
   assert.match(await (await get('/admin?status=paid', headers)).text(), /No hay pedidos con este estado/);
-  assert.match(await (await get('/admin?status=refunded', headers)).text(), /1201 Genève/);
+  const filteredOrders = await (await get('/admin/orders?status=refunded&q=ch-demo-1', headers)).text();
+  assert.ok(filteredOrders.includes(adminOrderPath));
+  assert.doesNotMatch(filteredOrders, /1201 Genève/);
+  assert.doesNotMatch(await (await get('/admin/orders?q=ch-demo-1', finance)).text(), /CH-DEMO-1/);
+  assert.equal((await get(adminOrderPath)).status, 401);
   assert.match(await (await get(orderPath, buyer)).text(), /Paiement de test remboursé/);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
   assert.equal((await post('/admin/restock', {}, headers)).status, 303);
@@ -454,7 +459,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(actionPath('return'), { ...firstReceipt, receipt: randomUUID(), quantity: '2' }, headers)).status, 409);
   assert.equal((await post(actionPath('return'), { ...firstReceipt, receipt: randomUUID(), serial: 'ALPINE-02', disposition: 'hold' }, headers)).status, 303);
   assert.equal((await post(actionPath('refund'), {}, headers)).status, 303);
-  assert.match(await (await get('/admin', headers)).text(), /Recibidas: 2 de 2 · Repuestas: 1 · En revisión: 1/);
+  assert.match(await (await get('/admin/orders/' + shippedId, headers)).text(), /Recibidas: 2 de 2 · Repuestas: 1 · En revisión: 1/);
   assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 0/);
   assert.equal((await post(actionPath('return'), { ...firstReceipt, receipt: randomUUID(), sku: 'one', serial: 'ONE-DEMO-02' }, headers)).status, 303);
   assert.match(await (await get('/admin', headers)).text(), /Unidades disponibles: 1/);
@@ -471,7 +476,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.match(ledger, new RegExp('"' + basketOrderId + '","Cobro","TWINT","CHF","7497.00"'));
   assert.equal(ledger.match(new RegExp('"' + basketOrderId + '","Reembolso","TWINT","CHF","-7497.00"', 'g'))?.length, 1);
   assert.doesNotMatch(ledger, /example\.com|Genève/);
-  const serialHistory = await (await get('/admin', headers)).text();
+  const serialHistory = await (await get('/admin/orders/' + shippedId, headers)).text();
   assert.match(serialHistory, /ALPINE-01<\/code> · Repuesto/);
   assert.match(serialHistory, /ALPINE-02<\/code> · En revisión/);
   const resold = await post(checkout, await fields('Visa', 'alpine'), {});

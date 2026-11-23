@@ -9,6 +9,12 @@ Configuración|Einstellungen|Paramètres
 Clientes y ofertas|Kunden und Angebote|Clients et offres
 Pendientes de atención|Offene Aufgaben|À traiter
 Pedidos por expedir|Zu versendende Bestellungen|Commandes à expédier
+Detalle del pedido|Bestelldetails|Détail de la commande
+Referencia o número de seguimiento|Bestellreferenz oder Sendungsnummer|Référence ou numéro de suivi
+Referencia del pedido|Bestellreferenz|Référence de la commande
+Páginas de pedidos|Bestellseiten|Pages de commandes
+Pedido desconocido|Unbekannte Bestellung|Commande inconnue
+No hay pedidos que coincidan con la búsqueda.|Keine Bestellungen entsprechen der Suche.|Aucune commande ne correspond à la recherche.
 Consultas sin resolver|Offene Kontaktanfragen|Demandes non résolues
 Correos con errores|E-Mails mit Fehlern|E-mails en échec
 Administración de prueba|Testverwaltung|Administration de test

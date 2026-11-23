@@ -72,20 +72,21 @@ function adminSidebar({ role, accountsEnabled, path, params }) {
     ['/admin/offer-codes', 'Buzón de ofertas de prueba'],
     ['/admin/campaigns', 'Campañas de ofertas'],
   ]]] : navigationGroups;
-  const orders = path === '/admin' && (params.has('status') || params.get('view') === 'orders');
+  const orders = path === '/admin/orders' || path.startsWith('/admin/orders/') ||
+    path === '/admin' && (params.has('status') || params.get('view') === 'orders');
   const active = href => {
     if (href === '/admin') return path === href && !orders;
-    if (href === '/admin?view=orders#admin-orders') return orders;
+    if (href === '/admin/orders') return orders;
     if (path === '/admin/models' && ['accessory', 'spare'].includes(params.get('family'))) {
       return href === '/admin/models?family=' + params.get('family');
     }
     return path === href || path.startsWith(href + '/');
   };
   const link = (href, label) => `<li><a href="${href}"${active(href) ? ' aria-current="page"' : ''}>${text(label)}</a></li>`;
-  const current = path === '/admin' ? (orders ? 'Pedidos' : 'Inicio') :
+  const current = orders ? 'Pedidos' : path === '/admin' ? 'Inicio' :
     groups.flatMap(([, items]) => items).find(([href]) => active(href))?.[1] || 'Menú del panel';
   const nav = `<nav class="admin-nav" aria-label="${text('Menú del panel')}">
-    <ul>${link('/admin', 'Inicio')}${link('/admin?view=orders#admin-orders', 'Pedidos')}</ul>
+    <ul>${link('/admin', 'Inicio')}${link('/admin/orders', 'Pedidos')}</ul>
     ${groups.map(([label, items]) => {
       const allowed = items.filter(([href]) => adminRouteAllowed(role, 'GET', href.split('?')[0]));
       return allowed.length ? `<h2>${text(label)}</h2><ul>${allowed.map(([href, name]) => link(href, name)).join('')}</ul>` : '';
