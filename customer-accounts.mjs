@@ -1,3 +1,4 @@
+import { adminHtml } from './admin-language.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 import { verifiedGuestOrder, revokeGuestCode } from './guest-proof.mjs';
@@ -81,7 +82,7 @@ export function customerPage(db, locale, email, state = '') {
 
 export function accountMailbox(db) {
   const messages = db.prepare('SELECT email, preview FROM customer_codes WHERE expires > ? ORDER BY rowid DESC LIMIT 30').all(now());
-  return `<h1>Accesos de prueba de clientes</h1><p>Simulador de correo de preproducción.</p>
-    <ul>${messages.map(row => `<li>${escapeHtml(row.email)} · <code>${escapeHtml(row.preview)}</code></li>`).join('')}</ul>
+  return adminHtml`<h1>Accesos de prueba de clientes</h1><p>Simulador de correo de preproducción.</p>
+    <ul>${messages.map(row => adminHtml`<li>${escapeHtml(row.email)} · <code>${escapeHtml(row.preview)}</code></li>`).join('')}</ul>
     <p><a href="/admin">Volver al panel</a></p>`;
 }

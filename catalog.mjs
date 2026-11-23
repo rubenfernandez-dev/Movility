@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminLocale, adminText } from './admin-language.mjs';
 import { escapeHtml, money, copy } from './views.mjs';
 import { productGallery, productVideo } from './storefront.mjs';
 import { addToCart, coreSKU, skuPattern } from './cart.mjs';
@@ -78,19 +79,21 @@ export function saveCatalogPosition(db, fields) {
   return true;
 }
 
+const familyLabel = family => family[adminLocale()] || family.es;
+
 export function catalogOrderAdmin(families, products, message) {
-  const row = (kind, id, name, position) => `<form class="catalog-filters" method="post" action="/admin/catalog-order">
+  const row = (kind, id, name, position) => adminHtml`<form class="catalog-filters" method="post" action="/admin/catalog-order">
     <input type="hidden" name="kind" value="${kind}"><input type="hidden" name="id" value="${escapeHtml(id)}">
     <label>${escapeHtml(name)} <input type="number" name="position" min="1" max="999999999" step="1" value="${position ?? ''}"></label>
     <button>Guardar posición</button></form>`;
-  return `<p><a href="/admin/models">Volver a artículos</a></p><h1>Orden del catálogo</h1>
+  return adminHtml`<p><a href="/admin/models">Volver a artículos</a></p><h1>Orden del catálogo</h1>
     <p>El número más bajo aparece primero. Deja el campo vacío para usar el orden automático al final.</p>
     ${message}<h2>Familias</h2>
-    ${families.map(family => row('family', family.id, family.es, family.position)).join('')}
+    ${families.map(family => row('family', family.id, familyLabel(family), family.position)).join('')}
     <h2>Productos por familia</h2>
-    ${families.map(family => `<section><h3>${escapeHtml(family.es)}</h3>
+    ${families.map(family => adminHtml`<section><h3>${escapeHtml(familyLabel(family))}</h3>
       ${products.filter(product => product.family === family.id)
-        .map(product => row('product', product.sku, product.name, product.position)).join('') || '<p>Sin artículos.</p>'}</section>`).join('')}`;
+        .map(product => row('product', product.sku, product.name, product.position)).join('') || adminFragment('<p>Sin artículos.</p>')}</section>`).join('')}`;
 }
 export const catalogFeatures = (db, sku) => db.prepare('SELECT de, fr FROM catalog_features WHERE sku = ?').get(sku);
 export function saveFamily(db, fields, editing) {
@@ -102,13 +105,13 @@ export function saveFamily(db, fields, editing) {
   return Boolean(db.prepare(statement).run(...names, id).changes);
 }
 export function familiesAdmin(families, message = '') {
-  const editor = family => `<form class="confirmation" method="post" action="/admin/families${family ? '/' + family.id : ''}">
-    ${family ? '' : '<label>Identificador <input name="id" required maxlength="24"></label>'}
+  const editor = family => adminHtml`<form class="confirmation" method="post" action="/admin/families${family ? '/' + family.id : ''}">
+    ${family ? '' : adminFragment('<label>Identificador <input name="id" required maxlength="24"></label>')}
     ${[['es','es','Nombre interno'], ['de','de-CH','Nombre en alemán'], ['fr','fr-CH','Nombre en francés']]
-      .map(([key, lang, label]) => `<label>${label}<input name="${key}" required maxlength="100" value="${escapeHtml(family?.[lang] || '')}"></label>`).join('')}
-    <button>${family ? 'Guardar familia' : 'Crear familia'}</button></form>`;
-  return `<h1>Familias del catálogo</h1><p><a href="/admin/models">Volver a artículos</a> · <a href="/admin/catalog-order">Ordenar catálogo</a></p>${message}
-    <h2>Nueva familia</h2>${editor()}${families.map(family => `<details><summary>${escapeHtml(family.es)}</summary>${editor(family)}</details>`).join('')}`;
+      .map(([key, lang, label]) => adminHtml`<label>${adminText(label)}<input name="${key}" required maxlength="100" value="${escapeHtml(family?.[lang] || '')}"></label>`).join('')}
+    <button>${adminText(family ? 'Guardar familia' : 'Crear familia')}</button></form>`;
+  return adminHtml`<h1>Familias del catálogo</h1><p><a href="/admin/models">Volver a artículos</a> · <a href="/admin/catalog-order">Ordenar catálogo</a></p>${message}
+    <h2>Nueva familia</h2>${editor()}${families.map(family => adminHtml`<details><summary>${escapeHtml(familyLabel(family))}</summary>${editor(family)}</details>`).join('')}`;
 }
 
 export function catalogFilter(params, families) {
@@ -145,14 +148,16 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
   const query = filters.size ? '?' + escapeHtml(filters.toString()) : '';
   const form = (model) => {
     const editing = Boolean(model);
-    const field = (key, label, value, attributes = '') => `<label>${label}<input name="${key}" value="${escapeHtml(String(value))}" ${attributes}></label>`;
-    const description = (code, name) => `<label>Descripción en ${name}<textarea name="description_${code}" maxlength="500" required rows="2">${escapeHtml(model?.['description_' + code] ?? '')}</textarea></label>`;
-    return `<form class="admin-catalog" method="post" action="/admin/models${editing ? '/' + model.sku : ''}${query}">
-      ${editing ? `<input type="hidden" name="revision" value="${model.revision}">` : ''}
+    const field = (key, label, value, attributes = '') => adminHtml`<label>${adminText(label)}<input name="${key}" value="${escapeHtml(String(value))}" ${attributes}></label>`;
+    const description = (code, name) => adminHtml`<label>Descripción en ${adminText(name)}<textarea name="description_${code}" maxlength="500" required rows="2">${escapeHtml(model?.['description_' + code] ?? '')}</textarea></label>`;
+    return adminHtml`<form class="admin-catalog" method="post" action="/admin/models${editing ? '/' + model.sku : ''}${query}">
+      ${editing ? adminHtml`<input type="hidden" name="revision" value="${model.revision}">` : ''}
       <div class="address-row">
-        <label>Familia<select name="family">${families.map(({ id, es }) =>
-          `<option value="${id}" ${(model?.family || 'wheelchair') === id ? 'selected' : ''}>${escapeHtml(es)}</option>`).join('')}</select></label>
-        ${editing ? `<p>SKU <strong>${model.sku}</strong></p>` : field('sku', 'SKU', '', 'required maxlength="24" pattern="[a-z0-9][a-z0-9\\-]{1,23}"')}
+        <label>Familia<select name="family">${families.map(familyRow => {
+          const { id } = familyRow;
+          return `<option value="${id}" ${(model?.family || 'wheelchair') === id ? 'selected' : ''}>${escapeHtml(familyLabel(familyRow))}</option>`;
+        }).join('')}</select></label>
+        ${editing ? adminHtml`<p>SKU <strong>${model.sku}</strong></p>` : field('sku', 'SKU', '', 'required maxlength="24" pattern="[a-z0-9][a-z0-9\\-]{1,23}"')}
         ${field('name', 'Nombre comercial', model?.name ?? '', 'required maxlength="80"')}
         ${field('price', 'Precio en CHF', model ? (model.cents / 100).toFixed(2) : '', 'required inputmode="decimal"')}
         ${field('units', 'Unidades disponibles', model?.units ?? 0, 'type="number" min="0" max="999" required')}
@@ -163,10 +168,10 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
       ${description('de', 'alemán')}${description('fr', 'francés')}
       <label><input type="checkbox" name="fold" value="1" ${model?.fold ? 'checked' : ''}> Plegable</label>
       <label><input type="checkbox" name="active" value="1" ${model?.active ? 'checked' : ''}> Publicado en la tienda</label>
-      <button>${editing ? 'Guardar cambios' : 'Crear artículo'}</button>
+      <button>${editing ? adminText('Guardar cambios') : adminText('Crear artículo')}</button>
     </form>`;
   };
-  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Artículos del catálogo</h1>
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Artículos del catálogo</h1>
     <div class="product-actions admin-catalog-links">
       <a class="button secondary" href="/admin/families">Gestionar familias</a>
       <a class="button secondary" href="/admin/catalog-order">Ordenar catálogo</a>
@@ -176,33 +181,34 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
     <form class="catalog-filters" action="/admin/models" method="get">
       <label>Nombre o SKU <input type="search" name="q" maxlength="80" value="${escapeHtml(search)}"></label>
       <label>Familia <select name="family"><option value="">Todas las familias</option>
-        ${families.map(({ id, es }) => `<option value="${id}" ${family === id ? 'selected' : ''}>${escapeHtml(es)}</option>`).join('')}
+        ${families.map(familyRow => { const { id } = familyRow; return adminHtml`<option value="${id}" ${family === id ? 'selected' : ''}>${escapeHtml(familyLabel(familyRow))}</option>`; }).join('')}
       </select></label>
       <label>Estado <select name="status"><option value="">Todos los estados</option>
         <option value="published" ${status === 'published' ? 'selected' : ''}>Publicado</option>
         <option value="archived" ${status === 'archived' ? 'selected' : ''}>Archivado</option>
       </select></label>
-      <button>Buscar</button>${filters.size ? '<a href="/admin/models">Limpiar búsqueda y filtros</a>' : ''}
+      <button>Buscar</button>${filters.size ? adminFragment('<a href="/admin/models">Limpiar búsqueda y filtros</a>') : ''}
     </form>
     <div id="catalog-results">
-    ${visible.length ? `<p>${pageCount > 1 ? `${start + 1}–${start + pageItems.length} de ` : ''}${visible.length} ${visible.length === 1 ? 'artículo' : 'artículos'}</p>` + families.map(({ id, es }) => {
+    ${visible.length ? adminHtml`<p>${pageCount > 1 ? `${start + 1}–${start + pageItems.length} de ` : ''}${visible.length} ${visible.length === 1 ? adminText('artículo') : adminText('artículos')}</p>` + families.map(familyRow => {
+      const { id } = familyRow;
       const items = pageItems.filter(model => model.family === id);
-      return items.length ? `<section><h2>${escapeHtml(es)}</h2><div class="admin-item-grid">
-        ${items.map(model => `<article class="model-editor">
-          <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</p>
+      return items.length ? adminHtml`<section><h2>${escapeHtml(familyLabel(familyRow))}</h2><div class="admin-item-grid">
+        ${items.map(model => adminHtml`<article class="model-editor">
+          <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? adminText('Publicado') : adminText('Archivado')} · ${model.units} ud.</p>
           <div class="admin-item-actions">
           <a class="button secondary" href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a>
-          ${isPart(model) || isWheelchair(model) ? `<a class="button secondary" href="/admin/models/${model.sku}/compatibility">${isPart(model) ? 'Configurar compatibilidad' : 'Asignar accesorios y recambios'}</a>` : ''}
-          ${model.sku === coreSKU ? '<a class="button secondary" href="/admin#catalog-editor">Editar datos del artículo</a>' : ''}
+          ${isPart(model) || isWheelchair(model) ? adminHtml`<a class="button secondary" href="/admin/models/${model.sku}/compatibility">${isPart(model) ? adminText('Configurar compatibilidad') : adminText('Asignar accesorios y recambios')}</a>` : ''}
+          ${model.sku === coreSKU ? adminFragment('<a class="button secondary" href="/admin#catalog-editor">Editar datos del artículo</a>') : ''}
           </div>
           ${model.sku === coreSKU ? '' :
-            `<details><summary>Editar artículo</summary>${form(model)}</details>`}
+            adminHtml`<details><summary>Editar artículo</summary>${form(model)}</details>`}
           </article>`).join('')}</div></section>` : '';
-    }).join('') : '<p>No hay artículos que coincidan con estos filtros.</p>'}
-    ${pageCount > 1 ? `<nav class="product-actions" aria-label="Páginas del catálogo">
-      ${currentPage > 1 ? `<a class="button secondary" href="${pageLink(currentPage - 1)}">Anterior</a>` : ''}
+    }).join('') : adminFragment('<p>No hay artículos que coincidan con estos filtros.</p>')}
+    ${pageCount > 1 ? adminHtml`<nav class="product-actions" aria-label="Páginas del catálogo">
+      ${currentPage > 1 ? adminHtml`<a class="button secondary" href="${pageLink(currentPage - 1)}">Anterior</a>` : ''}
       <span>Página ${currentPage} de ${pageCount}</span>
-      ${currentPage < pageCount ? `<a class="button secondary" href="${pageLink(currentPage + 1)}">Siguiente</a>` : ''}
+      ${currentPage < pageCount ? adminHtml`<a class="button secondary" href="${pageLink(currentPage + 1)}">Siguiente</a>` : ''}
     </nav>` : ''}</div>`;
 }
 

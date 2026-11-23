@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml } from './admin-language.mjs';
 import { escapeHtml } from './views.mjs';
 import { purchasedLines } from './inventory.mjs';
 
@@ -89,19 +90,19 @@ export function markSerialsReceived(db, orderId, receiptId, serials, restocked) 
 
 export function shipmentForm(order) {
   const tracked = purchasedLines(order).filter(line => line.requires_serial !== 0);
-  return `<form class="shipment-form" method="post" action="/admin/${order.id}/ship">
+  return adminHtml`<form class="shipment-form" method="post" action="/admin/${order.id}/ship">
     <label>Referencia de seguimiento <input name="tracking" required maxlength="80"></label>
-    ${tracked.map(line => `<label>${escapeHtml(line.name)} · ${line.quantity} números de serie
+    ${tracked.map(line => adminHtml`<label>${escapeHtml(line.name)} · ${line.quantity} números de serie
       <textarea name="serial_${line.sku}" rows="${Math.min(4, line.quantity + 1)}" required></textarea>
     </label>`).join('')}
-    ${tracked.length ? '<p>Escribe un número de serie por línea. Se guardan en mayúsculas.</p>' : ''}
+    ${tracked.length ? adminFragment('<p>Escribe un número de serie por línea. Se guardan en mayúsculas.</p>') : ''}
     <button>Registrar envío</button></form>`;
 }
 
 export function serialSummary(records) {
   if (!records.length) return '';
-  return `<details class="returns"><summary>Números de serie enviados</summary><ul>${records.map(record =>
-    `<li>${record.sku} · <code>${escapeHtml(record.serial)}</code> · ${record.receipt_id ? record.restocked ? 'Repuesto' : 'En revisión' : 'Enviado'}</li>`).join('')}</ul></details>`;
+  return adminHtml`<details class="returns"><summary>Números de serie enviados</summary><ul>${records.map(record =>
+    adminHtml`<li>${record.sku} · <code>${escapeHtml(record.serial)}</code> · ${record.receipt_id ? record.restocked ? 'Repuesto' : 'En revisión' : 'Enviado'}</li>`).join('')}</ul></details>`;
 }
 
 export function serialLookup(db, raw) {
@@ -112,14 +113,14 @@ export function serialLookup(db, raw) {
     FROM shipment_serials AS shipments JOIN orders ON orders.id = shipments.order_id
     LEFT JOIN return_receipts AS receipts ON receipts.id = shipments.receipt_id
     WHERE shipments.serial = ? ORDER BY shipments.rowid DESC`).all(serial) : [];
-  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Historial por número de serie</h1>
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Historial por número de serie</h1>
     <form class="order-filter" method="get" action="/admin/serials">
       <label>Número de serie<input name="serial" maxlength="64" required value="${escapeHtml(serial.slice(0, 64))}"></label>
       <button>Buscar</button>
     </form>
-    ${history.length ? `<ul class="serial-history">${history.map(row => `<li>
+    ${history.length ? adminHtml`<ul class="serial-history">${history.map(row => adminHtml`<li>
       <a href="/admin#order-${row.order_id}">Pedido ${row.order_id.slice(0, 8)}</a> · SKU ${row.sku} · ${escapeHtml(row.tracking || '')}
       <br>${row.receipt_id ? (row.restocked ? 'Devuelto y repuesto' : 'Devuelto y en revisión') + ' · ' +
-        `<time datetime="${row.received_at}">${row.received_at.slice(0, 16).replace('T', ' ')} UTC</time>` : 'Enviado'}</li>`).join('')}</ul>`
-      : raw ? '<p>No se encontraron envíos con ese número de serie.</p>' : ''}`;
+        adminHtml`<time datetime="${row.received_at}">${row.received_at.slice(0, 16).replace('T', ' ')} UTC</time>` : 'Enviado'}</li>`).join('')}</ul>`
+      : raw ? adminFragment('<p>No se encontraron envíos con ese número de serie.</p>') : ''}`;
 }

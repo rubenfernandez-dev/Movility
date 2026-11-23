@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminText } from './admin-language.mjs';
 import { randomUUID } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
@@ -129,23 +130,23 @@ export function mailQueuePage(db, canManage, message = '', resendEnabled = false
   const totals = db.prepare('SELECT status, COUNT(*) AS count FROM mail_jobs GROUP BY status').all();
   const cards = jobs.map(job => {
     const attempts = db.prepare('SELECT * FROM mail_attempts WHERE job_id = ? ORDER BY attempt DESC').all(job.id);
-    return `<article><h2>${kinds[job.kind]}</h2><p>${jobLabel(job)} · ${job.attempts} intentos</p>
+    return adminHtml`<article><h2>${adminText(kinds[job.kind])}</h2><p>${adminText(jobLabel(job))} · ${job.attempts} intentos</p>
       <p>${job.test_payload ? 'Resend · destinatario de prueba' : 'Simulación local'}</p>
       <p><a href="/admin/${job.order_id}/email/${job.kind}">Ver correo del pedido ${job.order_id.slice(0, 8)}</a></p>
-      ${job.status === 'queued' ? `<p>Disponible desde ${date(job.next_at)}</p>` : ''}
-      ${job.provider_ref ? `<p>Referencia de entrega <code>${escapeHtml(job.provider_ref)}</code></p>` : ''}
-      ${job.blocked_reason === 'window' ? '<p>Ventana de reintento vencida. Revisa el resultado en el proveedor.</p>' : ''}
-      ${attempts.length ? `<details><summary>Historial de intentos</summary><ol>${attempts.map(attempt =>
-        `<li>${date(attempt.started_at)} · ${outcomes[attempt.outcome] || 'En curso'}</li>`).join('')}</ol></details>` : ''}
+      ${job.status === 'queued' ? adminHtml`<p>Disponible desde ${date(job.next_at)}</p>` : ''}
+      ${job.provider_ref ? adminHtml`<p>Referencia de entrega <code>${escapeHtml(job.provider_ref)}</code></p>` : ''}
+      ${job.blocked_reason === 'window' ? adminFragment('<p>Ventana de reintento vencida. Revisa el resultado en el proveedor.</p>') : ''}
+      ${attempts.length ? adminHtml`<details><summary>Historial de intentos</summary><ol>${attempts.map(attempt =>
+        adminHtml`<li>${date(attempt.started_at)} · ${outcomes[attempt.outcome] || 'En curso'}</li>`).join('')}</ol></details>` : ''}
       ${canManage && job.status === 'failed' && !job.blocked_reason && (!job.test_payload || resendEnabled)
-        ? `<form method="post" action="/admin/mail/${job.id}/retry"><button>Reintentar</button></form>` : ''}</article>`;
+        ? adminHtml`<form method="post" action="/admin/mail/${job.id}/retry"><button>Reintentar</button></form>` : ''}</article>`;
   }).join('');
-  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Cola de correos</h1>
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Cola de correos</h1>
     <p>${resendEnabled ? 'Resend activo para avisos nuevos dirigidos a la dirección de prueba configurada.'
       : 'Simulación local. Los envíos a Resend están desactivados.'}</p>
-    ${message ? `<p class="form-success" role="status">${message}</p>` : ''}
+    ${message ? adminHtml`<p class="form-success" role="status">${adminText(message)}</p>` : ''}
     <dl class="admin-metrics">${Object.entries(labels).map(([key, label]) =>
-      `<div><dt>${label}</dt><dd>${totals.find(row => row.status === key)?.count || 0}</dd></div>`).join('')}</dl>
-    ${canManage ? '<form method="post" action="/admin/mail/process"><button>Procesar cola ahora</button></form>' : ''}
-    ${cards || '<p>Los próximos avisos de compra, envío y reembolso aparecerán aquí.</p>'}`;
+      adminHtml`<div><dt>${adminText(label)}</dt><dd>${totals.find(row => row.status === key)?.count || 0}</dd></div>`).join('')}</dl>
+    ${canManage ? adminFragment('<form method="post" action="/admin/mail/process"><button>Procesar cola ahora</button></form>') : ''}
+    ${cards || adminFragment('<p>Los próximos avisos de compra, envío y reembolso aparecerán aquí.</p>')}`;
 }

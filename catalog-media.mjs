@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminText } from './admin-language.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,9 +18,9 @@ const types = {
 
 export function contentAdmin(sku, name, features, saved, hasCompatibility = false) {
   const path = '/admin/models/' + sku + '/content';
-  return `<h1>${escapeHtml(name)}</h1><p><a href="/admin/models">Volver al catálogo</a></p>
-    ${hasCompatibility ? `<p><a href="/admin/models/${sku}/compatibility">Configurar compatibilidad</a></p>` : ''}
-    ${saved ? '<p role="status">Contenido guardado.</p>' : ''}
+  return adminHtml`<h1>${escapeHtml(name)}</h1><p><a href="/admin/models">Volver al catálogo</a></p>
+    ${hasCompatibility ? adminHtml`<p><a href="/admin/models/${sku}/compatibility">Configurar compatibilidad</a></p>` : ''}
+    ${saved ? adminFragment('<p role="status">Contenido guardado.</p>') : ''}
     <h2>Características</h2><form class="confirmation" method="post" action="${path}">
     <label>Alemán, una característica por línea<textarea name="de" maxlength="2500" rows="6">${escapeHtml(features?.de || '')}</textarea></label>
     <label>Francés, una característica por línea<textarea name="fr" maxlength="2500" rows="6">${escapeHtml(features?.fr || '')}</textarea></label>
@@ -27,7 +28,7 @@ export function contentAdmin(sku, name, features, saved, hasCompatibility = fals
     <h2>Fotos, vídeo y 3D</h2><p>JPG hasta 8 MB, MP4 hasta 32 MB y GLB hasta 16 MB. El vídeo necesita subtítulos y transcripción para mostrarse en cada idioma.</p>
     <form class="confirmation" enctype="multipart/form-data" method="post" action="${path}/upload">
       <label>Tipo de archivo<select name="kind">${Object.entries(types).map(([key, [, label]]) =>
-        `<option value="${key}">${label}</option>`).join('')}</select></label>
+        `<option value="${key}">${adminText(label)}</option>`).join('')}</select></label>
       <label>Archivo<input type="file" name="file" accept="${Object.values(types).map(([, , accept]) => accept).join(',')}" required></label>
       <button>Subir o reemplazar archivo</button></form>`;
 }

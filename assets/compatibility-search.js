@@ -4,6 +4,16 @@ const query = editor.querySelector('[data-compat-query]');
 const onlySelected = editor.querySelector('[data-compat-selected]');
 const status = editor.querySelector('[data-compat-status]');
 const unsaved = editor.querySelector('[data-compat-unsaved]');
+const messages = {
+  es: ['Aún no hay artículos seleccionados', 'Sin coincidencias', 'resultado', 'resultados',
+    'seleccionado', 'seleccionados', 'Hay cambios sin guardar.'],
+  'de-CH': ['Noch keine Artikel ausgewählt', 'Keine Treffer', 'Treffer', 'Treffer',
+    'ausgewählt', 'ausgewählt', 'Es gibt ungespeicherte Änderungen.'],
+  'fr-CH': ['Aucun article sélectionné', 'Aucun résultat', 'résultat', 'résultats',
+    'sélectionné', 'sélectionnés', 'Des modifications ne sont pas enregistrées.'],
+};
+const [emptySelection, noResults, result, resultsPlural, selectedLabel, selectedPlural, unsavedLabel] =
+  messages[document.documentElement.lang] || messages.es;
 const editableFields = [...editor.querySelectorAll('[data-compat-item] input')];
 const normalize = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
 const groups = [...editor.querySelectorAll('[data-compat-group]')].map(group => ({
@@ -32,9 +42,9 @@ function update() {
     group.hidden = (Boolean(term) || selectedOnly) && matches === 0;
     visible += matches;
   }
-  const results = selectedOnly && selected === 0 ? 'Aún no hay artículos seleccionados'
-    : visible === 0 ? 'Sin coincidencias' : `${visible} ${visible === 1 ? 'resultado' : 'resultados'}`;
-  status.textContent = `${results} · ${selected} ${selected === 1 ? 'seleccionado' : 'seleccionados'}`;
+  const results = selectedOnly && selected === 0 ? emptySelection
+    : visible === 0 ? noResults : `${visible} ${visible === 1 ? result : resultsPlural}`;
+  status.textContent = `${results} · ${selected} ${selected === 1 ? selectedLabel : selectedPlural}`;
 }
 
 query.addEventListener('input', update);
@@ -56,7 +66,7 @@ function warnBeforeLeaving(event) {
 function updateUnsaved() {
   const changed = editableFields.some(field => field.type === 'checkbox'
     ? field.checked !== field.defaultChecked : field.value !== field.defaultValue);
-  unsaved.textContent = changed ? 'Hay cambios sin guardar.' : '';
+  unsaved.textContent = changed ? unsavedLabel : '';
   if (changed) window.addEventListener('beforeunload', warnBeforeLeaving);
   else window.removeEventListener('beforeunload', warnBeforeLeaving);
 }

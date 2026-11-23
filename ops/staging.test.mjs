@@ -166,6 +166,19 @@ test('staging keeps a simulated order after restart and ignores external integra
       { headers: { Authorization: auth } })).text();
     assert.match(initialArticles, /<h3>Movility One<\/h3>/);
     assert.match(initialArticles, /href="\/admin\/models\/one\/content">Características, fotos y vídeo/);
+    const localizedAdmin = await fetch(restarted + '/admin/models?family=wheelchair&lang=fr-CH',
+      { headers: { Authorization: auth } });
+    const adminLanguageCookie = localizedAdmin.headers.get('set-cookie').split(';')[0];
+    const localizedArticles = await localizedAdmin.text();
+    assert.match(localizedArticles, /<html lang="fr-CH">/);
+    assert.match(localizedArticles, /Articles du catalogue/);
+    assert.match(localizedArticles, /family=wheelchair&amp;lang=de-CH/);
+    assert.match(localizedArticles, /Caractéristiques, photos et vidéo/);
+    const localizedSecurity = await fetch(restarted + '/admin/security',
+      { headers: { Authorization: auth, Cookie: adminLanguageCookie } });
+    assert.match(await localizedSecurity.text(), /Sécurité de l’administration/);
+    const localizedStock = await fetch(restarted + '/admin/inventory?lang=de-CH', { headers: { Authorization: auth } });
+    assert.match(await localizedStock.text(), /<html lang="de-CH">[\s\S]*Lagerbewegungen[\s\S]*Lagerbewegungen als CSV herunterladen/);
     const accessory = { sku: 'travel-bag', family: 'accessory', name: 'Travel Bag', price: '49', units: '2',
       active: '1', description_de: 'Tasche', description_fr: 'Sac de transport' };
     assert.equal((await submit(restarted + '/admin/models', accessory, { Authorization: auth })).status, 303);

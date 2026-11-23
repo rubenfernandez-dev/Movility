@@ -1,3 +1,4 @@
+import { adminHtml, adminText } from './admin-language.mjs';
 export function setupStripeRefunds(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS stripe_refunds (
     order_id TEXT PRIMARY KEY REFERENCES orders(id), refund_id TEXT UNIQUE,
@@ -58,8 +59,8 @@ export function applyStripeRefundEvent(db, event, finish) {
 export function refundControls(order, refund, stripeEnabled) {
   const labels = { requested: 'Solicitud pendiente de enviar o verificar', pending: 'A la espera de Stripe',
     succeeded: 'Confirmado por Stripe', failed: 'Fallido o cancelado en Stripe' };
-  return `${refund ? `<p>Reembolso Stripe · ${labels[refund.state]}</p>` : ''}
+  return `${refund ? adminHtml`<p>Reembolso Stripe · ${adminText(labels[refund.state])}</p>` : ''}
     ${stripeEnabled && order.status !== 'refunded' && (!refund || refundRetryable(refund))
-      ? `<form method="post" action="/admin/${order.id}/stripe-refund"><button>${refund
-        ? 'Reintentar solicitud Stripe' : 'Solicitar reembolso total en Stripe (prueba)'}</button></form>` : ''}`;
+      ? adminHtml`<form method="post" action="/admin/${order.id}/stripe-refund"><button>${refund
+        ? adminText('Reintentar solicitud Stripe') : adminText('Solicitar reembolso total en Stripe (prueba)')}</button></form>` : ''}`;
 }

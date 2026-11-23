@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminText } from './admin-language.mjs';
 import { methods, money } from './views.mjs';
 const reportMethods = [...methods, 'Tarjeta'];
 
@@ -66,27 +67,27 @@ export function accountingPage(data, filters) {
   const { from, to, method, invalid } = filters;
   const params = new URLSearchParams(Object.entries({ from, to, method }).filter(([, value]) => value));
   const download = '/admin/accounting.csv' + (params.size ? '?' + params.toString().replaceAll('&', '&amp;') : '');
-  return `<a href="/admin">Volver a administración</a>
+  return adminHtml`<a href="/admin">Volver a administración</a>
     <h1 class="page-title">Conciliación de pedidos</h1>
     <p>Operaciones simuladas en CHF. Las fechas se muestran en UTC.</p>
     <form class="order-filter accounting-filter" method="get" action="/admin/accounting">
       <label>Desde<input name="from" type="date" value="${from}"></label>
       <label>Hasta<input name="to" type="date" value="${to}"></label>
       <label>Medio de pago<select name="method"><option value="">Todos</option>
-        ${reportMethods.map(value => `<option ${value === method ? 'selected' : ''}>${value}</option>`).join('')}
+        ${reportMethods.map(value => adminHtml`<option ${value === method ? 'selected' : ''}>${value}</option>`).join('')}
       </select></label><button>Filtrar</button></form>
-    ${invalid ? '<p class="form-error" role="alert">Revisa las fechas y el medio de pago. La fecha de inicio debe ser anterior o igual a la final.</p>' : `
+    ${invalid ? adminFragment('<p class="form-error" role="alert">Revisa las fechas y el medio de pago. La fecha de inicio debe ser anterior o igual a la final.</p>') : `
     <dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', data.captures)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', data.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', data.captures - data.refunds)}</dd></div></dl>
     <p><a href="${download}">Descargar CSV de conciliación</a></p>
-    ${data.undated ? `<p>${data.undated} operaciones históricas sin fecha registrada. Aparecen en la vista sin filtro de fechas.</p>` : ''}
-    ${data.entries.length ? `<div class="inventory-table"><table>
+    ${data.undated ? adminHtml`<p>${data.undated} operaciones históricas sin fecha registrada. Aparecen en la vista sin filtro de fechas.</p>` : ''}
+    ${data.entries.length ? adminHtml`<div class="inventory-table"><table>
       <thead><tr><th scope="col">Fecha</th><th scope="col">Pedido</th><th scope="col">Operación</th><th scope="col">Método</th><th scope="col">Importe</th></tr></thead>
-      <tbody>${data.entries.map(entry => `<tr><td>${entry.occurred_at ? entry.occurred_at.slice(0, 16).replace('T', ' ') : 'Sin fecha registrada'}</td>
+      <tbody>${data.entries.map(entry => adminHtml`<tr><td>${entry.occurred_at ? entry.occurred_at.slice(0, 16).replace('T', ' ') : 'Sin fecha registrada'}</td>
         <th scope="row"><a href="/admin#order-${entry.order_id}">${entry.order_id.slice(0, 8)}</a></th>
-        <td>${kindLabel[entry.kind]}</td><td>${entry.method}</td><td>${money('es', signed(entry))}</td></tr>`).join('')}</tbody>
-    </table></div><p>${data.count} operaciones. La tabla muestra hasta 200; el CSV las incluye todas.</p>` : '<p>No hay operaciones para este filtro.</p>'}`}`;
+        <td>${adminText(kindLabel[entry.kind])}</td><td>${entry.method}</td><td>${money('es', signed(entry))}</td></tr>`).join('')}</tbody>
+    </table></div><p>${data.count} operaciones. La tabla muestra hasta 200; el CSV las incluye todas.</p>` : adminFragment('<p>No hay operaciones para este filtro.</p>')}`}`;
 }
 
 export function accountingCsv(db, filters) {

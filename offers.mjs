@@ -1,3 +1,4 @@
+import { adminHtml } from './admin-language.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
@@ -93,8 +94,8 @@ export function offersPage(locale, email, status) {
 export function offerMailbox(db) {
   const rows = db.prepare(`SELECT email, state, locale, challenge_preview, unsubscribe_preview FROM offer_subscriptions
     WHERE state='active' OR (state='pending' AND challenge_expires>?) ORDER BY rowid DESC LIMIT 30`).all(now());
-  return `<h1>Buzón de ofertas de prueba</h1><p>Preproducción. Los códigos solo se muestran en este buzón.</p>
-    <ul>${rows.map(row => `<li>${escapeHtml(row.email)} · ${row.locale} ·
+  return adminHtml`<h1>Buzón de ofertas de prueba</h1><p>Preproducción. Los códigos solo se muestran en este buzón.</p>
+    <ul>${rows.map(row => adminHtml`<li>${escapeHtml(row.email)} · ${row.locale} ·
       ${row.state === 'active' ? 'Baja' : 'Confirmación'} · <code>${escapeHtml(row.unsubscribe_preview || row.challenge_preview)}</code></li>`).join('')}</ul>
     <p><a href="/admin">Volver al panel</a></p>`;
 }

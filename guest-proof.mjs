@@ -1,3 +1,4 @@
+import { adminHtml } from './admin-language.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
@@ -64,7 +65,7 @@ export function guestAccessPage(locale, error, completed) {
 }
 
 export function codePage(order, code) {
-  return `<h1 class="page-title">Código de pedido invitado</h1>
+  return adminHtml`<h1 class="page-title">Código de pedido invitado</h1>
     <p>Caduca en 15 minutos y solo se puede usar una vez. El código se muestra únicamente en esta pantalla.</p>
     <p><code>${escapeHtml(code)}</code></p><p><a href="/${order.locale}/guest-access">Formulario de verificación</a></p>
     <p><a href="/admin#order-${order.id}">Volver al pedido</a></p>`;

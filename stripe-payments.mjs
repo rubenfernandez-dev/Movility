@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminText } from './admin-language.mjs';
 import Stripe from 'stripe';
 import { escapeHtml, money } from './views.mjs';
 
@@ -146,11 +147,11 @@ export function stripeStatus(locale, attempt, error = false) {
 
 export function stripeAdmin(attempts) {
   const labels = { preparing: 'Preparando', open: 'Pendiente', paid: 'Confirmado', expired: 'Caducado', review: 'En revisión' };
-  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Pagos de prueba con Stripe</h1>
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Pagos de prueba con Stripe</h1>
     <p>Las sesiones pendientes reservan stock hasta recibir la confirmación o la caducidad de Stripe.</p>
-    ${attempts.length ? `<div class="inventory-table"><table><thead><tr><th scope="col">Referencia</th>
+    ${attempts.length ? adminHtml`<div class="inventory-table"><table><thead><tr><th scope="col">Referencia</th>
     <th scope="col">Método</th><th scope="col">Importe</th><th scope="col">Estado</th></tr></thead><tbody>
-    ${attempts.map(attempt => `<tr><th scope="row">${escapeHtml(attempt.id)}</th><td>${escapeHtml(attempt.method)}</td>
-    <td>${money('es', attempt.cents)}</td><td>${labels[attempt.state]}</td></tr>`).join('')}</tbody></table></div>`
-    : '<p>Todavía no hay sesiones de Stripe.</p>'}`;
+    ${attempts.map(attempt => adminHtml`<tr><th scope="row">${escapeHtml(attempt.id)}</th><td>${escapeHtml(attempt.method)}</td>
+    <td>${money('es', attempt.cents)}</td><td>${adminText(labels[attempt.state])}</td></tr>`).join('')}</tbody></table></div>`
+    : adminFragment('<p>Todavía no hay sesiones de Stripe.</p>')}`;
 }

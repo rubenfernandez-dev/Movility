@@ -1,3 +1,4 @@
+import { adminHtml, adminText } from './admin-language.mjs';
 import { randomUUID } from 'node:crypto';
 
 const cookieName = 'movility_analytics';
@@ -103,7 +104,7 @@ export function funnelReport(db, query) {
     .get(days * 86400, retentionSeconds, language, language);
   const names = ['Ficha de producto', 'Carrito', 'Inicio de pago', 'Pedido confirmado'];
   const rate = (value, base) => base ? new Intl.NumberFormat('es', { style: 'percent', maximumFractionDigits: 1 }).format(value / base) : '—';
-  return `<a href="/admin">Volver a administración</a><h1 class="page-title">Embudo de compra</h1>
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Embudo de compra</h1>
     <p>Recorridos con consentimiento que empiezan en una ficha. Se cuenta cada etapa una vez por recorrido, en orden.</p>
     <form class="order-filter accounting-filter" action="/admin/analytics" method="get">
       <label>Periodo<select name="days"><option value="7" ${days === 7 ? 'selected' : ''}>7 días</option>
@@ -114,8 +115,8 @@ export function funnelReport(db, query) {
       <button>Filtrar</button></form>
     <div class="inventory-table"><table><thead><tr>
       <th scope="col">Etapa</th><th scope="col">Recorridos</th><th scope="col">Desde la etapa anterior</th><th scope="col">Desde la ficha</th>
-    </tr></thead><tbody>${stages.map((stage, index) => `<tr>
-      <th scope="row">${names[index]}</th><td>${row[stage]}</td>
+    </tr></thead><tbody>${stages.map((stage, index) => adminHtml`<tr>
+      <th scope="row">${adminText(names[index])}</th><td>${row[stage]}</td>
       <td>${index ? rate(row[stage], row[stages[index - 1]]) : '—'}</td><td>${rate(row[stage], row.view)}</td>
     </tr>`).join('')}</tbody></table></div>
     <p>Los recuentos corresponden a recorridos, no a todos los pedidos. Los datos se conservan hasta 30 días.</p>`;

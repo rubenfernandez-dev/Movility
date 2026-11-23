@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminText } from './admin-language.mjs';
 import { coreSKU } from './cart.mjs';
 import { escapeHtml } from './views.mjs';
 
@@ -19,28 +20,28 @@ export function compatibilityAdmin(model, candidates, entries, message = '') {
       ['Recambios', candidates.filter(item => item.family === 'spare')]];
   const card = item => {
       const entry = selected.get(item.sku);
-      return `<fieldset class="model-editor" data-compat-item data-name="${escapeHtml(item.name)}" data-sku="${item.sku}">
-        <legend>${escapeHtml(item.name)}${item.active ? '' : ' · Archivado'}</legend>
+      return adminHtml`<fieldset class="model-editor" data-compat-item data-name="${escapeHtml(item.name)}" data-sku="${item.sku}">
+        <legend>${escapeHtml(item.name)}${item.active ? '' : ' · ' + adminText('Archivado')}</legend>
         <p class="compat-sku">SKU ${item.sku}</p>
         <label class="admin-check"><input type="checkbox" name="${field}" value="${item.sku}" ${entry ? 'checked' : ''}> Compatible</label>
         <details ${entry?.note_de ? 'open' : ''}><summary>Condiciones de compatibilidad</summary>
         <label>Condición en alemán <input name="de-${item.sku}" maxlength="240" value="${escapeHtml(entry?.note_de || '')}"></label>
         <label>Condición en francés <input name="fr-${item.sku}" maxlength="240" value="${escapeHtml(entry?.note_fr || '')}"></label></details></fieldset>`;
   };
-  return `<p><a href="/admin/models?family=${model.family}">Volver al catálogo</a> ·
+  return adminHtml`<p><a href="/admin/models?family=${model.family}">Volver al catálogo</a> ·
     <a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>
     <h1>Compatibilidad de ${escapeHtml(model.name)}</h1>
-    <p>${field === 'chair' ? 'Marca las piezas compatibles con esta silla.' : 'Marca los modelos compatibles con esta pieza.'}
+    <p>${adminText(field === 'chair' ? 'Marca las piezas compatibles con esta silla.' : 'Marca los modelos compatibles con esta pieza.')}
     Si hay una condición por versión, medida o número de serie, escríbela en ambos idiomas.</p>
     ${message}<form method="post" action="/admin/models/${model.sku}/compatibility" data-compat-editor>
-    ${candidates.length ? `<div class="catalog-filters" data-compat-search hidden>
+    ${candidates.length ? adminHtml`<div class="catalog-filters" data-compat-search hidden>
       <label>Buscar por nombre o SKU <input type="search" data-compat-query></label>
       <label class="admin-check compat-selected"><input type="checkbox" data-compat-selected> Solo seleccionados</label>
       <p role="status" data-compat-status></p></div>` : ''}
-    ${groups.map(([label, items]) => `<section data-compat-group><h2>${label}</h2>
-      ${items.length ? `<div class="admin-item-grid">${items.map(card).join('')}</div>` : '<p>Sin artículos en esta familia.</p>'}</section>`).join('')}
-    ${candidates.length ? '<p role="status" data-compat-unsaved></p><button>Guardar compatibilidad</button>' : ''}</form>
-    ${candidates.length ? '<script src="/assets/compatibility-search.js" defer></script>' : ''}`;
+    ${groups.map(([label, items]) => adminHtml`<section data-compat-group><h2>${adminText(label)}</h2>
+      ${items.length ? adminHtml`<div class="admin-item-grid">${items.map(card).join('')}</div>` : adminFragment('<p>Sin artículos en esta familia.</p>')}</section>`).join('')}
+    ${candidates.length ? adminFragment('<p role="status" data-compat-unsaved></p><button>Guardar compatibilidad</button>') : ''}</form>
+    ${candidates.length ? adminFragment('<script src="/assets/compatibility-search.js" defer></script>') : ''}`;
 }
 
 export function compatibilityInput(fields, candidates, field) {

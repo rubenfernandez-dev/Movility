@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminText } from './admin-language.mjs';
 import { randomUUID } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
@@ -64,23 +65,23 @@ export function campaignPage(db, result) {
     SUM(d.state='excluded') AS excluded FROM offer_campaigns c JOIN offer_deliveries d ON d.campaign_id=c.id
     GROUP BY c.id ORDER BY c.id DESC LIMIT 30`).all();
   const date = time => new Date(time * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-  return `<h1>Campañas de ofertas</h1><p>Preproducción · Entrega simulada. Remitente de prueba: Movility.</p>
-    ${result === 'queued' ? '<p role="status">Campaña programada.</p>' : ''}
-    ${result === 'invalid' ? '<p class="form-error" role="alert">Completa ambos idiomas y elige una audiencia confirmada y una fecha válida.</p>' : ''}
+  return adminHtml`<h1>Campañas de ofertas</h1><p>Preproducción · Entrega simulada. Remitente de prueba: Movility.</p>
+    ${result === 'queued' ? adminFragment('<p role="status">Campaña programada.</p>') : ''}
+    ${result === 'invalid' ? adminFragment('<p class="form-error" role="alert">Completa ambos idiomas y elige una audiencia confirmada y una fecha válida.</p>') : ''}
     <form class="admin-catalog" method="post" action="/admin/campaigns">
       <input type="hidden" name="request_id" value="${randomUUID()}">
-      ${[['de','Alemán'],['fr','Francés']].map(([code,label]) => `<fieldset><legend>${label}</legend>
+      ${[['de','Alemán'],['fr','Francés']].map(([code,label]) => adminHtml`<fieldset><legend>${adminText(label)}</legend>
         <label>Asunto<input name="subject_${code}" maxlength="160" required></label>
         <label>Mensaje<textarea name="body_${code}" maxlength="3000" required></textarea></label></fieldset>`).join('')}
       <label>Fecha y hora UTC (opcional)<input name="due" type="datetime-local"></label>
       <p>Si dejas la fecha vacía, la cola procesa la campaña en el siguiente ciclo.</p>
       <fieldset><legend>Suscripciones confirmadas (${audience.length})</legend>
-      ${audience.map(row => `<label><input type="checkbox" name="recipient" value="${escapeHtml(row.email)}"> ${escapeHtml(row.email)} · ${row.locale}</label>`).join('')}
-      ${audience.length ? '' : '<p>No hay suscripciones confirmadas.</p>'}</fieldset>
+      ${audience.map(row => adminHtml`<label><input type="checkbox" name="recipient" value="${escapeHtml(row.email)}"> ${escapeHtml(row.email)} · ${row.locale}</label>`).join('')}
+      ${audience.length ? '' : adminFragment('<p>No hay suscripciones confirmadas.</p>')}</fieldset>
       <div class="product-actions"><button name="audience" value="selected">Programar para seleccionados</button>
         <button class="secondary" name="audience" value="all">Programar para todos los suscritos</button></div>
     </form>
-    <h2>Historial de campañas</h2>${campaigns.map(c => `<article><h3>${escapeHtml(c.subject_de)} / ${escapeHtml(c.subject_fr)}</h3>
+    <h2>Historial de campañas</h2>${campaigns.map(c => adminHtml`<article><h3>${escapeHtml(c.subject_de)} / ${escapeHtml(c.subject_fr)}</h3>
       <p>${date(c.due_at)} · Pendientes: ${c.pending} · Simulados: ${c.simulated} · Excluidos: ${c.excluded}</p>
       <details><summary>Ver mensajes</summary><p lang="de-CH">${escapeHtml(c.body_de)}</p><p lang="fr-CH">${escapeHtml(c.body_fr)}</p>
       <p>Cada campaña real incluirá un enlace de baja.</p></details></article>`).join('')}

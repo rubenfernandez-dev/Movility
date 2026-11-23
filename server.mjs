@@ -1,3 +1,4 @@
+import { adminFragment, adminHtml, adminLanguage, adminLocale, adminPage, adminText } from './admin-language.mjs';
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
@@ -113,7 +114,7 @@ const relatedParts = (locale, sku) => {
 };
 const adminCatalogProducts = () => orderedProducts(db, [coreCatalogProduct(),
   ...db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all()]);
-const displayModelAdmin = (message, params) => page('es', 'Artículos del catálogo', modelAdmin(
+const displayModelAdmin = (message, params) => adminPage('Artículos del catálogo', modelAdmin(
   adminCatalogProducts(), catalogFamilies(db), message, params));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
@@ -410,36 +411,36 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     const serials = serialAccess ? shipmentSerials(db, order.id) : [];
     const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
     const events = supportAccess ? db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id) : [];
-    const notices = events.map(({ kind }) => `<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
-    return `<article id="order-${order.id}"><h2>${order.id}</h2>
+    const notices = events.map(({ kind }) => adminHtml`<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
+    return adminHtml`<article id="order-${order.id}"><h2>${order.id}</h2>
       <p>${escapeHtml(productNames)} · ${supportAccess ? escapeHtml(order.email) + ' · ' : ''}${order.locale} ·
-        ${financeAccess ? escapeHtml(order.method) + ' · ' + money('es', order.cents) + ' · ' : ''}${orderLabels[order.status]}</p>
-      ${addressAccess && order.street ? `<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
-      ${(shippingAccess || supportAccess) && order.tracking ? `<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
-      ${(shippingAccess || supportAccess) ? trackingHistory('es', trackingEvents(db, order.id)) : ''}
+        ${financeAccess ? escapeHtml(order.method) + ' · ' + money(adminLocale(), order.cents) + ' · ' : ''}${adminText(orderLabels[order.status])}</p>
+      ${addressAccess && order.street ? adminHtml`<p>${escapeHtml(order.name)} · ${escapeHtml(order.street)} · ${escapeHtml(order.zip)} ${escapeHtml(order.city)} · Suiza</p>` : ''}
+      ${(shippingAccess || supportAccess) && order.tracking ? adminHtml`<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
+      ${(shippingAccess || supportAccess) ? trackingHistory(adminLocale(), trackingEvents(db, order.id)) : ''}
       ${shippingAccess ? trackingForm(order) : ''}
-      ${supportAccess ? `<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
+      ${supportAccess ? adminHtml`<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
       ${shippingAccess && order.status === 'paid' ? refundPending(refund)
-        ? '<p>Expedición en pausa por reembolso pendiente.</p>' : shipmentForm({ ...order, lines }) : ''}
+        ? adminFragment('<p>Expedición en pausa por reembolso pendiente.</p>') : shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
-      ${role === 'admin' ? `<details><summary>Verificación de pedido invitado</summary>
+      ${role === 'admin' ? adminHtml`<details><summary>Verificación de pedido invitado</summary>
         <form method="post" action="/admin/${order.id}/guest-code">
           <button class="secondary" name="action" value="issue">Generar código</button>
           <button class="secondary" name="action" value="revoke">Revocar código y verificación</button>
         </form></details>` : ''}
-      ${documents.length ? `<p>${documents.map(({ kind }) =>
-        `<a href="/admin/${order.id}/document/${kind}">${kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba'}</a>`).join(' · ')}</p>` : ''}
+      ${documents.length ? adminHtml`<p>${documents.map(({ kind }) =>
+        `<a href="/admin/${order.id}/document/${kind}">${adminText(kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba')}</a>`).join(' · ')}</p>` : ''}
       ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
-        : financeAccess && order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
+        : financeAccess && order.status !== 'refunded' ? adminHtml`<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
       ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
     </article>`;
   }).join('');
-  return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
-    ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>' : ''}
-    <p>Perfil: ${roleNames[role]}</p>
-    ${role === 'admin' ? '<p><a href="/admin/security">Seguridad del panel</a></p>' : ''}
+  return adminPage('Administración de prueba', adminHtml`<h1>Administración de prueba</h1>
+    ${role === 'admin' && accountsEnabled ? adminFragment('<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>') : ''}
+    <p>Perfil: ${adminText(roleNames[role])}</p>
+    ${role === 'admin' ? adminFragment('<p><a href="/admin/security">Seguridad del panel</a></p>') : ''}
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
-    ${catalogAccess ? `<section class="model-editor admin-catalog-home"><h2>Catálogo</h2>
+    ${catalogAccess ? adminHtml`<section class="model-editor admin-catalog-home"><h2>Catálogo</h2>
       <div class="product-actions">
         <a class="button" href="/admin/models">Artículos del catálogo</a>
         <a class="button secondary" href="/admin/families">Familias</a>
@@ -448,22 +449,22 @@ function adminView({ role, error, saved, draft, filter = '' }) {
         <a class="button secondary" href="/admin/models?family=spare">Recambios</a>
       </div></section>` : ''}
     <div class="product-actions">
-      ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
-      ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
-      ${supportAccess ? '<a class="button secondary" href="/admin/mail">Cola de correos</a>' : ''}
-      ${financeAccess ? '<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a> <a class="button secondary" href="/admin/stripe">Pagos de prueba con Stripe</a>' : ''}</div>
-    ${financeAccess ? `<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
+      ${stockAccess ? adminFragment('<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>') : ''}
+      ${serialAccess ? adminFragment('<a class="button secondary" href="/admin/serials">Buscar número de serie</a>') : ''}
+      ${supportAccess ? adminFragment('<a class="button secondary" href="/admin/mail">Cola de correos</a>') : ''}
+      ${financeAccess ? adminFragment('<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a> <a class="button secondary" href="/admin/stripe">Pagos de prueba con Stripe</a>') : ''}</div>
+    ${financeAccess ? adminHtml`<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
     <details class="payment-breakdown"><summary>Desglose por forma de pago</summary>
-      ${breakdown.length ? `<div class="compare-table"><table><thead><tr>
+      ${breakdown.length ? adminHtml`<div class="compare-table"><table><thead><tr>
         <th scope="col">Método</th><th scope="col">Pedidos</th><th scope="col">Neto</th></tr></thead>
-        <tbody>${breakdown.map(row => `<tr><th scope="row">${escapeHtml(row.method)}</th><td>${row.quantity}</td>
-          <td>${money('es', row.gross - row.refunds)}</td></tr>`).join('')}</tbody></table></div>` : '<p>El desglose aparecerá con el primer pedido.</p>'}
+        <tbody>${breakdown.map(row => adminHtml`<tr><th scope="row">${escapeHtml(row.method)}</th><td>${row.quantity}</td>
+          <td>${money('es', row.gross - row.refunds)}</td></tr>`).join('')}</tbody></table></div>` : adminFragment('<p>El desglose aparecerá con el primer pedido.</p>')}
     </details>` : ''}
-    ${error ? `<p class="form-error" role="alert">${error}</p>` : ''}
-    ${catalogAccess && saved ? '<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>' : ''}
-    ${catalogAccess ? `<form id="catalog-editor" class="admin-catalog" method="post" action="/admin/catalog">
+    ${error ? adminHtml`<p class="form-error" role="alert">${adminText(error)}</p>` : ''}
+    ${catalogAccess && saved ? adminFragment('<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>') : ''}
+    ${catalogAccess ? adminHtml`<form id="catalog-editor" class="admin-catalog" method="post" action="/admin/catalog">
       <fieldset><legend>Catálogo · Movility One</legend>
         <input type="hidden" name="expectedUnits" value="${units}">
         <input type="hidden" name="expectedPrice" value="${model.cents}">
@@ -474,20 +475,20 @@ function adminView({ role, error, saved, draft, filter = '' }) {
         <button>Guardar cambios en la tienda</button>
       </fieldset>
     </form>` : ''}
-    ${catalogAccess && units === 0 ? '<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>' : ''}
+    ${catalogAccess && units === 0 ? adminFragment('<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>') : ''}
     <h2>Pedidos</h2>
     <form class="order-filter" method="get" action="/admin">
       <label>Estado del pedido <select name="status"><option value="">Todos</option>
-      ${Object.entries(orderLabels).map(([value, label]) => `<option value="${value}" ${filter === value ? 'selected' : ''}>${label}</option>`).join('')}
+      ${Object.entries(orderLabels).map(([value, label]) => adminHtml`<option value="${value}" ${filter === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
       </select></label><button class="secondary">Filtrar</button>
     </form>
-    ${cards || `<p>${filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.'}</p>`}`);
+    ${cards || adminHtml`<p>${adminText(filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.')}</p>`}`);
 }
 
 function emailView(order, preview) {
   const { orderPath, statusLabel } = orderEmail(order, preview.kind);
   const state = deliveryStatus(db, order.id, preview.kind);
-  return page('es', 'Vista previa de correo', `<a href="/admin">Volver a pedidos</a>
+  return adminPage('Vista previa de correo', adminHtml`<a href="/admin">Volver a pedidos</a>
     <h1 class="page-title">Vista previa de correo</h1>
     <p>${state || 'Aviso histórico disponible como vista previa.'}</p>
     <p><a href="/admin/mail">Ver cola de correos</a></p>
@@ -647,21 +648,21 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify({ active }));
     }
-    if (first === 'admin') {
+    if (first === 'admin') return await adminLanguage(req, res, path, searchParams, async () => {
       const role = adminRole(req.headers.authorization);
       if (!role) {
         res.setHeader('WWW-Authenticate', 'Basic realm="Movility local demo", charset="UTF-8"');
         return send(res, 401, 'Authentication required');
       }
       if (!adminRouteAllowed(role, req.method, path)) {
-        return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
+        return send(res, 403, adminPage('Acceso restringido', adminFragment('<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>')));
       }
       if (path === '/admin/security' && ['GET', 'POST'].includes(req.method)) {
-        const security = (body, status = 200) => send(res, status, page('es', 'Seguridad del panel',
-          '<p><a href="/admin">Volver a administración</a></p><h1>Seguridad del panel</h1>' + body));
+        const security = (body, status = 200) => send(res, status, adminPage('Seguridad del panel',
+          adminFragment('<p><a href="/admin">Volver a administración</a></p><h1>Seguridad del panel</h1>') + body));
         if (!fixedLocalPassword) return security(
-          '<p>La contraseña de este entorno se gestiona en la configuración del servidor.</p>', req.method === 'GET' ? 200 : 403);
-        const editor = (message = '') => `${message}<form class="confirmation" method="post" action="/admin/security">
+          adminFragment('<p>La contraseña de este entorno se gestiona en la configuración del servidor.</p>'), req.method === 'GET' ? 200 : 403);
+        const editor = (message = '') => adminHtml`${message}<form class="confirmation" method="post" action="/admin/security">
           <label>Contraseña actual <input type="password" name="current" autocomplete="current-password" maxlength="256" required></label>
           <label>Nueva contraseña <input type="password" name="password" autocomplete="new-password" minlength="14" maxlength="128" required></label>
           <label>Repite la nueva contraseña <input type="password" name="confirm" autocomplete="new-password" minlength="14" maxlength="128" required></label>
@@ -673,30 +674,30 @@ const server = createServer(async (req, res) => {
         const allowed = password && password.length >= 14 && password.length <= 128 && Buffer.byteLength(password) <= 256 &&
           password.trim() === password && password !== current && password === fields.get('confirm') &&
           verifyLocalAdminPassword(current, localCredential);
-        if (!allowed) return security(editor('<p class="form-error" role="alert">Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos campos.</p>'), 400);
+        if (!allowed) return security(editor(adminFragment('<p class="form-error" role="alert">Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos campos.</p>')), 400);
         localCredential = changeLocalAdminPassword(fixedLocalPassword, password);
-        return security('<p class="form-success" role="status">Contraseña actualizada. Vuelve a entrar con la nueva clave.</p>');
+        return security(adminFragment('<p class="form-success" role="status">Contraseña actualizada. Vuelve a entrar con la nueva clave.</p>'));
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
       if (role === 'admin' && path === '/admin/catalog-order') {
-        const orderPanel = message => page('es', 'Orden del catálogo',
+        const orderPanel = message => adminPage('Orden del catálogo',
           catalogOrderAdmin(catalogFamilies(db), adminCatalogProducts(), message));
         if (req.method === 'POST') {
           if (!saveCatalogPosition(db, await form(req))) return send(res, 400,
-            orderPanel('<p role="alert">Introduce una posición válida para una familia o un artículo existente.</p>'));
+            orderPanel(adminFragment('<p role="alert">Introduce una posición válida para una familia o un artículo existente.</p>')));
           return redirect(res, '/admin/catalog-order?saved=1');
         }
         if (req.method === 'GET') return send(res, 200, orderPanel(searchParams.has('saved')
-          ? '<p role="status">Posición guardada.</p>' : ''));
+          ? adminFragment('<p role="status">Posición guardada.</p>') : ''));
       }
       const familyRoute = /^\/admin\/families(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
       if (role === 'admin' && familyRoute) {
-        const familyPanel = message => page('es', 'Familias', familiesAdmin(catalogFamilies(db), message));
+        const familyPanel = message => adminPage('Familias', familiesAdmin(catalogFamilies(db), message));
         if (req.method === 'GET' && !familyRoute[1]) return send(res, 200, familyPanel(searchParams.has('saved')
-          ? '<p role="status">Familia guardada.</p>' : ''));
+          ? adminFragment('<p role="status">Familia guardada.</p>') : ''));
         if (req.method === 'POST') {
           if (!saveFamily(db, await form(req), familyRoute[1])) return send(res, 400, familyPanel(
-            '<p role="alert">Completa los nombres y usa un identificador disponible de 2 a 24 caracteres, con minúsculas, cifras o guiones.</p>'));
+            adminFragment('<p role="alert">Completa los nombres y usa un identificador disponible de 2 a 24 caracteres, con minúsculas, cifras o guiones.</p>')));
           return redirect(res, '/admin/families?saved=1');
         }
       }
@@ -708,11 +709,11 @@ const server = createServer(async (req, res) => {
         const editingPart = isPart(model);
         const candidates = adminCatalogProducts().filter(editingPart ? isWheelchair : isPart);
         const entriesForModel = () => editingPart ? compatibilityForPart(sku) : [...compatibilityForChair(sku).values()];
-        const panel = (message, status = 200) => send(res, status, page('es', 'Compatibilidad',
+        const panel = (message, status = 200) => send(res, status, adminPage('Compatibilidad',
           compatibilityAdmin(model, candidates, entriesForModel(), message)), false, false, true);
-        if (req.method === 'GET') return panel(searchParams.has('saved') ? '<p role="status">Compatibilidad guardada.</p>' : '');
+        if (req.method === 'GET') return panel(searchParams.has('saved') ? adminFragment('<p role="status">Compatibilidad guardada.</p>') : '');
         const entries = compatibilityInput(await form(req, 262144), candidates, editingPart ? 'chair' : 'part');
-        if (!entries) return panel('<p role="alert">Revisa la selección y escribe cada condición en los dos idiomas.</p>', 400);
+        if (!entries) return panel(adminFragment('<p role="alert">Revisa la selección y escribe cada condición en los dos idiomas.</p>'), 400);
         transaction(() => {
           db.prepare(editingPart ? 'DELETE FROM catalog_compatibility WHERE part=?' :
             'DELETE FROM catalog_compatibility WHERE chair=?').run(sku);
@@ -729,11 +730,11 @@ const server = createServer(async (req, res) => {
         const model = sku === coreSKU ? coreCatalogProduct() : extraModel(sku);
         if (!model) return send(res, 404, 'Artículo no encontrado');
         const target = '/admin/models/' + sku + '/content';
-        if (req.method === 'GET' && !upload) return send(res, 200, page('es', 'Contenido del artículo',
+        if (req.method === 'GET' && !upload) return send(res, 200, adminPage('Contenido del artículo',
           contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'), isPart(model) || isWheelchair(model))));
         if (req.method === 'POST' && upload) {
-          if (!await receiveMedia(req, uploadFolder, sku)) return send(res, 400, page('es', 'Archivo no válido',
-            '<p role="alert">Comprueba el formato y el tamaño del archivo.</p><a href="' + target + '">Volver al artículo</a>'));
+          if (!await receiveMedia(req, uploadFolder, sku)) return send(res, 400, adminPage('Archivo no válido',
+            adminFragment('<p role="alert">Comprueba el formato y el tamaño del archivo.</p><a href="') + target + '">Volver al artículo</a>'));
           return redirect(res, target + '?saved=1');
         }
         if (req.method === 'POST') {
@@ -745,13 +746,13 @@ const server = createServer(async (req, res) => {
         }
       }
       if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/customer-codes') {
-        return send(res, 200, page('es', 'Buzón simulado de clientes', accountMailbox(db)));
+        return send(res, 200, adminPage('Buzón simulado de clientes', accountMailbox(db)));
       }
       if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/offer-codes') {
-        return send(res, 200, page('es', 'Buzón de ofertas de prueba', offerMailbox(db)));
+        return send(res, 200, adminPage('Buzón de ofertas de prueba', offerMailbox(db)));
       }
       if (accountsEnabled && role === 'admin' && path === '/admin/campaigns') {
-        const panel = result => page('es', 'Campañas de ofertas', campaignPage(db, result));
+        const panel = result => adminPage('Campañas de ofertas', campaignPage(db, result));
         if (req.method === 'GET') return send(res, 200, panel(searchParams.get('result')));
         if (req.method === 'POST') {
           const fields = await form(req, 262144);
@@ -769,7 +770,7 @@ const server = createServer(async (req, res) => {
           return redirect(res, '/admin#order-' + second);
         }
         if (fields?.get('action') !== 'issue') return send(res, 400, 'Acción inválida');
-        return send(res, 200, page('es', 'Código de pedido invitado', codePage(order, issueGuestCode(db, second))));
+        return send(res, 200, adminPage('Código de pedido invitado', codePage(order, issueGuestCode(db, second))));
       }
       if (req.method === 'GET' && docPath && can(role, 'finance')) {
         res.setHeader('Referrer-Policy', 'no-referrer');
@@ -786,23 +787,23 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && path === '/admin/models') {
         return send(res, 200, displayModelAdmin(searchParams.has('saved')
-          ? '<p class="form-success" role="status">Modelo guardado.</p>' : '', searchParams));
+          ? adminFragment('<p class="form-success" role="status">Modelo guardado.</p>') : '', searchParams));
       }
       if (req.method === 'GET' && path === '/admin/serials') {
-        return send(res, 200, page('es', 'Historial por número de serie', serialLookup(db, searchParams.get('serial') || '')));
+        return send(res, 200, adminPage('Historial por número de serie', serialLookup(db, searchParams.get('serial') || '')));
       }
       if (req.method === 'GET' && path === '/admin/analytics') {
-        return send(res, 200, page('es', 'Embudo de compra', funnelReport(db, searchParams)));
+        return send(res, 200, adminPage('Embudo de compra', funnelReport(db, searchParams)));
       }
       if (req.method === 'GET' && path === '/admin/stripe') {
         const attempts = db.prepare('SELECT * FROM stripe_attempts ORDER BY rowid DESC LIMIT 200').all();
-        return send(res, 200, page('es', 'Pagos de prueba con Stripe', stripeAdmin(attempts)));
+        return send(res, 200, adminPage('Pagos de prueba con Stripe', stripeAdmin(attempts)));
       }
       if (req.method === 'GET' && path === '/admin/mail') {
         const state = searchParams.get('result');
         const message = state === 'processed' ? 'Procesamiento de la cola solicitado.'
           : state === 'retried' ? 'Correo programado para reintento.' : '';
-        return send(res, 200, page('es', 'Cola de correos', mailQueuePage(db, role === 'admin', message, Boolean(emailTest))));
+        return send(res, 200, adminPage('Cola de correos', mailQueuePage(db, role === 'admin', message, Boolean(emailTest))));
       }
       if (role === 'admin' && req.method === 'POST' && path === '/admin/mail/process') {
         await processMail();
@@ -823,7 +824,7 @@ const server = createServer(async (req, res) => {
         }
         const models = [{ sku: coreSKU, name: 'Movility One', units: stock() },
           ...db.prepare('SELECT sku, name, units FROM extra_models ORDER BY name, sku').all()];
-        return send(res, 200, page('es', 'Movimientos de stock', inventoryPage(models, inventoryRows(sku, 200), sku)));
+        return send(res, 200, adminPage('Movimientos de stock', inventoryPage(models, inventoryRows(sku, 200), sku)));
       }
       if (req.method === 'GET' && ['/admin/accounting', '/admin/accounting.csv'].includes(path)) {
         const filters = accountingFilters(searchParams);
@@ -832,7 +833,7 @@ const server = createServer(async (req, res) => {
             'Content-Disposition': 'attachment; filename="movility-conciliacion.csv"', 'X-Content-Type-Options': 'nosniff' });
           return res.end(accountingCsv(db, filters));
         }
-        return send(res, filters.invalid ? 400 : 200, page('es', 'Conciliación de pedidos',
+        return send(res, filters.invalid ? 400 : 200, adminPage('Conciliación de pedidos',
           accountingPage(accountingData(db, filters), filters)));
       }
       const modelEdit = /^\/admin\/models(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
@@ -840,7 +841,7 @@ const server = createServer(async (req, res) => {
         const fields = await form(req);
         const sku = modelEdit[1] || fields?.get('sku')?.trim() || '';
         const input = modelInput(fields, sku, catalogFamilies(db));
-        if (!input) return send(res, 400, displayModelAdmin('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>', searchParams));
+        if (!input) return send(res, 400, displayModelAdmin(adminFragment('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>'), searchParams));
         const saved = transaction(() => {
           const current = extraModel(sku);
           if (modelEdit[1] ? !current || String(current.revision) !== fields.get('revision') : current) return false;
@@ -857,7 +858,7 @@ const server = createServer(async (req, res) => {
         });
         searchParams.set('saved', '1');
         return saved ? redirect(res, '/admin/models?' + searchParams) : send(res, 409, displayModelAdmin(
-          '<p class="form-error" role="alert">El SKU ya existe o el artículo cambió mientras editabas.</p>', searchParams));
+          adminFragment('<p class="form-error" role="alert">El SKU ya existe o el artículo cambió mientras editabas.</p>'), searchParams));
       }
       const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z]+)$/.exec(path);
       if (req.method === 'GET' && emailRoute && noticeKinds.includes(emailRoute[2])) {
@@ -991,7 +992,8 @@ const server = createServer(async (req, res) => {
         if (found === 'refund-pending') return send(res, 409, rolePanel({ error: 'Espera la confirmación de Stripe antes de expedir este pedido.' }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
       }
-    }
+      return send(res, 404, adminPage('404', adminFragment('<h1>404</h1>')));
+    });
     if (accountsEnabled && path === `/${locale}/offers`) {
       const customer = signedInCustomer(db, req.headers.cookie);
       if (req.method === 'GET') return render(offersPage(locale, customer, searchParams.get('result')));

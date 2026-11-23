@@ -1,3 +1,4 @@
+import { adminHtml, adminText } from './admin-language.mjs';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
@@ -74,10 +75,10 @@ export function trackingHistory(locale, events) {
 
 export function trackingForm(order) {
   if (!order.tracking) return '';
-  return `<form class="tracking-form" method="post" action="/admin/${order.id}/tracking">
+  return adminHtml`<form class="tracking-form" method="post" action="/admin/${order.id}/tracking">
     <input type="hidden" name="eventId" value="${randomUUID()}">
     <label>Evento de prueba <select name="status" required><option value="">Selecciona el evento</option>
-      ${Object.entries(statusLabels.es).map(([key, label]) => `<option value="${key}">${escapeHtml(label)}</option>`).join('')}
+      ${Object.entries(statusLabels.es).map(([key, label]) => adminHtml`<option value="${key}">${escapeHtml(adminText(label))}</option>`).join('')}
     </select></label><button class="secondary">Registrar evento</button></form>`;
 }
 

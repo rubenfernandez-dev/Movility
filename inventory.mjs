@@ -1,3 +1,4 @@
+import { adminHtml, adminText } from './admin-language.mjs';
 import { randomUUID } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
@@ -41,37 +42,37 @@ export function returnControls(order, receipts, serials = []) {
     const restocked = existing.reduce((sum, receipt) => sum + receipt.quantity * receipt.restocked, 0);
     const remaining = line.quantity - received;
     const outstanding = serials.filter(record => record.sku === line.sku && !record.receipt_id);
-    return `<section class="return-line"><h4>${escapeHtml(line.name)}</h4>
+    return adminHtml`<section class="return-line"><h4>${escapeHtml(line.name)}</h4>
       <p>Recibidas: ${received} de ${line.quantity} · Repuestas: ${restocked} · En revisión: ${received - restocked}</p>
-      ${remaining > 0 ? `<form method="post" action="/admin/${order.id}/return">
+      ${remaining > 0 ? adminHtml`<form method="post" action="/admin/${order.id}/return">
         <input type="hidden" name="receipt" value="${randomUUID()}"><input type="hidden" name="sku" value="${line.sku}">
-        ${serials.some(record => record.sku === line.sku) ? `<fieldset class="serial-selection"><legend>Números de serie recibidos</legend>
-          ${outstanding.map(record => `<label><input type="checkbox" name="serial" value="${escapeHtml(record.serial)}"> ${escapeHtml(record.serial)}</label>`).join('')}
-        </fieldset>` : `<label>Unidades recibidas<input name="quantity" type="number" min="1" max="${remaining}" value="1" required></label>`}
+        ${serials.some(record => record.sku === line.sku) ? adminHtml`<fieldset class="serial-selection"><legend>Números de serie recibidos</legend>
+          ${outstanding.map(record => adminHtml`<label><input type="checkbox" name="serial" value="${escapeHtml(record.serial)}"> ${escapeHtml(record.serial)}</label>`).join('')}
+        </fieldset>` : adminHtml`<label>Unidades recibidas<input name="quantity" type="number" min="1" max="${remaining}" value="1" required></label>`}
         <label>Estado de las unidades<select name="disposition" required>
           <option value="">Selecciona el estado</option><option value="restock">Aptas para la venta</option><option value="hold">En revisión</option>
         </select></label><button class="secondary">Registrar recepción</button></form>` : ''}</section>`;
   });
-  return `<details class="returns"><summary>Devolución física</summary>${rows.join('')}</details>`;
+  return adminHtml`<details class="returns"><summary>Devolución física</summary>${rows.join('')}</details>`;
 }
 
 export function inventoryPage(models, movements, selected) {
   const visible = models.find(model => model.sku === selected);
-  return `<a href="/admin">Volver a administración</a>
+  return adminHtml`<a href="/admin">Volver a administración</a>
     <h1 class="page-title">Movimientos de stock</h1>
     <p>El saldo inicial de cada SKU refleja las unidades que había al activar el historial.</p>
-    <div class="model-grid">${models.map(model => `<article><h2>${escapeHtml(model.name)}</h2>
+    <div class="model-grid">${models.map(model => adminHtml`<article><h2>${escapeHtml(model.name)}</h2>
       <p>${model.units} unidades disponibles · ${model.sku}</p></article>`).join('')}</div>
     <form class="order-filter" action="/admin/inventory" method="get"><label>Modelo<select name="sku">
-      <option value="">Todos</option>${models.map(model => `<option value="${model.sku}" ${model.sku === selected ? 'selected' : ''}>${escapeHtml(model.name)}</option>`).join('')}
+      <option value="">Todos</option>${models.map(model => adminHtml`<option value="${model.sku}" ${model.sku === selected ? 'selected' : ''}>${escapeHtml(model.name)}</option>`).join('')}
       </select></label><button>Filtrar</button></form>
     <p><a href="/admin/inventory.csv${visible ? '?sku=' + visible.sku : ''}">Descargar CSV de movimientos</a></p>
     <div class="inventory-table"><table>
       <thead><tr><th scope="col">Fecha (UTC)</th><th scope="col">SKU</th><th scope="col">Unidades</th>
       <th scope="col">Saldo</th><th scope="col">Motivo</th><th scope="col">Pedido</th></tr></thead>
-      <tbody>${movements.map(move => `<tr><td><time datetime="${move.occurred_at}">${move.occurred_at.slice(0, 16).replace('T', ' ')}</time></td>
+      <tbody>${movements.map(move => adminHtml`<tr><td><time datetime="${move.occurred_at}">${move.occurred_at.slice(0, 16).replace('T', ' ')}</time></td>
         <th scope="row">${move.sku}</th><td>${move.delta > 0 ? '+' : ''}${move.delta}</td><td>${move.balance}</td>
-        <td>${reasons[move.reason]}</td><td>${move.order_id ? `<a href="/admin#order-${move.order_id}">${move.order_id.slice(0, 8)}</a>` : '—'}</td></tr>`).join('')}</tbody>
+        <td>${adminText(reasons[move.reason])}</td><td>${move.order_id ? adminHtml`<a href="/admin#order-${move.order_id}">${move.order_id.slice(0, 8)}</a>` : '—'}</td></tr>`).join('')}</tbody>
     </table></div><p>Se muestran los últimos 200 movimientos. El CSV incluye todos los del filtro.</p>`;
 }
 
