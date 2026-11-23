@@ -673,6 +673,7 @@ const server = createServer(async (req, res) => {
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin, editorial &&
           [editorial['title_' + editorialLocale], editorial['intro_' + editorialLocale]]) : {}, {
           feature,
+          storefront: true,
           footer: informationLinks(locale) + ' · ' + analyticsLink(locale) + (accountsEnabled
             ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>
               · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),

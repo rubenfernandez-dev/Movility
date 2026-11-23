@@ -3,9 +3,13 @@ const track = discovery.querySelector('.discovery-track');
 const controls = discovery.querySelector('[data-discovery-controls]');
 const previous = discovery.querySelector('[data-discovery-previous]');
 const next = discovery.querySelector('[data-discovery-next]');
+const toggle = discovery.querySelector('[data-discovery-toggle]');
 const cards = [...track.children];
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
 let width = track.clientWidth;
 let active = width ? Math.round(track.scrollLeft / width) : 0;
+let paused = motion.matches;
+let timer;
 
 function update() {
   if (width && width === track.clientWidth) active = Math.round(track.scrollLeft / width);
@@ -15,12 +19,51 @@ function update() {
   next.setAttribute('aria-disabled', String(track.scrollLeft >= maximum - 2));
 }
 
+function show(target, smooth = true) {
+  track.scrollTo({ left: target * width, behavior: smooth && !motion.matches ? 'smooth' : 'auto' });
+}
+
 function move(direction) {
   const target = Math.max(0, Math.min(cards.length - 1, active + direction));
   if (target === active) return;
-  track.scrollTo({ left: target * width, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  show(target);
 }
 
+function restartRotation() {
+  clearInterval(timer);
+  toggle.textContent = paused ? '▶' : 'Ⅱ';
+  toggle.setAttribute('aria-label', paused ? toggle.dataset.play : toggle.dataset.pause);
+  if (paused || document.hidden || discovery.matches(':hover')) return;
+  timer = setInterval(() => {
+    const target = (active + 1) % cards.length;
+    show(target, target !== 0);
+  }, 3000);
+}
+
+function pauseRotation() {
+  if (paused) return;
+  paused = true;
+  restartRotation();
+}
+
+toggle.addEventListener('click', () => {
+  paused = !paused;
+  restartRotation();
+});
+discovery.addEventListener('focusin', event => {
+  if (event.target !== toggle) pauseRotation();
+});
+discovery.addEventListener('pointerenter', event => {
+  if (event.pointerType === 'mouse') restartRotation();
+});
+discovery.addEventListener('pointerleave', event => {
+  if (event.pointerType === 'mouse') restartRotation();
+});
+document.addEventListener('visibilitychange', restartRotation);
+motion.addEventListener('change', event => {
+  if (event.matches) pauseRotation();
+});
+track.addEventListener('pointerdown', pauseRotation, { passive: true });
 previous.addEventListener('click', () => {
   if (previous.getAttribute('aria-disabled') === 'false') move(-1);
 });
@@ -42,3 +85,4 @@ new ResizeObserver(() => {
   update();
 }).observe(track);
 update();
+restartRotation();
