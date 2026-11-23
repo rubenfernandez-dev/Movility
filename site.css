@@ -77,6 +77,32 @@ figcaption{margin-top:.45rem;font-size:.875rem;color:var(--muted)}
   }
 }
 @keyframes storefront-enter{from{opacity:.7}to{opacity:1}}
+.discovery-progress{position:absolute;inset:auto 0 0;height:5px;pointer-events:none}
+.discovery-progress::after{content:"";display:block;width:100%;height:100%;background:#a6e0c3;transform:scaleX(0);transform-origin:left}
+.storefront-page .catalog-product{position:relative}
+.storefront-page .catalog-product::before{content:"";position:absolute;inset:0 0 auto;height:4px;border-radius:1rem 1rem 0 0;background:linear-gradient(90deg,#145e54,#7ec2a7);pointer-events:none}
+@media(prefers-reduced-motion:no-preference){
+  .discovery-section[data-rotating] .discovery-progress::after{animation:discovery-countdown 3s linear infinite}
+  .storefront-page .discovery-action{animation:storefront-rise .55s cubic-bezier(.2,.7,.3,1) both}
+  .storefront-page .catalog-product{transition:translate .25s ease,box-shadow .25s ease,border-color .25s ease}
+  .storefront-page .catalog-product::before{transition:opacity .25s ease;opacity:.5}
+  .storefront-page .catalog-product:focus-within::before{opacity:1}
+  @media(hover:hover) and (pointer:fine){
+    .storefront-page .catalog-product:hover{translate:0 -.4rem;box-shadow:0 16px 34px #142f3429}
+    .storefront-page .catalog-product:hover::before{opacity:1}
+    .storefront-page .catalog-product a:hover .model-thumb{transform:scale(1.045)}
+  }
+  @supports(animation-timeline:view()){
+    .storefront-page :is(.catalog-product,.technical-card,.product-video,.about-grid article,.faq details){
+      animation:storefront-reveal linear both;
+      animation-timeline:view();
+      animation-range:entry 0% entry 65%;
+    }
+  }
+}
+@keyframes discovery-countdown{to{transform:scaleX(1)}}
+@keyframes storefront-rise{from{opacity:0;translate:0 .75rem}to{opacity:1;translate:0 0}}
+@keyframes storefront-reveal{from{opacity:.42;transform:translateY(1.15rem)}to{opacity:1;transform:translateY(0)}}
 h1,h2,h3,p,dd{margin-top:0}
 h1{font-size:clamp(2.5rem,5.1vw,4.5rem);letter-spacing:-.06em;line-height:1.02;margin-bottom:1.25rem;overflow-wrap:anywhere}
 h2{font-size:clamp(1.35rem,3vw,2rem);line-height:1.15;letter-spacing:-.035em}

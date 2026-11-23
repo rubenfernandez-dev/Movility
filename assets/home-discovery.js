@@ -31,9 +31,11 @@ function move(direction) {
 
 function restartRotation() {
   clearInterval(timer);
+  discovery.removeAttribute('data-rotating');
   toggle.textContent = paused ? '▶' : 'Ⅱ';
   toggle.setAttribute('aria-label', paused ? toggle.dataset.play : toggle.dataset.pause);
   if (paused || document.hidden || discovery.matches(':hover')) return;
+  discovery.setAttribute('data-rotating', '');
   timer = setInterval(() => {
     const target = (active + 1) % cards.length;
     show(target, target !== 0);

@@ -30,5 +30,5 @@ export function homeDiscovery(locale, detailImage) {
       ${t.slides.map((label, index) => `<li class="discovery-card">
         <img class="discovery-photo" src="${images[index]}" alt="" ${index ? 'loading="lazy"' : 'fetchpriority="high"'} width="960" height="720">
         <a class="button discovery-action" href="/${locale}${destinations[index]}">${label}</a></li>`).join('')}
-    </ul></section><script src="/assets/home-discovery.js" defer></script>`;
+    </ul><div class="discovery-progress" aria-hidden="true"></div></section><script src="/assets/home-discovery.js" defer></script>`;
 }
