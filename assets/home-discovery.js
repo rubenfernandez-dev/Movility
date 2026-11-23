@@ -4,8 +4,11 @@ const controls = discovery.querySelector('[data-discovery-controls]');
 const previous = discovery.querySelector('[data-discovery-previous]');
 const next = discovery.querySelector('[data-discovery-next]');
 const cards = [...track.children];
+let width = track.clientWidth;
+let active = width ? Math.round(track.scrollLeft / width) : 0;
 
 function update() {
+  if (width && width === track.clientWidth) active = Math.round(track.scrollLeft / width);
   const maximum = track.scrollWidth - track.clientWidth;
   controls.hidden = maximum < 2;
   previous.setAttribute('aria-disabled', String(track.scrollLeft < 2));
@@ -13,13 +16,9 @@ function update() {
 }
 
 function move(direction) {
-  const start = cards[0].offsetLeft;
-  const offsets = cards.map(card => card.offsetLeft - start);
-  const position = track.scrollLeft;
-  const target = direction > 0 ? offsets.find(offset => offset > position + 2) :
-    offsets.findLast(offset => offset < position - 2);
-  if (target === undefined) return;
-  track.scrollTo({ left: target, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  const target = Math.max(0, Math.min(cards.length - 1, active + direction));
+  if (target === active) return;
+  track.scrollTo({ left: target * width, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 previous.addEventListener('click', () => {
@@ -34,5 +33,12 @@ track.addEventListener('keydown', event => {
   move(event.key === 'ArrowRight' ? 1 : -1);
 });
 track.addEventListener('scroll', update, { passive: true });
-new ResizeObserver(update).observe(track);
+new ResizeObserver(() => {
+  const nextWidth = track.clientWidth;
+  if (nextWidth && width !== nextWidth) {
+    width = nextWidth;
+    track.scrollTo({ left: active * width, behavior: 'auto' });
+  }
+  update();
+}).observe(track);
 update();

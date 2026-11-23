@@ -24,7 +24,8 @@ export function homeDiscovery(locale, detailImage) {
     </div>
     <ul class="discovery-track" id="home-discovery-track" aria-labelledby="home-discovery-heading" tabindex="0">
       ${t.slides.map((label, index) => `<li class="discovery-card">
-        <img src="${images[index]}" alt="" ${index ? 'loading="lazy"' : 'fetchpriority="high"'} width="960" height="720">
+        <img class="discovery-backdrop" src="${images[index]}" alt="" aria-hidden="true" ${index ? 'loading="lazy"' : ''} width="960" height="720">
+        <img class="discovery-photo" src="${images[index]}" alt="" ${index ? 'loading="lazy"' : 'fetchpriority="high"'} width="960" height="720">
         <a class="button discovery-action" href="/${locale}${destinations[index]}">${label}</a></li>`).join('')}
     </ul></section><script src="/assets/home-discovery.js" defer></script>`;
 }

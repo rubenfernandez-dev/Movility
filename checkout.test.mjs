@@ -100,6 +100,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
     const homepage = await response.text();
     assert.match(homepage, /class="main-with-feature">\s*<section class="discovery-section"[\s\S]*id="catalogue"/);
     assert.equal((homepage.match(/class="discovery-card"/g) || []).length, 3);
+    assert.equal((homepage.match(/class="discovery-photo"/g) || []).length, 3);
     const slides = [...homepage.matchAll(/<li class="discovery-card">([\s\S]*?)<\/li>/g)];
     assert.ok(slides.every(([, slide]) => !/<(?:h[1-6]|p)[\s>]/.test(slide) &&
       (slide.match(/class="button discovery-action"/g) || []).length === 1));
