@@ -1,4 +1,4 @@
-import { adminFragment, adminHtml, adminLanguage, adminLocale, adminPage, adminText } from './admin-language.mjs';
+import { adminFragment, adminHtml, adminLanguage, adminLocale, adminPage, adminText, setAdminNavigation } from './admin-language.mjs';
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
@@ -402,6 +402,9 @@ function adminView({ role, error, saved, draft, filter = '' }) {
   const financeAccess = can(role, 'finance');
   const model = catalog();
   const units = stock();
+  const pendingOrders = db.prepare("SELECT count(*) AS total FROM orders WHERE status='paid'").get().total;
+  const pendingContacts = supportAccess && db.prepare('SELECT count(*) AS total FROM contact_messages WHERE resolved=0').get().total;
+  const failedMail = supportAccess && db.prepare("SELECT count(*) AS total FROM mail_jobs WHERE status='failed'").get().total;
   const orders = db.prepare(`SELECT orders.*, delivery_addresses.name, street, zip, city,
     order_models.name AS model_name, order_models.sku AS model_sku, order_models.requires_serial FROM orders
     LEFT JOIN delivery_addresses ON orders.id = delivery_addresses.order_id
@@ -446,27 +449,21 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     </article>`;
   }).join('');
   return adminPage('Administración de prueba', adminHtml`<h1>Administración de prueba</h1>
-    ${role === 'admin' && accountsEnabled ? adminFragment('<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>') : ''}
     <p>Perfil: ${adminText(roleNames[role])}</p>
-    <div class="product-actions admin-catalog-links">
-      <a class="button" href="#admin-orders">Ir a pedidos</a>
-      ${supportAccess ? adminFragment('<a class="button secondary" href="/admin/contact">Bandeja de contacto</a>') : ''}
-      ${role === 'admin' ? adminFragment('<a class="button secondary" href="/admin/security">Seguridad del panel</a>') : ''}
-    </div>
-    <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
-    ${catalogAccess ? adminHtml`<section class="model-editor admin-catalog-home"><h2>Catálogo</h2>
-      <div class="product-actions">
-        <a class="button" href="/admin/models">Artículos del catálogo</a>
-        <a class="button secondary" href="/admin/families">Familias</a>
-        <a class="button secondary" href="/admin/catalog-order">Ordenar catálogo</a>
-        <a class="button secondary" href="/admin/models?family=accessory">Accesorios</a>
-        <a class="button secondary" href="/admin/models?family=spare">Recambios</a>
-      </div></section>` : ''}
-    <div class="product-actions">
-      ${stockAccess ? adminFragment('<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>') : ''}
-      ${serialAccess ? adminFragment('<a class="button secondary" href="/admin/serials">Buscar número de serie</a>') : ''}
-      ${supportAccess ? adminFragment('<a class="button secondary" href="/admin/mail">Cola de correos</a>') : ''}
-      ${financeAccess ? adminFragment('<a class="button secondary" href="/admin/accounting">Conciliación de pedidos</a> <a class="button secondary" href="/admin/analytics">Embudo de compra</a> <a class="button secondary" href="/admin/stripe">Pagos de prueba con Stripe</a>') : ''}</div>
+    <section aria-labelledby="admin-work"><h2 id="admin-work">Pendientes de atención</h2>
+      <div class="admin-overview-links">
+        <a href="/admin?status=paid#admin-orders"><strong>${pendingOrders}</strong>Pedidos por expedir</a>
+        ${supportAccess ? adminHtml`<a href="/admin/contact"><strong>${pendingContacts}</strong>Consultas sin resolver</a>
+          <a href="/admin/mail"><strong>${failedMail}</strong>Correos con errores</a>` : ''}
+      </div></section>
+    <p>${stockAccess ? adminHtml`Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
+    <h2 id="admin-orders" tabindex="-1">Pedidos</h2>
+    <form class="order-filter" method="get" action="/admin#admin-orders">
+      <label>Estado del pedido <select name="status"><option value="">Todos</option>
+      ${Object.entries(orderLabels).map(([value, label]) => adminHtml`<option value="${value}" ${filter === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
+      </select></label><button class="secondary">Filtrar</button>
+    </form>
+    ${cards || adminHtml`<p>${adminText(filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.')}</p>`}
     ${financeAccess ? adminHtml`<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
       <div><dt>Reembolsos</dt><dd>${money('es', totals.refunds)}</dd></div>
       <div><dt>Neto</dt><dd>${money('es', totals.gross - totals.refunds)}</dd></div></dl>
@@ -490,13 +487,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       </fieldset>
     </form>` : ''}
     ${catalogAccess && units === 0 ? adminFragment('<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>') : ''}
-    <h2 id="admin-orders" tabindex="-1">Pedidos</h2>
-    <form class="order-filter" method="get" action="/admin">
-      <label>Estado del pedido <select name="status"><option value="">Todos</option>
-      ${Object.entries(orderLabels).map(([value, label]) => adminHtml`<option value="${value}" ${filter === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
-      </select></label><button class="secondary">Filtrar</button>
-    </form>
-    ${cards || adminHtml`<p>${adminText(filter ? 'No hay pedidos con este estado.' : 'Todavía no hay pedidos.')}</p>`}`);
+`);
 }
 
 function emailView(order, preview) {
@@ -676,6 +667,7 @@ const server = createServer(async (req, res) => {
         res.setHeader('WWW-Authenticate', 'Basic realm="Movility local demo", charset="UTF-8"');
         return send(res, 401, 'Authentication required');
       }
+      setAdminNavigation(role, accountsEnabled);
       if (!adminRouteAllowed(role, req.method, path)) {
         return send(res, 403, adminPage('Acceso restringido', adminFragment('<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>')));
       }

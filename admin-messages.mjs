@@ -1,5 +1,16 @@
 const messages = `
 Idioma del panel|Sprache der Verwaltung|Langue de l’administration
+Menú del panel|Verwaltungsmenü|Menu d’administration
+Menú|Menü|Menu
+Inicio|Übersicht|Accueil
+Ir al contenido|Zum Inhalt|Aller au contenu
+Finanzas e informes|Finanzen und Berichte|Finances et rapports
+Configuración|Einstellungen|Paramètres
+Clientes y ofertas|Kunden und Angebote|Clients et offres
+Pendientes de atención|Offene Aufgaben|À traiter
+Pedidos por expedir|Zu versendende Bestellungen|Commandes à expédier
+Consultas sin resolver|Offene Kontaktanfragen|Demandes non résolues
+Correos con errores|E-Mails mit Fehlern|E-mails en échec
 Administración de prueba|Testverwaltung|Administration de test
 Volver a administración|Zurück zur Verwaltung|Retour à l’administration
 Volver al panel|Zurück zur Verwaltung|Retour à l’administration

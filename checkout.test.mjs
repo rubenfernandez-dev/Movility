@@ -194,7 +194,14 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const edit = { expectedUnits: '1', expectedPrice: '249900', price: '2599,90', units: '1',
     descriptionDe: 'Neuer Testtext', descriptionFr: 'Description révisée <test>' };
   const panel = await get('/admin', headers);
-  assert.match(await panel.clone().text(), /href="#admin-orders">Ir a pedidos[\s\S]*id="admin-orders"/);
+  assert.match(await panel.clone().text(), /href="\/admin\?view=orders#admin-orders">Pedidos[\s\S]*id="admin-orders"/);
+  const overview = await panel.clone().text();
+  assert.match(overview, /Pendientes de atención[\s\S]*Consultas sin resolver/);
+  assert.match(await (await get('/admin/models?family=spare', headers)).text(),
+    /href="\/admin\/models\?family=spare" aria-current="page">Recambios/);
+  const warehouseNav = await (await get('/admin', roleHeaders('warehouse'))).text();
+  assert.match(warehouseNav, /href="\/admin\/inventory">Movimientos de stock/);
+  assert.doesNotMatch(warehouseNav, /href="\/admin\/contact"|href="\/admin\/security"|href="\/admin\/models"/);
   assert.equal(panel.headers.get('referrer-policy'), 'same-origin');
   const invalidEdit = await post('/admin/catalog', { ...edit, price: 'abc' }, headers);
   assert.equal(invalidEdit.status, 400);
