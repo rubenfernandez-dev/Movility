@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server.mjs",
     "staging": "node ops/staging.mjs",
+    "staging:verify": "node ops/verify-staging.mjs",
     "test": "node --test",
     "db:backup": "node ops/database.mjs backup",
     "db:verify": "node ops/database.mjs verify",

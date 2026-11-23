@@ -30,6 +30,10 @@ test('staging keeps a simulated order after restart and ignores external integra
   }
   try {
     const base = await start();
+    const health = await fetch(base + '/healthz');
+    assert.equal(health.status, 200);
+    assert.equal(health.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await health.json(), { result: 'ok' });
     const checkout = await fetch(base + '/fr-CH/checkout');
     assert.equal(checkout.headers.get('x-robots-tag'), 'noindex, nofollow');
     const body = await checkout.text();

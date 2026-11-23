@@ -441,6 +441,14 @@ const server = createServer(async (req, res) => {
       return send(res, 403, 'Forbidden');
     }
     const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
+    if (req.method === 'GET' && path === '/healthz') {
+      try {
+        if (db.prepare('SELECT id FROM stock WHERE id = 1').get()) return carrierResponse(res, 200, 'ok');
+      } catch {
+        // Keep database errors out of the public response.
+      }
+      return carrierResponse(res, 503, 'unavailable');
+    }
     if (req.method === 'POST' && path === '/integrations/stripe/events') {
       if (!stripe) return carrierResponse(res, 404, 'disabled');
       const body = await readCarrierBody(req, 131072);

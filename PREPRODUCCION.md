@@ -11,6 +11,13 @@ externos desde esta instancia. La base persiste al reiniciar y queda fuera
 del repositorio. Para copiarla, ejecuta los comandos de base de datos del
 README con `MOVILITY_DB` apuntando al archivo de preproducción.
 
+Con la instancia arrancada, `npm run staging:verify` comprueba la
+disponibilidad de la base, los idiomas, el bloqueo de indexación y que
+Stripe y el transportista siguen desactivados. Puedes pasar otro origen
+local con `npm run staging:verify -- http://127.0.0.1:3041`.
+El endpoint `GET /healthz` devuelve 200 si puede consultar la base,
+o 503 si la consulta falla. No incluye registros de clientes.
+
 ## Primer pedido y factura
 
 | Bloque | Datos disponibles | Pendiente para el piloto |

@@ -1,5 +1,7 @@
 # Tareas de Movility
 
+Consulta el [roadmap de lanzamiento](ROADMAP.md) para el orden de ejecución y las dependencias.
+
 El primer lanzamiento se hará en Suiza, con stock en Suiza, alemán y francés,
 precios en CHF y pago con TWINT, PayPal, Visa y Mastercard. El trabajo de
 desarrollo puede avanzar con datos ficticios. Para abrir pedidos reales se
@@ -68,6 +70,7 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   el dominio definitivo, antes de abrir los cobros reales y la indexación.
   - [x] Copia y recuperación verificadas de SQLite, con protección contra sobrescritura.
   - [x] Preproducción local con base aislada, integraciones simuladas y prueba de persistencia tras reinicio.
+  - [x] Diagnóstico de servidor y base, y comprobación de la configuración segura de preproducción.
   - [x] Facturas y abonos de prueba en DE/FR con numeración, dirección opcional y vínculo con el pedido.
   - [ ] Emisión comercial según el perfil fiscal del vendedor confirmado.
   - [x] Resumen de errores con foco y enlaces a campos, y validación del checkout en alemán y francés.
