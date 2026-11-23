@@ -44,7 +44,7 @@ export function page(locale, title, content, header = '', metadata = {}, extras 
   const t = copy[locale];
   return `<!doctype html>
 <html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body${extras.storefront ? ` class="storefront-page${process.env.MOVILITY_HOLIDAY_THEME === 'off' ? '' : ' holiday-theme'}"` : ''}>
+<meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body${extras.storefront ? ' class="storefront-page"' : ''}>
 ${header || '<header class="top"><div class="top-inner"><a class="brand" href="/de-CH">Movility</a></div></header>'}
 ${extras.sidebar ? `<div class="admin-layout">${extras.sidebar}` : ''}
 <main id="content" tabindex="-1"${extras.feature ? ' class="main-with-feature"' : ''}>
