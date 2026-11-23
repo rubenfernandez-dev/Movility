@@ -83,6 +83,27 @@ test('staging keeps a simulated order after restart and ignores external integra
     const proofPath = restarted + '/fr-CH/guest-access';
     const submit = (url, fields, headers = {}) => fetch(url, { method: 'POST', redirect: 'manual',
       headers: { Origin: restarted, ...headers }, body: new URLSearchParams(fields) });
+    const requestWrong = await submit(restarted + orderPath, { email: 'wrong@example.com' });
+    assert.equal(requestWrong.headers.get('location'), '/fr-CH/guest-access?requested=1');
+    const queuePath = restarted + '/admin/mail';
+    const mailAuth = { Authorization: auth };
+    assert.doesNotMatch(await (await fetch(queuePath, { headers: mailAuth })).text(), /\/email\/access-/);
+    const requestOK = await submit(restarted + orderPath, { email: 'STAGING@example.com' });
+    assert.equal(requestOK.headers.get('location'), requestWrong.headers.get('location'));
+    assert.equal((await submit(restarted + orderPath, { email: 'staging@example.com' })).status, 303);
+    assert.equal((await submit(queuePath + '/process', {}, mailAuth)).status, 303);
+    const queue = await (await fetch(queuePath, { headers: mailAuth })).text();
+    const recoveryLinks = queue.match(/\/admin\/[a-f0-9-]+\/email\/access-[a-f0-9-]+/g);
+    assert.equal(recoveryLinks.length, 1);
+    assert.equal((await fetch(restarted + recoveryLinks[0])).status, 401);
+    const recoveryMail = await (await fetch(restarted + recoveryLinks[0], { headers: mailAuth })).text();
+    assert.match(recoveryMail, /Code d’accès à votre commande/);
+    const automaticCode = recoveryMail.match(/\n\n([A-Za-z0-9_-]{32})\n\n/)[1];
+    const automaticProof = await submit(proofPath, { code: automaticCode, email: 'staging@example.com' });
+    assert.equal(automaticProof.status, 303);
+    assert.equal((await fetch(restarted + orderPath, { headers: { Cookie: automaticProof.headers.get('set-cookie').split(';')[0] } })).status, 200);
+    assert.equal((await submit(proofPath, { code: automaticCode, email: 'staging@example.com' })).status, 400);
+    assert.equal((await fetch(restarted + recoveryLinks[0], { headers: mailAuth })).status, 404);
     assert.equal((await submit(codePath, { action: 'issue' })).status, 401);
     const codeResponse = await submit(codePath, { action: 'issue' }, { Authorization: auth });
     const code = (await codeResponse.text()).match(/<code>([A-Za-z0-9_-]{32})<\/code>/)[1];

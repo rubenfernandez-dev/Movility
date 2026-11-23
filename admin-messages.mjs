@@ -243,6 +243,7 @@ Excluidos|Ausgeschlossen|Exclus
 Ver mensajes|Nachrichten ansehen|Voir les messages
 Cada campaña real incluirá un enlace de baja.|Jede echte Kampagne enthält einen Abmeldelink.|Chaque campagne réelle comportera un lien de désinscription.
 Código de pedido invitado|Bestellcode für Gäste|Code de commande invité
+Código de acceso al pedido|Code für den Bestellzugriff|Code d’accès à la commande
 Formulario de verificación|Bestätigungsformular|Formulaire de vérification
 Volver al pedido|Zurück zur Bestellung|Retour à la commande
 Envío|Versand|Expédition

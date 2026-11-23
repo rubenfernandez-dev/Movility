@@ -6,6 +6,7 @@ const seconds = () => Math.floor(Date.now() / 1000);
 const leaseSeconds = 60;
 const retryDelays = [15, 60, 300];
 const resendWindowSeconds = 23 * 3600;
+export const isRecoveryMail = kind => /^access-[0-9a-f-]{36}$/.test(kind);
 
 export function setupMailQueue(db) {
   db.exec(`
@@ -29,11 +30,17 @@ export function setupMailQueue(db) {
   const existing = db.prepare('PRAGMA table_info(mail_jobs)').all().map(column => column.name);
   if (!existing.includes('test_payload')) db.exec('ALTER TABLE mail_jobs ADD COLUMN test_payload TEXT');
   if (!existing.includes('blocked_reason')) db.exec('ALTER TABLE mail_jobs ADD COLUMN blocked_reason TEXT');
+  if (!existing.includes('expires_at')) db.exec('ALTER TABLE mail_jobs ADD COLUMN expires_at INTEGER');
 }
 
-export function queueEmail(db, orderId, kind, now = seconds(), testTarget = null) {
-  db.prepare('INSERT OR IGNORE INTO mail_jobs (id, order_id, kind, next_at, test_payload) VALUES (?, ?, ?, ?, ?)')
-    .run(randomUUID(), orderId, kind, now, testTarget ? JSON.stringify(testTarget) : null);
+export function queueEmail(db, orderId, kind, now = seconds(), testTarget = null, expires = null) {
+  db.prepare('INSERT OR IGNORE INTO mail_jobs (id, order_id, kind, next_at, test_payload, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(randomUUID(), orderId, kind, now, testTarget ? JSON.stringify(testTarget) : null, expires);
+}
+
+export function retireRecoveryMail(db, orderId, now = seconds()) {
+  db.prepare('UPDATE mail_jobs SET expires_at=? WHERE order_id=? AND expires_at>?').run(now, orderId, now);
+  db.prepare("UPDATE email_previews SET body='' WHERE order_id=? AND kind GLOB 'access-*' AND body<>''").run(orderId);
 }
 
 function claim(db, transaction, now, allowResend) {
@@ -45,6 +52,10 @@ function claim(db, transaction, now, allowResend) {
       db.prepare('UPDATE mail_jobs SET status = ?, next_at = ?, lease = NULL, lease_until = NULL WHERE id = ?')
         .run(job.attempts < job.attempt_limit ? 'queued' : 'failed', now, job.id);
     }
+    db.prepare(`UPDATE mail_jobs SET status='failed', blocked_reason='expired'
+      WHERE expires_at <= ? AND status IN ('queued','failed') AND blocked_reason IS NULL`).run(now);
+    db.prepare(`UPDATE email_previews SET body='' WHERE body<>'' AND (order_id, kind) IN
+      (SELECT order_id, kind FROM mail_jobs WHERE expires_at <= ?)`).run(now);
     db.prepare(`UPDATE mail_jobs SET status = 'failed', blocked_reason = 'window'
       WHERE status IN ('queued','failed') AND test_payload IS NOT NULL AND attempts > 0
       AND EXISTS (SELECT 1 FROM mail_attempts WHERE job_id = mail_jobs.id AND attempt = 1 AND started_at <= ?)`)
@@ -87,7 +98,7 @@ export async function deliverBatch(db, transaction, provider, clock = seconds, l
     if (!job) break;
     let result;
     try {
-      result = await provider({ key: job.id, email: job.email, locale: job.locale, subject: job.subject,
+      result = await provider({ key: job.id, kind: job.kind, email: job.email, locale: job.locale, subject: job.subject,
         body: job.body, orderId: job.order_id, testTarget: job.test_payload ? JSON.parse(job.test_payload) : null });
       if (!['accepted', 'temporary', 'permanent'].includes(result?.status) ||
           (result.status === 'accepted' && (typeof result.reference !== 'string' || !result.reference))) result = { status: 'temporary' };
@@ -106,10 +117,10 @@ export const simulatedMailProvider = db => message => {
 
 export function retryEmail(db, id, now = seconds()) {
   return db.prepare(`UPDATE mail_jobs SET status = 'queued', attempt_limit = attempts + 1, next_at = ?
-    WHERE id = ? AND status = 'failed' AND blocked_reason IS NULL AND (
+    WHERE id = ? AND status = 'failed' AND blocked_reason IS NULL AND (expires_at IS NULL OR expires_at > ?) AND (
       test_payload IS NULL OR NOT EXISTS (
         SELECT 1 FROM mail_attempts WHERE job_id = mail_jobs.id AND attempt = 1 AND started_at <= ?
-      ))`).run(now, id, now - resendWindowSeconds).changes > 0;
+      ))`).run(now, id, now, now - resendWindowSeconds).changes > 0;
 }
 
 const labels = { queued: 'Pendiente', sending: 'Procesando', delivered: 'Aceptado', failed: 'Requiere revisión' };
@@ -130,9 +141,11 @@ export function mailQueuePage(db, canManage, message = '', resendEnabled = false
   const totals = db.prepare('SELECT status, COUNT(*) AS count FROM mail_jobs GROUP BY status').all();
   const cards = jobs.map(job => {
     const attempts = db.prepare('SELECT * FROM mail_attempts WHERE job_id = ? ORDER BY attempt DESC').all(job.id);
-    return adminHtml`<article><h2>${adminText(kinds[job.kind])}</h2><p>${adminText(jobLabel(job))} · ${job.attempts} intentos</p>
+    const recovery = isRecoveryMail(job.kind);
+    return adminHtml`<article><h2>${adminText(recovery ? 'Código de acceso al pedido' : kinds[job.kind])}</h2><p>${adminText(jobLabel(job))} · ${job.attempts} intentos</p>
       <p>${job.test_payload ? 'Resend · destinatario de prueba' : 'Simulación local'}</p>
-      <p><a href="/admin/${job.order_id}/email/${job.kind}">Ver correo del pedido ${job.order_id.slice(0, 8)}</a></p>
+      ${!recovery || canManage && !job.test_payload && job.expires_at > seconds() ?
+        adminHtml`<p><a href="/admin/${job.order_id}/email/${job.kind}">Ver correo del pedido ${job.order_id.slice(0, 8)}</a></p>` : ''}
       ${job.status === 'queued' ? adminHtml`<p>Disponible desde ${date(job.next_at)}</p>` : ''}
       ${job.provider_ref ? adminHtml`<p>Referencia de entrega <code>${escapeHtml(job.provider_ref)}</code></p>` : ''}
       ${job.blocked_reason === 'window' ? adminFragment('<p>Ventana de reintento vencida. Revisa el resultado en el proveedor.</p>') : ''}

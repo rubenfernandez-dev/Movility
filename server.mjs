@@ -26,7 +26,8 @@ import { adminAuth, adminRouteAllowed, can, changeLocalAdminPassword, localAdmin
   verifyLocalAdminPassword } from './admin-access.mjs';
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
-import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
+import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage,
+  isRecoveryMail, retireRecoveryMail } from './mail-queue.mjs';
 import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
 import { setupTracking, trackingStart, trackingEvents, applyTrackingEvent, trackingHistory, trackingForm,
   manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody, shipmentFromToken,
@@ -40,7 +41,7 @@ import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, reque
 import { setupDocuments, billingInput, saveBillingAddress, issueDocument, documentPage } from './billing-documents.mjs';
 import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, guestProofCookie,
   verifiedGuestOrder, guestAccessPage, codePage, issueCheckoutAccess, checkoutAccessCookie, hasCheckoutAccess,
-  revokeCheckoutAccess, orderAccessPage } from './guest-proof.mjs';
+  revokeCheckoutAccess, orderAccessPage, requestOrderRecovery, orderRecoveryEmail } from './guest-proof.mjs';
 import { setupAccounts, accountEmail, issueAccountCode, verifyAccountCode, signedInCustomer, endCustomerSession,
   customerCookie, linkGuestOrder, customerPage, accountMailbox, customerOwnsOrder } from './customer-accounts.mjs';
 import { setupOffers, requestOffers, confirmOffers, stopOffers, offersPage, offerMailbox } from './offers.mjs';
@@ -415,7 +416,8 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     const lines = orderLines(order.id);
     const serials = serialAccess ? shipmentSerials(db, order.id) : [];
     const productNames = lines.length ? lines.map(line => `${line.quantity} × ${line.name}`).join(' · ') : order.model_name || 'Movility One';
-    const events = supportAccess ? db.prepare('SELECT kind FROM email_previews WHERE order_id = ? ORDER BY rowid').all(order.id) : [];
+    const events = supportAccess ? db.prepare(`SELECT kind FROM email_previews WHERE order_id = ?
+      AND kind IN ('paid','shipped','delivered','refunded') ORDER BY rowid`).all(order.id) : [];
     const notices = events.map(({ kind }) => adminHtml`<li><a lang="${order.locale}" href="/admin/${order.id}/email/${kind}">${copy[order.locale][kind]}</a></li>`).join('');
     return adminHtml`<article id="order-${order.id}"><h2>${order.id}</h2>
       <p>${escapeHtml(productNames)} · ${supportAccess ? escapeHtml(order.email) + ' · ' : ''}${order.locale} ·
@@ -491,7 +493,10 @@ function adminView({ role, error, saved, draft, filter = '' }) {
 }
 
 function emailView(order, preview) {
-  const { orderPath, statusLabel } = orderEmail(order, preview.kind, emailShipmentPath(order, preview.kind));
+  const { orderPath, statusLabel } = isRecoveryMail(preview.kind) ? {
+    orderPath: `/${order.locale}/guest-access`,
+    statusLabel: order.locale === 'de-CH' ? 'Einmalcode eingeben' : 'Saisir le code',
+  } : orderEmail(order, preview.kind, emailShipmentPath(order, preview.kind));
   const state = deliveryStatus(db, order.id, preview.kind);
   return adminPage('Vista previa de correo', adminHtml`<a href="/admin">Volver a pedidos</a>
     <h1 class="page-title">Vista previa de correo</h1>
@@ -781,11 +786,16 @@ const server = createServer(async (req, res) => {
           transaction(() => {
             revokeGuestCode(db, second);
             revokeCheckoutAccess(db, second);
+            retireRecoveryMail(db, second);
           });
           return redirect(res, '/admin#order-' + second);
         }
         if (fields?.get('action') !== 'issue') return send(res, 400, 'Acción inválida');
-        return send(res, 200, adminPage('Código de pedido invitado', codePage(order, issueGuestCode(db, second))));
+        const code = transaction(() => {
+          retireRecoveryMail(db, second);
+          return issueGuestCode(db, second);
+        });
+        return send(res, 200, adminPage('Código de pedido invitado', codePage(order, code)));
       }
       if (req.method === 'GET' && docPath && can(role, 'finance')) {
         res.setHeader('Referrer-Policy', 'no-referrer');
@@ -875,9 +885,15 @@ const server = createServer(async (req, res) => {
         return saved ? redirect(res, '/admin/models?' + searchParams) : send(res, 409, displayModelAdmin(
           adminFragment('<p class="form-error" role="alert">El SKU ya existe o el artículo cambió mientras editabas.</p>'), searchParams));
       }
-      const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z]+)$/.exec(path);
-      if (req.method === 'GET' && emailRoute && noticeKinds.includes(emailRoute[2])) {
+      const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z0-9-]+)$/.exec(path);
+      if (req.method === 'GET' && emailRoute && (noticeKinds.includes(emailRoute[2]) || isRecoveryMail(emailRoute[2]))) {
         const [, id, kind] = emailRoute;
+        if (isRecoveryMail(kind)) {
+          const job = db.prepare('SELECT expires_at, test_payload FROM mail_jobs WHERE order_id=? AND kind=?').get(id, kind);
+          if (role !== 'admin' || !job || job.test_payload || job.expires_at <= Math.floor(Date.now() / 1000)) {
+            return send(res, 404, 'Correo no disponible');
+          }
+        }
         const preview = db.prepare('SELECT kind, subject, body FROM email_previews WHERE order_id = ? AND kind = ?').get(id, kind);
         return preview ? send(res, 200, emailView(orderById(id), preview)) : send(res, 404, 'Correo desconocido');
       }
@@ -1063,10 +1079,15 @@ const server = createServer(async (req, res) => {
       }
     }
     if (path === `/${locale}/guest-access`) {
-      if (req.method === 'GET') return render(guestAccessPage(locale, false, verifiedGuestOrder(db, req.headers.cookie)));
+      if (req.method === 'GET') return render(guestAccessPage(locale, false, verifiedGuestOrder(db, req.headers.cookie),
+        searchParams.get('requested') === '1'));
       if (req.method === 'POST') {
         const fields = await form(req);
-        const proof = redeemGuestCode(db, fields?.get('code')?.trim() || '', fields?.get('email')?.trim() || '');
+        const proof = transaction(() => {
+          const result = redeemGuestCode(db, fields?.get('code')?.trim() || '', fields?.get('email')?.trim() || '');
+          if (result) retireRecoveryMail(db, result.orderId);
+          return result;
+        });
         if (!proof) return render(guestAccessPage(locale, true), 400);
         res.setHeader('Set-Cookie', guestProofCookie(proof.proof, secureRequest));
         return redirect(res, path);
@@ -1178,7 +1199,7 @@ const server = createServer(async (req, res) => {
     }
     if (stripe && first === locale && second === 'payment' && orderIdPattern.test(third) && path === `/${locale}/payment/${third}`) {
       res.setHeader('Referrer-Policy', 'no-referrer');
-      if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled), 403);
+      if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled, third), 403);
       const attempt = paymentAttempt(db, third);
       if (!attempt || JSON.parse(attempt.payload).locale !== locale) return render('<h1>404</h1>', 404);
       if (attempt.state === 'paid' && ['GET', 'POST'].includes(req.method)) {
@@ -1320,9 +1341,24 @@ const server = createServer(async (req, res) => {
       const shipment = shipmentFromToken(db, third);
       return render(shipmentPage(locale, shipment, shipment ? trackingEvents(db, shipment.id) : []), shipment ? 200 : 404);
     }
+    if (req.method === 'POST' && orderPageRoute) {
+      const fields = await form(req, 2048);
+      const email = fields?.get('email')?.trim() || '';
+      transaction(() => {
+        const access = requestOrderRecovery(db, third, email);
+        if (!access) return;
+        const kind = 'access-' + randomUUID();
+        const { subject, body } = orderRecoveryEmail(access.locale, access.code, siteOrigin);
+        db.prepare('INSERT INTO notices VALUES (?, ?)').run(third, kind);
+        db.prepare('INSERT INTO email_previews VALUES (?, ?, ?, ?)').run(third, kind, subject, body);
+        queueEmail(db, third, kind, undefined, emailTest?.target, access.expires);
+      });
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return redirect(res, `/${locale}/guest-access?requested=1`);
+    }
     if (req.method === 'GET' && orderPageRoute) {
       res.setHeader('Referrer-Policy', 'no-referrer');
-      if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled), 403);
+      if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled, third), 403);
       const order = orderById(third);
       if (order) {
         const events = trackingEvents(db, order.id);

@@ -15,6 +15,9 @@ export function setupGuestProof(db) {
   );
   CREATE TABLE IF NOT EXISTS checkout_order_access (
     order_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL, expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS order_recovery_requests (
+    order_id TEXT PRIMARY KEY REFERENCES orders(id), requested_at INTEGER NOT NULL
   );`);
 }
 
@@ -43,14 +46,51 @@ export function revokeCheckoutAccess(db, id) {
   db.prepare('DELETE FROM checkout_order_access WHERE order_id = ?').run(id);
 }
 
-export function orderAccessPage(locale, withAccount) {
+export function orderAccessPage(locale, withAccount, orderId) {
   const de = locale === 'de-CH';
   return `<h1 class="page-title">${de ? 'Bestellzugriff bestätigen' : 'Vérifier l’accès à la commande'}</h1>
-    <p>${de ? 'Bestätige den Zugriff mit deiner Bestell-E-Mail und einem Einmalcode vom Kundendienst.' :
-      'Confirmez votre accès avec l’adresse e-mail de la commande et un code à usage unique fourni par le service client.'}</p>
+    <form class="confirmation" method="post" action="/${locale}/orders/${orderId}">
+      <label>${de ? 'E-Mail-Adresse der Bestellung' : 'Adresse e-mail de la commande'}
+        <input type="email" name="email" maxlength="254" autocomplete="email" required></label>
+      <button>${de ? 'Code per E-Mail anfordern' : 'Recevoir un code par e-mail'}</button>
+    </form>
     <p><a class="button" href="/${locale}/guest-access">${de ? 'Einmalcode eingeben' : 'Saisir le code'}</a>
     <a href="/${locale}/contact">${de ? 'Kundendienst kontaktieren' : 'Contacter le service client'}</a>
     ${withAccount ? `<a href="/${locale}/account">${de ? 'Mein Konto' : 'Mon compte'}</a>` : ''}</p>`;
+}
+
+export function requestOrderRecovery(db, id, email, now = seconds()) {
+  if (!email || email.length > 254) return null;
+  const order = db.prepare('SELECT id, locale FROM orders WHERE id=? AND lower(email)=lower(?)').get(id, email);
+  if (!order) return null;
+  const recent = db.prepare(`SELECT COUNT(*) AS total FROM order_recovery_requests r JOIN orders o ON o.id=r.order_id
+    WHERE lower(o.email)=lower(?) AND r.requested_at > ?`).get(email, now - lifetime).total;
+  const active = db.prepare('SELECT 1 FROM guest_order_proofs WHERE order_id=? AND challenge_hash IS NOT NULL AND expires_at > ?').get(id, now);
+  const alreadyRequested = db.prepare('SELECT 1 FROM order_recovery_requests WHERE order_id=? AND requested_at > ?')
+    .get(id, now - lifetime);
+  if (active || alreadyRequested || recent >= 3) return null;
+  const code = token();
+  const expires = now + lifetime;
+  db.prepare(`INSERT INTO guest_order_proofs (order_id, challenge_hash, expires_at) VALUES (?, ?, ?)
+    ON CONFLICT(order_id) DO UPDATE SET challenge_hash=excluded.challenge_hash, expires_at=excluded.expires_at`)
+    .run(id, hash(code), expires);
+  db.prepare(`INSERT INTO order_recovery_requests VALUES (?, ?)
+    ON CONFLICT(order_id) DO UPDATE SET requested_at=excluded.requested_at`).run(id, now);
+  return { code, expires, locale: order.locale };
+}
+
+export function orderRecoveryEmail(locale, code, origin) {
+  const de = locale === 'de-CH';
+  const subject = de ? 'Movility · Code für deinen Bestellzugriff' : 'Movility · Code d’accès à votre commande';
+  const path = `/${locale}/guest-access`;
+  const body = [
+    de ? 'Dein einmaliger Code für den Bestellzugriff:' : 'Votre code à usage unique pour accéder à la commande :',
+    code,
+    de ? 'Der Code ist 15 Minuten gültig. Falls du ihn nicht angefordert hast, kannst du diese E-Mail ignorieren.' :
+      'Ce code est valable 15 minutes. Si vous ne l’avez pas demandé, vous pouvez ignorer cet e-mail.',
+    origin ? new URL(path, origin).href : path,
+  ].join('\n\n');
+  return { subject, body };
 }
 
 export function issueGuestCode(db, id, now = seconds()) {
@@ -87,11 +127,13 @@ export function guestProofCookie(proof, secure) {
   return `movility_guest_proof=${proof}; Path=/; Max-Age=${lifetime}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
 }
 
-export function guestAccessPage(locale, error, completed) {
+export function guestAccessPage(locale, error, completed, requested = false) {
   const de = locale === 'de-CH';
   const heading = de ? 'Gastbestellung bestätigen' : 'Vérifier une commande invitée';
   const failed = de ? 'Code oder E-Mail-Adresse konnte nicht bestätigt werden.' : 'Le code ou l’adresse e-mail n’a pas pu être vérifié.';
-  return `<h1 class="page-title">${heading}</h1>${completed
+  return `<h1 class="page-title">${heading}</h1>${requested ? `<p role="status">${de ?
+    'Wenn die Angaben übereinstimmen, erhältst du einen Code an die Bestell-E-Mail-Adresse.' :
+    'Si les informations correspondent, un code est envoyé à l’adresse e-mail de la commande.'}</p>` : ''}${completed && !requested
     ? `<p role="status">${de ? 'Der Bestellcode wurde bestätigt.' : 'Le code de commande a été vérifié.'}</p>
       <p><a href="/${locale}/orders/${completed}">${de ? 'Bestellung öffnen' : 'Ouvrir la commande'}</a></p>`
     : `<p>${de ? 'Gib die E-Mail-Adresse der Bestellung und den Einmalcode ein.' : 'Saisissez l’adresse e-mail de la commande et le code à usage unique.'}</p>

@@ -35,8 +35,10 @@ Los correos de expedición y entrega comparten un enlace que muestra el estado
 y número de envío hasta siete días después de la entrega registrada.
 La compra abre el acceso durante una hora y el código de soporte durante
 15 minutos. Una cuenta vinculada también puede consultar su pedido en
-preproducción. Para el piloto queda integrar la recuperación por correo
-verificado y definir la conservación de datos.
+preproducción. El comprador también puede solicitar un código de un solo uso
+desde el pedido. La recuperación usa el correo registrado y la cola de correo
+simulado o Resend de prueba. Para el piloto queda validar la entrega comercial
+y definir la conservación de datos.
 
 ## Cuenta de cliente y ofertas
 

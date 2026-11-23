@@ -1,3 +1,5 @@
+import { isRecoveryMail } from './mail-queue.mjs';
+
 const resendEndpoint = 'https://api.resend.com/emails';
 const email = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?\.[A-Z]{2,}$/i;
 
@@ -33,7 +35,7 @@ export function resendTestProvider(config, request = fetch) {
         },
         body: JSON.stringify({
           from: stored.from, to: [stored.to], subject: '[TEST] ' + message.subject,
-          text: message.body + '\n\n' + orderUrl,
+          text: isRecoveryMail(message.kind) ? message.body : message.body + '\n\n' + orderUrl,
         }),
       });
     } catch {
