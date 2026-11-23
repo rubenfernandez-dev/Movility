@@ -2,6 +2,7 @@ import { copy, methods, money, escapeHtml } from './views.mjs';
 import { compareLabel, viewerLink } from './discovery.mjs';
 import { addToCart, cartQuote, coreSKU } from './cart.mjs';
 import { trackingHistory } from './tracking.mjs';
+import { information } from './information.mjs';
 
 const labels = {
   'de-CH': {
@@ -59,7 +60,7 @@ export function navigation(locale, suffix, query = '', units = 0) {
   const alt = locale === 'de-CH' ? 'fr-CH' : 'de-CH';
   return `<a class="skip" href="#content">${l.skip}</a>
     <header class="top"><div class="top-inner"><a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Movility</a>
-    <nav><a href="/${locale}/movility-one">${l.nav}</a><a href="/${locale}/compare">${compareLabel(locale)}</a><a href="/${locale}#faq">${l.help}</a></nav>
+    <nav><a href="/${locale}/movility-one">${l.nav}</a><a href="/${locale}/compare">${compareLabel(locale)}</a><a href="/${locale}#faq">${l.help}</a><a href="/${locale}/contact">${information['/contact'][locale][0]}</a></nav>
     <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}${units ? ` (${units})` : ''}</a></div></div></header>`;
 }
 

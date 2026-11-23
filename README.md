@@ -224,3 +224,8 @@ Esta primera entrega prueba el recorrido de pedido. Para el piloto comercial
 quedan las integraciones reales, los datos de entrega, la facturación, el
 catálogo y multimedia reales, las notificaciones push y la configuración SEO
 de producción. El prototipo solicita a los buscadores que no lo indexen.
+## Páginas informativas
+
+Contacto y Quiénes somos están disponibles en alemán y francés. Configura
+`MOVILITY_CONTACT_EMAIL` con el buzón público de atención al cliente para
+mostrar el enlace de correo en la ficha de contacto.

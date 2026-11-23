@@ -94,6 +94,12 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
 
   assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
   assert.match(await (await get('/fr-CH/movility-one')).text(), /\/de-CH\/movility-one/);
+  const contact = await (await get('/fr-CH/contact')).text();
+  assert.match(contact, /<h1 class="page-title">Contact<\/h1>/);
+  assert.match(contact, /href="\/de-CH\/contact" lang="de-CH"/);
+  assert.match(contact, /coordonnées du service client seront publiées/);
+  assert.match(await (await get('/de-CH/about')).text(), /<h1 class="page-title">Über uns<\/h1>/);
+  assert.match(await (await get('/sitemap.xml')).text(), /<loc>https:\/\/movility\.example\/fr-CH\/about<\/loc>/);
   const side = await get('/fr-CH/movility-one?view=side');
   assert.equal(side.headers.get('x-robots-tag'), 'noindex, nofollow');
   const gallery = await side.text();

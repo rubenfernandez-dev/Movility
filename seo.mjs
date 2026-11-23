@@ -1,7 +1,9 @@
 import { copy, escapeHtml } from './views.mjs';
+import { information } from './information.mjs';
 
 const locales = Object.keys(copy);
 const routes = {
+  ...information,
   '': {
     'de-CH': ['Elektrorollstühle für die Schweiz', 'Entdecke den Movility One und vergleiche elektrische Rollstühle auf Deutsch.'],
     'fr-CH': ['Fauteuils roulants électriques en Suisse', 'Découvrez le Movility One et comparez les fauteuils roulants électriques en français.'],
@@ -20,6 +22,8 @@ const routes = {
   },
 };
 
+export const isPublicPage = suffix => Object.hasOwn(routes, suffix);
+
 export function publicOrigin(value) {
   if (!value) return '';
   const url = new URL(value);
@@ -34,7 +38,7 @@ function alternates(suffix, origin) {
 }
 
 export function pageMetadata(locale, suffix, origin) {
-  if (!Object.hasOwn(routes, suffix)) return {};
+  if (!isPublicPage(suffix)) return {};
   const [title, description] = routes[suffix][locale];
   const path = `/${locale}${suffix}`;
   const canonical = origin ? `<link rel="canonical" href="${escapeHtml(origin + path)}">` : '';

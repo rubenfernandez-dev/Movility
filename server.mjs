@@ -7,7 +7,8 @@ import { copy, page, money, methods, escapeHtml } from './views.mjs';
 import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
   productImage, sideImage, videoPath, captionsPath, transcriptPath } from './storefront.mjs';
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
-import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
+import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
+import { information, informationLinks, informationPage } from './information.mjs';
 import { orderEmail } from './postpurchase.mjs';
 import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
   catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters } from './catalog.mjs';
@@ -553,7 +554,7 @@ const server = createServer(async (req, res) => {
     const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
-    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
+    const languagePath = isPublicPage(suffix) || ['/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
       modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
@@ -563,7 +564,7 @@ const server = createServer(async (req, res) => {
       : languagePath === '/compare' && searchParams.size ? `?${searchParams}`
       : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
         ? `?view=${galleryView}#gallery` : '';
-    const discoverable = first === locale && (suffix === '' || ['/movility-one', '/compare', '/movility-one/3d'].includes(suffix));
+    const discoverable = first === locale && isPublicPage(suffix);
     const cartUnits = [...readCart(req).values()].reduce((sum, quantity) => sum + quantity, 0);
     const consent = analyticsChoice(req);
     const settings = path === `/${locale}/analytics`;
@@ -574,7 +575,7 @@ const server = createServer(async (req, res) => {
     const render = (body, status = 200) => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}, {
-          footer: analyticsLink(locale) + (accountsEnabled
+          footer: informationLinks(locale) + ' · ' + analyticsLink(locale) + (accountsEnabled
             ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>
               · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),
           prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
@@ -973,6 +974,9 @@ const server = createServer(async (req, res) => {
       return redirect(res, analyticsReturn(locale, fields.get('return') || ''));
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
+    if (req.method === 'GET' && first === locale && Object.hasOwn(information, suffix)) {
+      return render(informationPage(locale, suffix, process.env.MOVILITY_CONTACT_EMAIL));
+    }
     if (req.method === 'GET' && path === `/${locale}`) {
       const models = [{ ...purchaseModel(coreSKU), sku: coreSKU, family: 'wheelchair' }, ...liveModels()];
       const featuredPhoto = modelPhotos(coreSKU).front || productImage;
