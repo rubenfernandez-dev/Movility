@@ -47,8 +47,10 @@ export function page(locale, title, content, header = '', metadata = {}, extras 
 <meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body>
 ${header || '<header class="top"><div class="top-inner"><a class="brand" href="/de-CH">Movility</a></div></header>'}
 ${extras.sidebar ? `<div class="admin-layout">${extras.sidebar}` : ''}
-<main id="content" tabindex="-1">${process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
-  : t && !extras.admin ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}</main>
+<main id="content" tabindex="-1"${extras.feature ? ' class="main-with-feature"' : ''}>
+${extras.feature ? extras.feature + '<div class="home-content">' : ''}
+${process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
+  : t && !extras.admin ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}${extras.feature ? '</div>' : ''}</main>
 ${extras.sidebar ? '</div>' : ''}
 <footer>${(extras.admin ? adminFooter : pageFooter)[locale]}${extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
 }

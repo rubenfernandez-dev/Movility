@@ -93,13 +93,16 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
     };
   };
 
-  assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
-  for (const [locale, nextLabel] of [['de-CH', 'Nächste Karte'], ['fr-CH', 'Carte suivante']]) {
+  assert.match(await (await get('/de-CH')).text(), /Elektrorollstühle und Zubehör/);
+  for (const [locale, nextLabel] of [['de-CH', 'Nächstes Bild'], ['fr-CH', 'Image suivante']]) {
     const response = await get('/' + locale);
     assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
     const homepage = await response.text();
-    assert.match(homepage, /<section class="hero">[\s\S]*data-home-discovery[\s\S]*id="catalogue"/);
+    assert.match(homepage, /class="main-with-feature">\s*<section class="discovery-section"[\s\S]*id="catalogue"/);
     assert.equal((homepage.match(/class="discovery-card"/g) || []).length, 3);
+    const slides = [...homepage.matchAll(/<li class="discovery-card">([\s\S]*?)<\/li>/g)];
+    assert.ok(slides.every(([, slide]) => !/<(?:h[1-6]|p)[\s>]/.test(slide) &&
+      (slide.match(/class="button discovery-action"/g) || []).length === 1));
     assert.ok(homepage.includes('aria-label="' + nextLabel + '"'));
     assert.ok(homepage.includes('href="/' + locale + '?family=spare#catalogue"'));
   }
@@ -150,7 +153,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post('/fr-CH/contact', contactFields)).status, 303);
   assert.equal((await post('/fr-CH/contact', contactFields)).status, 303);
   assert.equal((await post('/fr-CH/contact', contactFields)).status, 429);
-  assert.match(await (await get('/fr-CH')).text(), /href="#catalogue">Voir le catalogue[\s\S]*Comment savoir si une pièce est compatible/);
+  assert.match(await (await get('/fr-CH')).text(), /href="\/fr-CH#catalogue">Voir le catalogue[\s\S]*Comment savoir si une pièce est compatible/);
   const faqPath = '/admin/faqs';
   assert.equal((await get(faqPath)).status, 401);
   assert.equal((await get(faqPath, roleHeaders('support'))).status, 403);

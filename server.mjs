@@ -10,7 +10,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
-import { discoveryAccessoriesImage, discoveryCompareImage } from './home-discovery.mjs';
+import { discoveryAccessoriesImage, discoveryCompareImage, homeDiscovery } from './home-discovery.mjs';
 import { informationAdmin, informationAdminTitles, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
 import { faqAdmin, faqFeedback, setupFaq, shopFaqs, updateFaq } from './faq.mjs';
@@ -668,10 +668,11 @@ const server = createServer(async (req, res) => {
       try { recordFunnel(db, consent, locale, stage); }
       catch (error) { console.error('Could not record analytics stage', error); }
     };
-    const render = (body, status = 200) => send(res, status,
+    const render = (body, status = 200, feature = '') => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin, editorial &&
           [editorial['title_' + editorialLocale], editorial['intro_' + editorialLocale]]) : {}, {
+          feature,
           footer: informationLinks(locale) + ' · ' + analyticsLink(locale) + (accountsEnabled
             ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>
               · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),
@@ -1229,11 +1230,9 @@ const server = createServer(async (req, res) => {
         ? featuredPhoto : Object.values(modelPhotos(sku)).find(Boolean));
       return render(homepage(locale, {
         filters: storefrontFamilyFilters(locale, families, family) + (partFamily ? compatibilityFilter(locale, family, chairs, selected) : ''),
-        featuredPhoto,
-        detailPhoto: featured.side || sideImage,
         faqs: shopFaqs(db, locale),
         products: products || (locale === 'fr-CH' ? '<p>Aucun article compatible trouvé.</p>' : '<p>Keine passenden Artikel gefunden.</p>'),
-      }));
+      }), 200, homeDiscovery(locale, featured.side || sideImage));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();
