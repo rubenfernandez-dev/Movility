@@ -18,9 +18,9 @@ export function setupDocuments(db) {
 export function billingInput(fields) {
   const entries = ['name', 'street', 'zip', 'city'].map(key => [key, fields?.get('bill_' + key)?.trim() || '']);
   const values = Object.fromEntries(entries);
-  if (!entries.some(([, value]) => value)) return { values, address: null, valid: true };
-  return { values, address: values, valid: Boolean(values.name && values.name.length <= 100 && values.street &&
-    values.street.length <= 160 && /^\d{4}$/.test(values.zip) && values.city && values.city.length <= 100) };
+  if (!entries.some(([, value]) => value)) return { values, address: null, invalid: [] };
+  return { values, address: values, invalid: entries.filter(([key, value]) => key === 'zip'
+    ? !/^\d{4}$/.test(value) : !value || value.length > (key === 'street' ? 160 : 100)).map(([key]) => 'bill_' + key) };
 }
 
 export function saveBillingAddress(db, id, address) {

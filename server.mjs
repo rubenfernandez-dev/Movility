@@ -902,12 +902,17 @@ const server = createServer(async (req, res) => {
       const billing = billingInput(fields);
       const values = { ...address, email, method, billing: billing.values };
       if (sku && !selected) return render(`<h1>${t.soldOut}</h1>`, 409);
-      if (!validId || !billing.valid ||
-          email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-          !address.name || address.name.length > 100 || !address.street || address.street.length > 160 ||
-          !address.city || address.city.length > 100 || !/^[0-9]{4}$/.test(address.zip) ||
-          !(stripe?.methods || methods).includes(method) || !(stripe ? ['stripe'] : ['paid', 'failed']).includes(result)) {
-        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines, stripeMethodsFor(stripe, cents)), 400);
+      const invalid = [...billing.invalid];
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) invalid.push('email');
+      for (const key of ['name', 'street', 'city']) {
+        if (!address[key] || address[key].length > (key === 'street' ? 160 : 100)) invalid.push(key);
+      }
+      if (!/^\d{4}$/.test(address.zip)) invalid.push('zip');
+      const offered = stripeMethodsFor(stripe, cents) || methods;
+      if (offered.length && !(stripe?.methods || methods).includes(method)) invalid.push('method');
+      if (!validId || !offered.length || invalid.length || !(stripe ? ['stripe'] : ['paid', 'failed']).includes(result)) {
+        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines,
+          stripeMethodsFor(stripe, cents), invalid), 400);
       }
       if (stripe) {
         const matchesQuote = items => basketCheckout ? fields.get('cartQuote') === cartQuote(items)

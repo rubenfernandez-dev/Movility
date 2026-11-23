@@ -70,7 +70,8 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   - [x] Preproducción local con base aislada, integraciones simuladas y prueba de persistencia tras reinicio.
   - [x] Facturas y abonos de prueba en DE/FR con numeración, dirección opcional y vínculo con el pedido.
   - [ ] Emisión comercial según el perfil fiscal del vendedor confirmado.
-  - [ ] Revisar navegación por teclado, foco y formularios del checkout en alemán y francés.
+  - [x] Resumen de errores con foco y enlaces a campos, y validación del checkout en alemán y francés.
+  - [ ] Completar recorrido manual por teclado y lector de pantalla en móvil y escritorio, incluido Stripe al habilitar la cuenta.
 - [ ] **7. Expansión a la UE.** Validar cada país y ruta desde Suiza, quién
   importa, IVA, aduanas, costes completos y devoluciones antes de habilitarlos.
   Aceptación: pedido y devolución de prueba por ruta con documentación

@@ -121,3 +121,8 @@ footer{border-top:1px solid var(--line);color:var(--muted)}
 .billing-document{max-width:62rem;margin:0 auto}
 .billing-document .price{margin-top:1rem}
 @media print{body:has(.billing-document) .top,body:has(.billing-document) footer,body:has(.billing-document) .demo,.document-navigation{display:none!important}}
+.field-error{color:#8a2419;font-weight:600;margin:-.4rem 0 .8rem}
+.checkout-grid input[aria-invalid="true"]:not([type="radio"]){border:2px solid #8a2419}
+.checkout-grid details > summary{cursor:pointer;margin:.75rem 0}
+.checkout-grid input:target{scroll-margin-top:1rem}
+.form-error[tabindex]:focus{outline:2px solid #8a2419;outline-offset:3px}

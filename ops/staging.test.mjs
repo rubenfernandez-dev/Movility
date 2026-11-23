@@ -34,6 +34,19 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.equal(checkout.headers.get('x-robots-tag'), 'noindex, nofollow');
     const body = await checkout.text();
     assert.match(body, /Données fictives uniquement/);
+    for (const [locale, message] of [['fr-CH', 'code postal suisse à quatre chiffres'], ['de-CH', 'vierstellige Schweizer Postleitzahl']]) {
+      const invalid = await fetch(base + '/' + locale + '/checkout', {
+        method: 'POST', headers: { Origin: base },
+        body: new URLSearchParams({ email: 'bad', bill_name: 'Client Test', bill_zip: '123', result: 'paid' }),
+      });
+      assert.equal(invalid.status, 400);
+      const errors = await invalid.text();
+      assert.match(errors, /tabindex="-1" autofocus aria-labelledby="checkout-error"/);
+      assert.match(errors, /href="#checkout-bill_zip"/);
+      assert.match(errors, /aria-invalid="true" aria-describedby="error-bill_zip"/);
+      assert.match(errors, /<details open>/);
+      assert.match(errors, new RegExp(message));
+    }
     const order = await fetch(base + '/fr-CH/checkout', {
       method: 'POST', redirect: 'manual', headers: { Origin: base },
       body: new URLSearchParams({

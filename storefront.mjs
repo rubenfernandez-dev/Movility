@@ -134,13 +134,30 @@ export function cartPage(locale, cents, available, model) {
       : button(href(locale, model ? '/models/' + model.sku : '/movility-one'), t.catalog)}</p></div></article>`;
 }
 
-export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines, stripeMethods) {
+export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines, stripeMethods, invalid = []) {
   const l = labels[locale];
   const t = copy[locale];
-  const field = (name, label, attributes) => `<label>${label}<input name="${name}" value="${escapeHtml(values[name] || '')}" required ${attributes}></label>`;
+  const german = locale === 'de-CH';
+  const billingTitle = german ? 'Rechnungsadresse' : 'Adresse de facturation';
+  const names = { ...l, email: t.email, method: t.method };
+  const label = key => key.startsWith('bill_') ? billingTitle + ' · ' + names[key.slice(5)] : names[key];
+  const error = key => key.endsWith('zip')
+    ? (german ? 'Gib eine vierstellige Schweizer Postleitzahl ein.' : 'Saisissez un code postal suisse à quatre chiffres.')
+    : key === 'email' ? (german ? 'Gib eine gültige E-Mail-Adresse ein.' : 'Saisissez une adresse e-mail valide.')
+      : key === 'method' ? (german ? 'Wähle eine Zahlungsart.' : 'Choisissez un mode de paiement.')
+        : (german ? 'Fülle dieses Feld aus und prüfe die Länge.' : 'Renseignez ce champ et vérifiez sa longueur.');
+  const invalidAttrs = key => invalid.includes(key) ? `aria-invalid="true" aria-describedby="error-${key}"` : '';
+  const inlineError = key => invalid.includes(key) ? `<p class="field-error" id="error-${key}">${error(key)}</p>` : '';
+  const field = (name, title, attributes, optional = false) => {
+    const value = optional ? values.billing?.[name.slice(5)] : values[name];
+    return `<div><label for="checkout-${name}">${title}</label><input id="checkout-${name}" name="${name}"
+      value="${escapeHtml(value || '')}" ${optional ? '' : 'required'} ${attributes} ${invalidAttrs(name)}>${inlineError(name)}</div>`;
+  };
   return `<h1 class="page-title">${t.checkout}</h1><p>${l.demoData}</p>
-    ${message ? `<p class="form-error" role="alert">${message}</p>` : ''}
-    <div class="checkout-grid"><form method="post" action="/${locale}/checkout${lines ? '/cart' : ''}">
+    ${message ? `<section class="form-error" tabindex="-1" autofocus aria-labelledby="checkout-error">
+      <h2 id="checkout-error">${message}</h2>${invalid.length ? `<ul>${invalid.map(key =>
+        `<li><a href="#checkout-${key}">${label(key)} · ${error(key)}</a></li>`).join('')}</ul>` : ''}</section>` : ''}
+    <div class="checkout-grid"><form method="post" novalidate action="/${locale}/checkout${lines ? '/cart' : ''}">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="quotedPrice" value="${cents}">
       ${lines ? `<input type="hidden" name="cartQuote" value="${escapeHtml(cartQuote(lines))}">` : ''}
@@ -154,13 +171,14 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
       <details ${Object.values(values.billing || {}).some(Boolean) ? 'open' : ''}>
         <summary>${locale === 'de-CH' ? 'Abweichende Rechnungsadresse (optional)' : 'Adresse de facturation différente (facultatif)'}</summary>
         <fieldset><legend>${locale === 'de-CH' ? 'Rechnungsadresse · Schweiz' : 'Adresse de facturation · Suisse'}</legend>
-        ${['name', 'street', 'zip', 'city'].map(key => `<label>${l[key]}<input name="bill_${key}"
-          value="${escapeHtml(values.billing?.[key] || '')}" maxlength="${key === 'zip' ? 4 : key === 'street' ? 160 : 100}"
-          ${key === 'zip' ? 'inputmode="numeric" pattern="[0-9]{4}"' : ''}></label>`).join('')}</fieldset>
+        ${['name', 'street', 'zip', 'city'].map(key => field('bill_' + key, l[key],
+          `maxlength="${key === 'zip' ? 4 : key === 'street' ? 160 : 100}"
+          ${key === 'zip' ? 'inputmode="numeric" pattern="[0-9]{4}"' : ''}`, true)).join('')}</fieldset>
       </details>
-      <fieldset><legend>${t.method}</legend><div class="pay-options">${(stripeMethods || methods).map((method) => {
+      <fieldset><legend>${t.method}</legend>${inlineError('method')}<div class="pay-options">${(stripeMethods || methods).map((method, index) => {
         const label = method === 'Tarjeta' ? (locale === 'de-CH' ? 'Karte (Visa, Mastercard)' : 'Carte (Visa, Mastercard)') : method;
-        return `<label class="option"><input type="radio" name="method" value="${method}" ${values.method === method ? 'checked' : ''} required> ${label}</label>`;
+        return `<label class="option"><input type="radio" id="checkout-method${index ? '-' + index : ''}" name="method"
+          value="${method}" ${values.method === method ? 'checked' : ''} required ${invalidAttrs('method')}> ${label}</label>`;
       }).join('')}</div></fieldset>
       ${stripeMethods ? stripeMethods.length
         ? `<button name="result" value="stripe">${locale === 'de-CH' ? 'Weiter zu Stripe (Test)' : 'Continuer vers Stripe (test)'}</button>`
