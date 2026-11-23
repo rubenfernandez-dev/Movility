@@ -184,6 +184,21 @@ pie de la tienda. Retirar el consentimiento borra el recorrido asociado.
 Los datos se guardan en `data/demo.sqlite`. Para una sesión nueva, arranca con
 `MOVILITY_DB=:memory:`. El servidor solo escucha en el equipo local.
 
+### Copias de seguridad y recuperación
+
+- `npm run db:backup` crea y verifica una copia SQLite en `data/backups/`.
+  Puedes indicar otra carpeta con `npm run db:backup -- "ruta"`. Usa
+  `MOVILITY_DB` si la tienda trabaja con una base distinta.
+- `npm run db:verify -- "ruta/backup.sqlite"` verifica la integridad y las referencias.
+- `npm run db:restore -- "ruta/backup.sqlite" "data/recuperada.sqlite"` crea
+  una base independiente. Para probarla, arranca otra instancia con
+  `MOVILITY_DB` apuntando a ese archivo, un puerto distinto y las
+  integraciones externas en simulación.
+
+Estas copias incluyen los datos del pedido y del panel. Guárdalas en
+almacenamiento privado, fuera de Git. Los medios y la configuración del
+servidor se recuperan por separado.
+
 ## GitHub Codespaces
 
 Abre **Terminal → New Terminal** en el editor de Codespaces. En la carpeta
