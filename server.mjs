@@ -10,6 +10,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
+import { discoveryAccessoriesImage, discoveryCompareImage } from './home-discovery.mjs';
 import { informationAdmin, informationAdminTitles, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
 import { faqAdmin, faqFeedback, setupFaq, shopFaqs, updateFaq } from './faq.mjs';
@@ -127,6 +128,9 @@ const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
   [sideImage, ['image/jpeg', readFileSync(new URL('.' + sideImage, import.meta.url))]],
+  [discoveryCompareImage, ['image/jpeg', readFileSync(new URL('.' + discoveryCompareImage, import.meta.url))]],
+  [discoveryAccessoriesImage, ['image/jpeg', readFileSync(new URL('.' + discoveryAccessoriesImage, import.meta.url))]],
+  ['/assets/home-discovery.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/home-discovery.js', import.meta.url))]],
   [modelPath, ['model/gltf-binary', readFileSync(new URL('./assets/movility-one.glb', import.meta.url))]],
   [viewerScript, ['text/javascript; charset=utf-8', readFileSync(new URL('./node_modules/@google/model-viewer/dist/model-viewer.min.js', import.meta.url))]],
   ['/assets/order-push.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/order-push.js', import.meta.url))]],
@@ -328,7 +332,7 @@ transaction(() => {
   for (const event of previousEvents) storeEmail(orderById(event.id), event.kind);
 });
 
-function send(res, status, body, withViewer = false, withPush = false, withAdminScript = false) {
+function send(res, status, body, withViewer = false, withPush = false, withLocalScript = false) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -339,7 +343,7 @@ function send(res, status, body, withViewer = false, withPush = false, withAdmin
       ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
       : "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" +
         (withPush ? "; script-src 'self'; connect-src 'self'; worker-src 'self'"
-          : withAdminScript ? "; script-src 'self'" : ''),
+          : withLocalScript ? "; script-src 'self'" : ''),
   });
   res.end(body);
 }
@@ -673,7 +677,8 @@ const server = createServer(async (req, res) => {
               · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),
           prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
             ? analyticsPrompt(locale, consent, path) : '',
-        }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute));
+        }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute),
+        path === `/${locale}`);
     const origin = req.headers.origin;
     const secureRequest = !localHosts.includes(req.headers.host);
     const sameOrigin = origin === `${secureRequest ? 'https' : 'http'}://${req.headers.host}`;
@@ -1209,7 +1214,8 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === `/${locale}`) {
       const models = orderedProducts(db, [coreCatalogProduct(), ...liveModels()]);
-      const featuredPhoto = modelPhotos(coreSKU).front || productImage;
+      const featured = modelPhotos(coreSKU);
+      const featuredPhoto = featured.front || productImage;
       const families = catalogFamilies(db).filter(row => row.id === 'wheelchair' ||
         models.some(model => model.family === row.id));
       const family = catalogFilter(searchParams, families);
@@ -1224,6 +1230,7 @@ const server = createServer(async (req, res) => {
       return render(homepage(locale, {
         filters: storefrontFamilyFilters(locale, families, family) + (partFamily ? compatibilityFilter(locale, family, chairs, selected) : ''),
         featuredPhoto,
+        detailPhoto: featured.side || sideImage,
         faqs: shopFaqs(db, locale),
         products: products || (locale === 'fr-CH' ? '<p>Aucun article compatible trouvé.</p>' : '<p>Keine passenden Artikel gefunden.</p>'),
       }));

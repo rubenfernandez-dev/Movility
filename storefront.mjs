@@ -3,11 +3,12 @@ import { compareLabel, viewerLink } from './discovery.mjs';
 import { addToCart, cartQuote, coreSKU } from './cart.mjs';
 import { trackingHistory } from './tracking.mjs';
 import { information } from './information.mjs';
+import { homeDiscovery } from './home-discovery.mjs';
 
 const labels = {
   'de-CH': {
     nav: 'Rollstuhl', help: 'Beratung & FAQ', basket: 'Warenkorb', skip: 'Zum Inhalt',
-    hero: 'Mobilität, die zu dir passt.', intro: 'Entdecke einen kompakten Elektrorollstuhl für deinen Alltag. Informiere dich in Ruhe und probiere die Bestellung auf Deutsch aus.',
+    hero: 'Mobilität, die zu dir passt.', intro: 'Vergleiche Elektrorollstühle für deinen Alltag und finde passendes Zubehör und Ersatzteile.',
     discover: 'Movility One entdecken', image: 'Illustrative Studioaufnahme eines kompakten schwarzen Elektrorollstuhls',
     sample: 'Illustration des Demomodells', benefits: ['Versand innerhalb der Schweiz', 'Preise in Schweizer Franken', 'TWINT, PayPal und Karte'],
     browse: 'Produktkatalog', browseAction: 'Katalog ansehen',
@@ -22,7 +23,7 @@ const labels = {
   },
   'fr-CH': {
     nav: 'Fauteuil', help: 'Conseils et FAQ', basket: 'Panier', skip: 'Aller au contenu',
-    hero: 'La mobilité qui vous ressemble.', intro: 'Découvrez un fauteuil roulant électrique compact pour le quotidien. Prenez le temps de le découvrir et testez la commande en français.',
+    hero: 'La mobilité qui vous ressemble.', intro: 'Comparez les fauteuils roulants électriques pour le quotidien et trouvez les accessoires et pièces adaptés.',
     discover: 'Découvrir le Movility One', image: 'Vue illustrative en studio d’un fauteuil roulant électrique noir et compact',
     sample: 'Illustration du modèle de démonstration', benefits: ['Livraison en Suisse', 'Prix en francs suisses', 'TWINT, PayPal et carte'],
     browse: 'Catalogue de produits', browseAction: 'Voir le catalogue',
@@ -56,16 +57,16 @@ export function navigation(locale, suffix, query = '', units = 0) {
     <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}${units ? ` (${units})` : ''}</a></div></div></header>`;
 }
 
-export function homepage(locale, { filters, products, faqs, featuredPhoto = productImage }) {
+export function homepage(locale, { filters, products, faqs, featuredPhoto = productImage, detailPhoto = sideImage }) {
   const l = labels[locale];
-  const t = copy[locale];
   const product = href(locale, '/movility-one');
   return `<section class="hero">
-    <div class="hero-copy"><p class="eyebrow">${t.category}</p><h1>${l.hero}</h1><p class="lead">${l.intro}</p>
+    <div class="hero-copy"><p class="eyebrow">Movility One</p><h1>${l.hero}</h1><p class="lead">${l.intro}</p>
       <div class="product-actions">${button('#catalogue', l.browseAction)}
         <a class="button secondary" href="${product}">${l.discover}</a>${viewerLink(locale)}</div></div>
     <figure><img src="${featuredPhoto}" width="1200" height="900" alt="${l.image}"><figcaption>${l.sample}</figcaption></figure>
   </section>
+  ${homeDiscovery(locale, detailPhoto)}
   <ul class="benefits">${l.benefits.map((line) => `<li>${line}</li>`).join('')}</ul>
   <section class="section" id="catalogue" tabindex="-1"><h2>${l.browse}</h2>${filters}${products}</section>
   <section class="section faq" id="faq"><h2>${l.faq}</h2>

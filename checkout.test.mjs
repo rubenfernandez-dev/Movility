@@ -94,6 +94,18 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   };
 
   assert.match(await (await get('/de-CH')).text(), /Mobilität, die zu dir passt/);
+  for (const [locale, nextLabel] of [['de-CH', 'Nächste Karte'], ['fr-CH', 'Carte suivante']]) {
+    const response = await get('/' + locale);
+    assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
+    const homepage = await response.text();
+    assert.match(homepage, /<section class="hero">[\s\S]*data-home-discovery[\s\S]*id="catalogue"/);
+    assert.equal((homepage.match(/class="discovery-card"/g) || []).length, 3);
+    assert.ok(homepage.includes('aria-label="' + nextLabel + '"'));
+    assert.ok(homepage.includes('href="/' + locale + '?family=spare#catalogue"'));
+  }
+  assert.match((await get('/assets/home-discovery.js')).headers.get('content-type'), /javascript/);
+  assert.equal((await get('/assets/discovery-compare.jpg')).headers.get('content-type'), 'image/jpeg');
+  assert.equal((await get('/assets/discovery-accessories.jpg')).headers.get('content-type'), 'image/jpeg');
   const publicHost = { Host: 'movility.example', Origin: 'https://movility.example' };
   const publicOrder = '/fr-CH/orders/00000000-0000-0000-0000-000000000000';
   const postForHost = (path, fields, matchingHost) => new Promise((resolve, reject) => {
