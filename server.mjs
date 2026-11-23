@@ -14,6 +14,7 @@ import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWhee
   catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters,
   orderedProducts, saveCatalogPosition, catalogOrderAdmin } from './catalog.mjs';
 import { contentAdmin, receiveMedia } from './catalog-media.mjs';
+import { setupCompatibility, isPart, compatibilityAdmin, compatibilityInput, compatibilityFilter, compatibilitySection } from './compatibility.mjs';
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
 import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
@@ -90,10 +91,20 @@ db.exec(`
 `);
 
 setupModels(db);
+setupCompatibility(db);
 const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
 const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
 const coreCatalogProduct = () => ({ ...purchaseModel(coreSKU), sku: coreSKU, family: 'wheelchair', active: 1 });
+const compatibilityForPart = sku => db.prepare('SELECT * FROM catalog_compatibility WHERE part=?').all(sku);
+const compatibilityForChair = sku => new Map(db.prepare('SELECT * FROM catalog_compatibility WHERE chair=?').all(sku)
+  .map(entry => [entry.part, entry]));
+const activeChairs = () => [coreCatalogProduct(), ...liveModels().filter(isWheelchair)];
+const relatedParts = (locale, sku) => {
+  const matches = compatibilityForChair(sku);
+  return compatibilitySection(locale, orderedProducts(db, liveModels().filter(model => isPart(model) && matches.has(model.sku)))
+    .map(model => ({ ...matches.get(model.sku), ...model })));
+};
 const adminCatalogProducts = () => orderedProducts(db, [coreCatalogProduct(),
   ...db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all()]);
 const displayModelAdmin = (message, params) => page('es', 'Artículos del catálogo', modelAdmin(
@@ -563,7 +574,11 @@ const server = createServer(async (req, res) => {
     const view = searchParams.get('view');
     const galleryView = ['side', 'rear'].includes(view) ? view : 'front';
     const selectedSKU = searchParams.get('model') || '';
-    const languageQuery = ['/cart', '/checkout'].includes(languagePath) && skuPattern.test(selectedSKU) ? `?model=${selectedSKU}`
+    const catalogueQuery = new URLSearchParams();
+    if (!suffix && searchParams.has('family')) catalogueQuery.set('family', searchParams.get('family'));
+    if (catalogueQuery.size && searchParams.has('compatible')) catalogueQuery.set('compatible', searchParams.get('compatible'));
+    const languageQuery = catalogueQuery.size ? `?${catalogueQuery}#catalogue`
+      : ['/cart', '/checkout'].includes(languagePath) && skuPattern.test(selectedSKU) ? `?model=${selectedSKU}`
       : languagePath === '/compare' && searchParams.size ? `?${searchParams}`
       : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
         ? `?view=${galleryView}#gallery` : '';
@@ -648,6 +663,23 @@ const server = createServer(async (req, res) => {
           return redirect(res, '/admin/families?saved=1');
         }
       }
+      const compatibilityRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/compatibility$/.exec(path);
+      if (role === 'admin' && compatibilityRoute && ['GET', 'POST'].includes(req.method)) {
+        const part = extraModel(compatibilityRoute[1]);
+        if (!isPart(part)) return send(res, 404, 'Accesorio o recambio no encontrado');
+        const chairs = adminCatalogProducts().filter(isWheelchair);
+        const panel = (message, status = 200) => send(res, status, page('es', 'Compatibilidad',
+          compatibilityAdmin(part, chairs, compatibilityForPart(part.sku), message)));
+        if (req.method === 'GET') return panel(searchParams.has('saved') ? '<p role="status">Compatibilidad guardada.</p>' : '');
+        const entries = compatibilityInput(await form(req, 262144), chairs);
+        if (!entries) return panel('<p role="alert">Revisa los modelos y escribe cada condición en los dos idiomas.</p>', 400);
+        transaction(() => {
+          db.prepare('DELETE FROM catalog_compatibility WHERE part=?').run(part.sku);
+          const insert = db.prepare('INSERT INTO catalog_compatibility (part, chair, note_de, note_fr) VALUES (?,?,?,?)');
+          for (const entry of entries) insert.run(part.sku, ...entry);
+        });
+        return redirect(res, path + '?saved=1');
+      }
       const contentRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/content(\/upload)?$/.exec(path);
       if (role === 'admin' && contentRoute) {
         const [, sku, upload] = contentRoute;
@@ -655,7 +687,7 @@ const server = createServer(async (req, res) => {
         if (!model) return send(res, 404, 'Artículo no encontrado');
         const target = '/admin/models/' + sku + '/content';
         if (req.method === 'GET' && !upload) return send(res, 200, page('es', 'Contenido del artículo',
-          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'))));
+          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'), isPart(model))));
         if (req.method === 'POST' && upload) {
           if (!await receiveMedia(req, uploadFolder, sku)) return send(res, 400, page('es', 'Archivo no válido',
             '<p role="alert">Comprueba el formato y el tamaño del archivo.</p><a href="' + target + '">Volver al artículo</a>'));
@@ -998,11 +1030,17 @@ const server = createServer(async (req, res) => {
         models.some(model => model.family === row.id));
       const family = catalogFilter(searchParams, families);
       const visible = family ? families.filter(row => row.id === family) : families;
+      const partFamily = isPart({ family });
+      const chairs = partFamily ? models.filter(isWheelchair) : [];
+      const selected = chairs.find(chair => chair.sku === searchParams.get('compatible'))?.sku;
+      const matches = selected ? compatibilityForChair(selected) : null;
+      const results = matches ? models.filter(model => model.family === family && matches.has(model.sku)) : models;
+      const products = extraCatalog(locale, results, visible, sku => sku === coreSKU
+        ? featuredPhoto : Object.values(modelPhotos(sku)).find(Boolean));
       return render(homepage(locale, {
-        filters: storefrontFamilyFilters(locale, families, family),
+        filters: storefrontFamilyFilters(locale, families, family) + (partFamily ? compatibilityFilter(locale, family, chairs, selected) : ''),
         featuredPhoto,
-        products: extraCatalog(locale, models, visible, sku => sku === coreSKU
-          ? featuredPhoto : Object.values(modelPhotos(sku)).find(Boolean)),
+        products: products || (locale === 'fr-CH' ? '<p>Aucun article compatible trouvé.</p>' : '<p>Keine passenden Artikel gefunden.</p>'),
       }));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
@@ -1011,7 +1049,7 @@ const server = createServer(async (req, res) => {
       const media = modelMedia(coreSKU, locale);
       return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView,
         photos: media.photo ? media.photos : undefined, video: media.video || videoLocales.has(locale),
-        features: renderFeatures(locale, catalogFeatures(db, coreSKU)) }));
+        features: renderFeatures(locale, catalogFeatures(db, coreSKU)) }) + relatedParts(locale, coreSKU));
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
       return render(comparisonPage(locale, searchParams, catalog().cents, liveModels().filter(isWheelchair)));
@@ -1022,7 +1060,14 @@ const server = createServer(async (req, res) => {
         const media = modelMedia(model.sku, locale);
         if (!modelRoute[2]) {
           track('view');
-          return render(extraProduct(locale, model, media, galleryView, catalogFeatures(db, model.sku)));
+          let compatibility = '';
+          if (isWheelchair(model)) compatibility = relatedParts(locale, model.sku);
+          if (isPart(model)) {
+            const entries = new Map(compatibilityForPart(model.sku).map(entry => [entry.chair, entry]));
+            compatibility = compatibilitySection(locale, activeChairs().filter(chair => entries.has(chair.sku))
+              .map(chair => ({ ...entries.get(chair.sku), ...chair })), true);
+          }
+          return render(extraProduct(locale, model, media, galleryView, catalogFeatures(db, model.sku), compatibility));
         }
         if (media.model) return render(viewerPage(locale, media.photo,
           { name: model.name, url: media.model, productPath: '/models/' + model.sku }));

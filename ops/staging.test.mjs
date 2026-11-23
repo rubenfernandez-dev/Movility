@@ -165,6 +165,20 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.equal((await submit(restarted + '/admin/models', accessory, { Authorization: auth })).status, 303);
     assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Accessoires[\s\S]*Travel Bag/);
     assert.doesNotMatch(await (await fetch(restarted + '/fr-CH/compare')).text(), /Travel Bag/);
+    const compatibilityPath = restarted + '/admin/models/travel-bag/compatibility';
+    const compatHeaders = { Authorization: auth };
+    assert.match(await (await fetch(restarted + '/fr-CH/models/travel-bag')).text(), /Compatibilité à confirmer/);
+    assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /Movility One/);
+    assert.equal((await submit(compatibilityPath, { chair: 'one', 'de-one': 'Nur Version 2' }, compatHeaders)).status, 400);
+    assert.equal((await submit(compatibilityPath, { chair: 'one', 'de-one': 'Nur Version 2', 'fr-one': 'Version 2 uniquement' },
+      compatHeaders)).status, 303);
+    const filteredParts = await (await fetch(restarted + '/fr-CH?family=accessory&compatible=one')).text();
+    assert.match(filteredParts, /name="compatible"/);
+    assert.match(filteredParts, /Travel Bag/);
+    assert.match(await (await fetch(restarted + '/fr-CH/movility-one')).text(), /Accessoires et pièces compatibles[\s\S]*Travel Bag<\/a> · Version 2 uniquement/);
+    assert.match(await (await fetch(restarted + '/de-CH/models/travel-bag')).text(), /Kompatible Rollstühle[\s\S]*Movility One<\/a> · Nur Version 2/);
+    assert.equal((await submit(compatibilityPath, {}, compatHeaders)).status, 303);
+    assert.match(await (await fetch(restarted + '/fr-CH?family=accessory&compatible=one')).text(), /Aucun article compatible trouvé/);
     const accessoryCheckout = await (await fetch(restarted + '/fr-CH/checkout?model=travel-bag')).text();
     const accessoryOrder = await submit(restarted + '/fr-CH/checkout', {
       id: accessoryCheckout.match(/name="id" value="([^"]+)"/)[1], quotedPrice: '4900', model: 'travel-bag',

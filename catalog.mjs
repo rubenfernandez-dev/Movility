@@ -1,6 +1,7 @@
 import { escapeHtml, money, copy } from './views.mjs';
 import { productGallery, productVideo } from './storefront.mjs';
 import { addToCart, coreSKU, skuPattern } from './cart.mjs';
+import { isPart } from './compatibility.mjs';
 
 const initialFamilies = {
   wheelchair: { es: 'Sillas de ruedas', 'de-CH': 'Elektrorollstühle', 'fr-CH': 'Fauteuils roulants électriques' },
@@ -173,6 +174,7 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
         ${items.map(model => `<article class="model-editor">
           <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</p>
           <p><a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>
+          ${isPart(model) ? `<p><a href="/admin/models/${model.sku}/compatibility">Configurar compatibilidad</a></p>` : ''}
           ${model.sku === 'one' ? '<p><a href="/admin#catalog-editor">Editar precio, stock y descripciones</a></p>' :
             `<details><summary>Editar artículo</summary>${form(model)}</details>`}
           </article>`).join('')}</section>` : '';
@@ -218,7 +220,7 @@ export function extraCatalog(locale, models, families, photoFor) {
   }).join('');
 }
 
-export function extraProduct(locale, model, media, view, features) {
+export function extraProduct(locale, model, media, view, features, compatibility = '') {
   const l = language[locale];
   const specs = [[l.width, model.width + ' cm'], [l.weight, model.weight + ' kg'],
     [l.range, model.range + ' km'], [l.fold, model.fold ? l.yes : l.no]];
@@ -229,10 +231,11 @@ export function extraProduct(locale, model, media, view, features) {
     <p class="lead">${escapeHtml(locale === 'de-CH' ? model.description_de : model.description_fr)}</p>
     <p class="price">${money(locale, model.cents)}</p>${isWheelchair(model) ? `<dl class="specs">
     ${specs.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>` : ''}
+    ${isPart(model) ? compatibility : ''}
     <div class="product-actions cart-action">${model.units ? addToCart(locale, model.sku) : copy[locale].soldOut}
     ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">3D</a>` : ''}
     ${isWheelchair(model) ? `<a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a>` : ''}</div>${renderFeatures(locale, features)}</div></section>
-    ${productVideo(locale, media.video)}`;
+    ${productVideo(locale, media.video)}${isWheelchair(model) ? compatibility : ''}`;
 }
 
 export function renderFeatures(locale, features) {
