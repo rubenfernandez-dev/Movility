@@ -8,6 +8,7 @@ import { createInterface } from 'node:readline';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { stagingEnvironment } from './staging.mjs';
+import { shipmentFromToken, shipmentPath } from '../tracking.mjs';
 
 test('staging keeps a simulated order after restart and ignores external integration settings', { timeout: 15000 }, async () => {
   const folder = mkdtempSync(join(tmpdir(), 'movility-staging-'));
@@ -242,6 +243,16 @@ test('staging keeps a simulated order after restart and ignores external integra
     const accessoryId = accessoryOrder.headers.get('location').split('/').at(-1);
     assert.equal((await submit(restarted + '/admin/' + accessoryId + '/ship', { tracking: 'STAGING-BAG' },
       { Authorization: auth })).status, 303);
+    assert.equal((await submit(restarted + '/admin/' + accessoryId + '/tracking', { eventId: crypto.randomUUID(), status: 'delivered' },
+      { Authorization: auth })).status, 303);
+    const shipmentDb = new DatabaseSync(database, { readOnly: true });
+    try {
+      const token = shipmentPath(shipmentDb, 'fr-CH', accessoryId).split('/').at(-1);
+      const { occurred_at } = shipmentDb.prepare("SELECT occurred_at FROM tracking_events WHERE order_id=? AND event_status='delivered'").get(accessoryId);
+      const week = 7 * 24 * 60 * 60 * 1000;
+      assert.equal(shipmentFromToken(shipmentDb, token, occurred_at + week - 1)?.tracking, 'STAGING-BAG');
+      assert.equal(shipmentFromToken(shipmentDb, token, occurred_at + week), undefined);
+    } finally { shipmentDb.close(); }
     const admin = { Authorization: auth };
     assert.equal((await submit(restarted + '/admin/families', {
       id: 'home', es: 'Hogar', de: 'Zuhause', fr: 'Maison',

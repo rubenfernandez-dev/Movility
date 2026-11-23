@@ -29,7 +29,8 @@ import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunne
 import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
 import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
 import { setupTracking, trackingStart, trackingEvents, applyTrackingEvent, trackingHistory, trackingForm,
-  manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody } from './tracking.mjs';
+  manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody, shipmentFromToken,
+  shipmentPage, shipmentPath, shipmentTokenPattern } from './tracking.mjs';
 import { setupPush, purgePush, pushConfig, pushSubscription, pushState, addPushSubscription, removePushSubscription,
   queuePush, deliverPush, pushControls } from './order-push.mjs';
 import { stripeMode, createCheckout, verifyStripeEvent, stripeOutcome, setupStripePayments, paymentAttempt,
@@ -284,9 +285,12 @@ const orderIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const inventoryRows = (sku, limit) => db.prepare(`SELECT * FROM stock_movements
   WHERE (? = '' OR sku = ?) ORDER BY id DESC LIMIT ?`).all(sku, sku, limit);
 const noticeKinds = ['paid', 'shipped', 'delivered', 'refunded'];
+const emailShipmentPath = (order, kind) => ['shipped', 'delivered'].includes(kind)
+  ? shipmentPath(db, order.locale, order.id) : '';
 
 const storeEmail = (order, kind) => {
-  const { subject, body } = orderEmail(order, kind);
+  const path = emailShipmentPath(order, kind);
+  const { subject, body } = orderEmail(order, kind, path && (siteOrigin ? new URL(path, siteOrigin).href : path));
   db.prepare('INSERT INTO email_previews VALUES (?, ?, ?, ?)').run(order.id, kind, subject, body);
 };
 const notice = (id, kind) => {
@@ -487,7 +491,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
 }
 
 function emailView(order, preview) {
-  const { orderPath, statusLabel } = orderEmail(order, preview.kind);
+  const { orderPath, statusLabel } = orderEmail(order, preview.kind, emailShipmentPath(order, preview.kind));
   const state = deliveryStatus(db, order.id, preview.kind);
   return adminPage('Vista previa de correo', adminHtml`<a href="/admin">Volver a pedidos</a>
     <h1 class="page-title">Vista previa de correo</h1>
@@ -583,11 +587,13 @@ const server = createServer(async (req, res) => {
     const locale = Object.hasOwn(copy, first) ? first : 'de-CH';
     const t = copy[locale];
     const orderPageRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}`;
+    const shipmentRoute = first === locale && second === 'shipment' && shipmentTokenPattern.test(third) &&
+      path === `/${locale}/shipment/${third}`;
     const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
     const languagePath = isPublicPage(suffix) || ['/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
-      modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
+      modelRoute || shipmentRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
     const galleryView = ['side', 'rear'].includes(view) ? view : 'front';
@@ -1308,6 +1314,11 @@ const server = createServer(async (req, res) => {
         return render(checkoutPage(locale, current?.cents ?? catalog().cents, id, values, t.priceChanged, current), 409);
       }
       return render(`<h1>${outcome === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
+    }
+    if (req.method === 'GET' && shipmentRoute) {
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      const shipment = shipmentFromToken(db, third);
+      return render(shipmentPage(locale, shipment, shipment ? trackingEvents(db, shipment.id) : []), shipment ? 200 : 404);
     }
     if (req.method === 'GET' && orderPageRoute) {
       res.setHeader('Referrer-Policy', 'no-referrer');

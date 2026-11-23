@@ -29,8 +29,10 @@ Al ampliar el surtido, revisar las reglas de expedición y fiscalidad de cada fa
 
 En la revisión de privacidad, las facturas y los abonos quedan restringidos a
 Administración y Finanzas. Los pedidos y documentos se sirven sin caché, sin
-indexación y sin enviar la URL como referencia al navegar. El seguimiento,
-el estado de pago y el alta de notificaciones requieren acceso al pedido.
+indexación y sin enviar la URL como referencia al navegar. El estado de pago,
+el pedido completo y el alta de notificaciones requieren acceso al pedido.
+Los correos de expedición y entrega comparten un enlace que muestra el estado
+y número de envío hasta siete días después de la entrega registrada.
 La compra abre el acceso durante una hora y el código de soporte durante
 15 minutos. Una cuenta vinculada también puede consultar su pedido en
 preproducción. Para el piloto queda integrar la recuperación por correo

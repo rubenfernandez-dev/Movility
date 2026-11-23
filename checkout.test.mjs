@@ -228,6 +228,16 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, warehouse)).status, 303);
   assert.equal((await post(`/admin/${orderId}/ship`, firstShip, headers)).status, 303);
   assert.match(await (await get(orderPath, buyer)).text(), /CH-DEMO-1/);
+  const shipmentEmail = await (await get(emailPath('shipped'), headers)).text();
+  const trackingLink = shipmentEmail.match(/href="(\/fr-CH\/shipment\/[A-Za-z0-9_-]{43})"/)[1];
+  const publicShipment = await get(trackingLink);
+  assert.equal(publicShipment.status, 200);
+  assert.equal(publicShipment.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(publicShipment.headers.get('cache-control'), 'no-store');
+  const shipmentDetails = await publicShipment.text();
+  assert.match(shipmentDetails, /CH-DEMO-1/);
+  assert.doesNotMatch(shipmentDetails, /Movility One ·|599\.90|demo@example|Route de Test 1|Commande confirmée/);
+  assert.equal((await get(trackingLink.slice(0, -1) + (trackingLink.endsWith('A') ? 'B' : 'A'))).status, 404);
   const trackingPath = `/admin/${orderId}/tracking`;
   const simulated = { eventId: randomUUID(), status: 'transit' };
   assert.equal((await post(trackingPath, simulated, finance)).status, 403);
@@ -257,7 +267,10 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.doesNotMatch(await (await get(orderPath, buyer)).text(), /data-subscribe/);
   assert.deepEqual(await (await pushUpdate({ action: 'unsubscribe', endpoint: subscription.endpoint })).json(), { active: false });
   assert.deepEqual(await (await pushUpdate({ action: 'subscribe', subscription })).json(), { active: false });
-  assert.match(await (await get(emailPath('delivered'), support)).text(), /Movility · Commande livrée/);
+  const deliveryEmail = await (await get(emailPath('delivered'), support)).text();
+  assert.match(deliveryEmail, /Movility · Commande livrée/);
+  assert.ok(deliveryEmail.includes('href="' + trackingLink + '"'));
+  assert.match(await (await get(trackingLink)).text(), /<strong>Livré<\/strong>/);
   const trackingOrders = await (await get('/admin', support)).text();
   assert.equal(trackingOrders.match(new RegExp('/admin/' + orderId + '/email/delivered', 'g'))?.length, 1);
   for (let i = 0; i < 2; i++) {

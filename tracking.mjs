@@ -1,5 +1,5 @@
 import { adminHtml, adminText } from './admin-language.mjs';
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { escapeHtml } from './views.mjs';
 
 const statusLabels = {
@@ -9,6 +9,8 @@ const statusLabels = {
 };
 const headings = { es: 'Seguimiento del transportista', 'de-CH': 'Sendungsverlauf', 'fr-CH': 'Historique de livraison' };
 const orderId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+export const shipmentTokenPattern = /^[A-Za-z0-9_-]{43}$/;
+const followUp = 7 * 24 * 60 * 60 * 1000;
 
 export function setupTracking(db) {
   db.exec(`
@@ -22,13 +24,49 @@ export function setupTracking(db) {
     CREATE TABLE IF NOT EXISTS shipment_tracking_started (
       order_id TEXT PRIMARY KEY REFERENCES orders(id), started_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS shipment_links (
+      order_id TEXT PRIMARY KEY REFERENCES orders(id), token TEXT NOT NULL UNIQUE
+    );
   `);
+  for (const { id } of db.prepare(`SELECT id FROM orders WHERE tracking IS NOT NULL AND tracking <> ''
+    AND NOT EXISTS (SELECT 1 FROM shipment_links WHERE order_id = orders.id)`).all()) ensureShipmentLink(db, id);
+}
+
+function ensureShipmentLink(db, id) {
+  db.prepare('INSERT INTO shipment_links VALUES (?, ?) ON CONFLICT(order_id) DO NOTHING')
+    .run(id, randomBytes(32).toString('base64url'));
 }
 
 export function trackingStart(db, id, now = Date.now()) {
   db.prepare('INSERT OR IGNORE INTO shipment_tracking_started VALUES (?, ?)').run(id, now);
+  ensureShipmentLink(db, id);
 }
 
+export const shipmentPath = (db, locale, id) => {
+  const token = db.prepare('SELECT token FROM shipment_links WHERE order_id = ?').get(id)?.token;
+  return token ? `/${locale}/shipment/${token}` : '';
+};
+
+export function shipmentFromToken(db, token, now = Date.now()) {
+  if (!shipmentTokenPattern.test(token)) return null;
+  return db.prepare(`SELECT o.id, o.tracking FROM shipment_links l JOIN orders o ON o.id = l.order_id
+    WHERE l.token = ? AND o.tracking <> ''
+    AND NOT EXISTS (SELECT 1 FROM tracking_events e WHERE e.order_id = o.id
+      AND e.event_status = 'delivered' AND e.occurred_at <= ?)`).get(token, now - followUp);
+}
+
+export function shipmentPage(locale, shipment, events) {
+  const french = locale === 'fr-CH';
+  const title = french ? 'Suivi de l’expédition' : 'Sendungsverfolgung';
+  if (!shipment) return `<h1 class="page-title">${title}</h1>
+    <p>${french ? 'Ce lien de suivi est indisponible ou a expiré.' : 'Dieser Trackinglink ist nicht verfügbar oder abgelaufen.'}</p>
+    <a href="/${locale}/contact">${french ? 'Contacter le service client' : 'Kundendienst kontaktieren'}</a>`;
+  return `<section class="confirmation"><h1 class="page-title">${title}</h1>
+    <p>${french ? 'Numéro de suivi' : 'Sendungsnummer'} <strong>${escapeHtml(shipment.tracking)}</strong></p>
+    ${events.length ? trackingHistory(locale, events) :
+      `<p>${french ? 'Expédié. En attente du premier événement du transporteur.' : 'Versendet. Das erste Ereignis des Transportdienstes steht noch aus.'}</p>`}
+    </section>`;
+}
 export function normalizeTrackingEvent(input, source, now = Date.now()) {
   if (!input || typeof input !== 'object' || typeof input.eventId !== 'string' ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(input.eventId) || typeof input.orderId !== 'string' ||
