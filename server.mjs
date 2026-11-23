@@ -21,7 +21,8 @@ import { setupInventory, purchasedLines, returnControls, inventoryPage, inventor
 import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
 import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
   readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
-import { adminAuth, adminRouteAllowed, can, localAdminPassword, roleNames } from './admin-access.mjs';
+import { adminAuth, adminRouteAllowed, can, changeLocalAdminPassword, localAdminPassword, roleNames,
+  verifyLocalAdminPassword } from './admin-access.mjs';
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
 import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage } from './mail-queue.mjs';
@@ -57,12 +58,14 @@ const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPAC
   : null;
 const dbPath = process.env.MOVILITY_DB || 'data/demo.sqlite';
 if (!process.env.MOVILITY_DB) mkdirSync('data', { recursive: true });
-const fixedLocalPassword = !process.env.MOVILITY_DB && CODESPACES !== 'true' && !siteOrigin && !stripe
-  ? resolve('data/admin-password.txt') : '';
 const configuredAdmin = process.env.MOVILITY_ADMIN_PASSWORD;
-const admin = configuredAdmin || (fixedLocalPassword ? localAdminPassword(fixedLocalPassword) : randomBytes(24).toString('base64url'));
+const fixedLocalPassword = !configuredAdmin && !process.env.MOVILITY_DB && CODESPACES !== 'true' && !siteOrigin && !stripe
+  ? resolve('data/admin-password.txt') : '';
+let localCredential = fixedLocalPassword ? localAdminPassword(fixedLocalPassword) : null;
+const admin = configuredAdmin || (localCredential ? undefined : randomBytes(24).toString('base64url'));
 const adminRole = adminAuth({ admin, warehouse: process.env.MOVILITY_WAREHOUSE_PASSWORD,
-  support: process.env.MOVILITY_SUPPORT_PASSWORD, finance: process.env.MOVILITY_FINANCE_PASSWORD });
+  support: process.env.MOVILITY_SUPPORT_PASSWORD, finance: process.env.MOVILITY_FINANCE_PASSWORD },
+  fixedLocalPassword ? () => localCredential : undefined);
 const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA busy_timeout = 5000;
@@ -434,6 +437,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
     ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>' : ''}
     <p>Perfil: ${roleNames[role]}</p>
+    ${role === 'admin' ? '<p><a href="/admin/security">Seguridad del panel</a></p>' : ''}
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     ${catalogAccess ? `<section class="model-editor admin-catalog-home"><h2>Catálogo</h2>
       <div class="product-actions">
@@ -651,6 +655,27 @@ const server = createServer(async (req, res) => {
       }
       if (!adminRouteAllowed(role, req.method, path)) {
         return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
+      }
+      if (path === '/admin/security' && ['GET', 'POST'].includes(req.method)) {
+        const security = (body, status = 200) => send(res, status, page('es', 'Seguridad del panel',
+          '<p><a href="/admin">Volver a administración</a></p><h1>Seguridad del panel</h1>' + body));
+        if (!fixedLocalPassword) return security(
+          '<p>La contraseña de este entorno se gestiona en la configuración del servidor.</p>', req.method === 'GET' ? 200 : 403);
+        const editor = (message = '') => `${message}<form class="confirmation" method="post" action="/admin/security">
+          <label>Contraseña actual <input type="password" name="current" autocomplete="current-password" maxlength="256" required></label>
+          <label>Nueva contraseña <input type="password" name="password" autocomplete="new-password" minlength="14" maxlength="128" required></label>
+          <label>Repite la nueva contraseña <input type="password" name="confirm" autocomplete="new-password" minlength="14" maxlength="128" required></label>
+          <p>Usa al menos 14 caracteres.</p><button>Cambiar contraseña</button></form>`;
+        if (req.method === 'GET') return security(editor());
+        const fields = await form(req, 4096);
+        const current = fields?.get('current');
+        const password = fields?.get('password');
+        const allowed = password && password.length >= 14 && password.length <= 128 && Buffer.byteLength(password) <= 256 &&
+          password.trim() === password && password !== current && password === fields.get('confirm') &&
+          verifyLocalAdminPassword(current, localCredential);
+        if (!allowed) return security(editor('<p class="form-error" role="alert">Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos campos.</p>'), 400);
+        localCredential = changeLocalAdminPassword(fixedLocalPassword, password);
+        return security('<p class="form-success" role="status">Contraseña actualizada. Vuelve a entrar con la nueva clave.</p>');
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
       if (role === 'admin' && path === '/admin/catalog-order') {
@@ -1283,6 +1308,6 @@ const server = createServer(async (req, res) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`Movility: http://127.0.0.1:${server.address().port}`);
   if (configuredAdmin) console.log('Administración (/admin): usuario admin, contraseña configurada.');
-  else if (fixedLocalPassword) console.log('Administración local (/admin): usuario admin. Contraseña en ' + fixedLocalPassword);
+  else if (fixedLocalPassword) console.log('Administración local (/admin/security): usuario admin. Archivo de credencial: ' + fixedLocalPassword);
   else console.log('Administración temporal (/admin): admin / ' + admin);
 });
