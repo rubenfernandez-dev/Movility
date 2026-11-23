@@ -37,9 +37,9 @@ function alternates(suffix, origin) {
   return [...locales.map(locale => [locale, `${origin}/${locale}${suffix}`]), ['x-default', `${origin}/de-CH${suffix}`]];
 }
 
-export function pageMetadata(locale, suffix, origin) {
+export function pageMetadata(locale, suffix, origin, text) {
   if (!isPublicPage(suffix)) return {};
-  const [title, description] = routes[suffix][locale];
+  const [title, description] = text || routes[suffix][locale];
   const path = `/${locale}${suffix}`;
   const canonical = origin ? `<link rel="canonical" href="${escapeHtml(origin + path)}">` : '';
   return { title: `${title} | Movility`, description, links: canonical + alternates(suffix, origin)

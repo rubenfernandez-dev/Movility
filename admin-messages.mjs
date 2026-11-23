@@ -18,6 +18,23 @@ Sin enlace|Ohne Link|Sans lien
 Comparador|Vergleich|Comparateur
 Contacto|Kontakt|Contact
 Quiénes somos|Über uns|Qui sommes-nous ?
+Datos públicos de contacto|Öffentliche Kontaktdaten|Coordonnées publiques
+Datos públicos|Öffentliche Angaben|Informations publiques
+Estos campos son opcionales. Solo publica datos de atención al cliente.|Diese Felder sind optional. Veröffentliche nur Angaben des Kundendiensts.|Ces champs sont facultatifs. Publiez uniquement les coordonnées du service client.
+Correo público|Öffentliche E-Mail-Adresse|Adresse e-mail publique
+Teléfono público|Öffentliche Telefonnummer|Téléphone public
+Dirección pública|Öffentliche Adresse|Adresse publique
+Título|Titel|Titre
+Introducción|Einleitung|Introduction
+Horario opcional|Öffnungszeiten (optional)|Horaires (facultatifs)
+Bloque|Abschnitt|Bloc
+Título del bloque|Abschnittstitel|Titre du bloc
+Texto del bloque|Abschnittstext|Texte du bloc
+Guardar y publicar|Speichern und veröffentlichen|Enregistrer et publier
+Cambios publicados.|Änderungen veröffentlicht.|Modifications publiées.
+Completa los textos en ambos idiomas y revisa los datos de contacto.|Fülle die Texte in beiden Sprachen aus und prüfe die Kontaktdaten.|Renseignez les textes dans les deux langues et vérifiez les coordonnées.
+Completa el título y la introducción en ambos idiomas. Cada bloque debe estar completo o vacío en los dos idiomas.|Fülle Titel und Einleitung in beiden Sprachen aus. Jeder Abschnitt muss in beiden Sprachen vollständig oder leer sein.|Renseignez le titre et l’introduction dans les deux langues. Chaque bloc doit être complet ou vide dans les deux langues.
+El contenido cambió mientras lo editabas. Revisa los datos actuales y vuelve a guardar.|Die Inhalte wurden inzwischen geändert. Prüfe die aktuellen Angaben und speichere erneut.|Le contenu a changé entre-temps. Vérifiez les informations actuelles et enregistrez à nouveau.
 Envíos, devoluciones y garantía|Lieferung, Rückgabe und Garantie|Livraison, retours et garantie
 Texto del enlace en alemán|Linktext auf Deutsch|Texte du lien en allemand
 Texto del enlace en francés|Linktext auf Französisch|Texte du lien en français

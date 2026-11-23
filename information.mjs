@@ -29,7 +29,7 @@ const serviceSections = {
   ],
 };
 
-const aboutSections = {
+export const aboutSections = {
   'de-CH': [
     ['Den passenden Rollstuhl finden', 'Vergleiche Breite, Gewicht, Reichweite und Faltbarkeit. Achte bei deiner Auswahl auch darauf, wie viel Platz du zu Hause, unterwegs oder im Fahrzeug hast.'],
     ['Zubehör und Ersatzteile zuordnen', 'Im Katalog kannst du Teile nach Rollstuhlmodell filtern. Wenn eine Variante oder Seriennummer entscheidend ist, prüfe den Hinweis in der Produktbeschreibung oder frage bei uns nach.'],
@@ -42,21 +42,38 @@ const aboutSections = {
   ],
 };
 
-export function informationPage(locale, suffix, configuredEmail, contactState) {
+export const validContactEmail = email => /^[\w.+-]+@[a-z\d.-]+\.[a-z]{2,}$/i.test(email || '');
+export const validContactPhone = phone => /^\+?[\d ().-]+$/.test(phone || '') &&
+  /^\d{6,15}$/.test(phone.replace(/\D/g, ''));
+
+export function informationPage(locale, suffix, settings = {}, contactState) {
   const french = locale === 'fr-CH';
-  const [title, intro] = information[suffix][locale];
+  const lang = french ? 'fr' : 'de';
+  const title = settings['title_' + lang] ?? information[suffix][locale][0];
+  const intro = settings['intro_' + lang] ?? information[suffix][locale][1];
   if (suffix === '/delivery-returns-warranty') {
     return `<section class="section"><h1 class="page-title">${title}</h1><p class="lead">${intro}</p>
       ${serviceSections[locale].map(([heading, text]) => `<h2>${heading}</h2><p>${text}</p>`).join('')}
       <p><a href="/${locale}/contact">${information['/contact'][locale][0]}</a></p></section>`;
   }
-  const email = configuredEmail?.trim();
-  const channel = email && /^[\w.+-]+@[a-z\d.-]+\.[a-z]{2,}$/i.test(email)
+  const email = settings.email;
+  const phone = settings.phone;
+  const address = settings.address;
+  const hours = settings['hours_' + lang];
+  const channel = validContactEmail(email)
     ? `<p><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>`
     : '';
+  const publicDetails = channel +
+    (validContactPhone(phone) ? `<p><a href="tel:${phone.replace(/[^+\d]/g, '')}">${escapeHtml(phone)}</a></p>` : '') +
+    (address ? `<p class="information-text">${escapeHtml(address)}</p>` : '') +
+    (hours ? `<h3>${french ? 'Horaires' : 'Öffnungszeiten'}</h3><p class="information-text">${escapeHtml(hours)}</p>` : '');
   const content = suffix === '/about'
-    ? `<div class="about-grid">${aboutSections[locale].map(([heading, text]) =>
-        `<article><h2>${heading}</h2><p>${text}</p></article>`).join('')}</div>
+    ? `<div class="about-grid">${aboutSections[locale].map(([heading, text], index) => {
+        const blockTitle = settings['heading_' + lang + '_' + index] ?? heading;
+        const blockText = settings['body_' + lang + '_' + index] ?? text;
+        return blockTitle && blockText ? `<article><h2>${escapeHtml(blockTitle)}</h2>
+          <p class="information-text">${escapeHtml(blockText)}</p></article>` : '';
+      }).join('')}</div>
       <div class="product-actions"><a class="button" href="/${locale}#catalogue">${french ? 'Voir le catalogue' : 'Katalog ansehen'}</a>
       <a class="button secondary" href="/${locale}/compare">${french ? 'Comparer les fauteuils' : 'Rollstühle vergleichen'}</a>
       <a href="/${locale}/contact">${information['/contact'][locale][0]}</a></div>`
@@ -64,11 +81,11 @@ export function informationPage(locale, suffix, configuredEmail, contactState) {
       <aside class="confirmation"><h2>${french ? 'Préparer votre demande' : 'Deine Anfrage vorbereiten'}</h2>
         <p>${french ? 'Pour une pièce, indiquez le modèle du fauteuil. Pour une livraison, ajoutez la référence de commande si vous l’avez.' :
           'Nenne bei Ersatzteilen das Rollstuhlmodell. Bei Fragen zur Lieferung hilft die Bestellreferenz, falls du sie zur Hand hast.'}</p>
-        ${channel}<ul>
+        ${publicDetails ? `<h3>${french ? 'Coordonnées' : 'Kontaktdaten'}</h3>${publicDetails}` : ''}<ul>
           <li><a href="/${locale}#faq">${french ? 'Questions fréquentes' : 'Häufige Fragen'}</a></li>
           <li><a href="/${locale}/delivery-returns-warranty">${information['/delivery-returns-warranty'][locale][0]}</a></li>
         </ul></aside></div>`;
-  return `<section class="section"><h1 class="page-title">${escapeHtml(title)}</h1><p class="lead">${escapeHtml(intro)}</p>${content}</section>`;
+  return `<section class="section"><h1 class="page-title">${escapeHtml(title)}</h1><p class="lead information-text">${escapeHtml(intro)}</p>${content}</section>`;
 }
 
 export function informationLinks(locale) {

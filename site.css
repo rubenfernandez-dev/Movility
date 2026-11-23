@@ -42,7 +42,8 @@ h3{font-size:1.2rem;margin-bottom:.35rem;overflow-wrap:anywhere}
 .specs{margin:0}.specs div{display:flex;justify-content:space-between;gap:1rem;padding:.55rem 0;border-bottom:1px solid var(--line)}.specs dd{margin:0;text-align:right;font-weight:650}
 .faq{max-width:49rem}.faq details{border-bottom:1px solid var(--line);padding:.85rem 0}.faq summary{font-weight:700;cursor:pointer}.faq details p{margin:.6rem 0}
 .faq-answer{white-space:pre-wrap;overflow-wrap:anywhere}
-.faq-editor textarea,.faq-editor select{display:block;width:100%;margin:.3rem 0 .8rem;padding:.65rem;border:1px solid #66867e;border-radius:.4rem;background:#fff;color:inherit;font:inherit}
+.faq-editor textarea,.faq-editor select,.information-editor textarea{display:block;width:100%;margin:.3rem 0 .8rem;padding:.65rem;border:1px solid #66867e;border-radius:.4rem;background:#fff;color:inherit;font:inherit}
+.information-text{white-space:pre-line;overflow-wrap:anywhere}
 .faq-editor input[name=position]{max-width:10rem}
 .page-title{font-size:clamp(2.1rem,4vw,3.2rem)}
 .checkout-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(15rem,22rem);align-items:start;gap:clamp(1rem,5vw,4rem)}

@@ -160,6 +160,33 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post(faqPath + '/9', { ...newFaq, revision: '1' }, faqAuth)).status, 303);
   assert.doesNotMatch(await (await get('/fr-CH')).text(), /Question de test sur les accessoires/);
   assert.match(await (await get('/de-CH/about')).text(), /<h1 class="page-title">Über uns<\/h1>/);
+  const aboutEditor = '/admin/content/about';
+  const contactEditor = '/admin/content/contact';
+  const editorAuth = { Authorization: auth };
+  assert.equal((await get(aboutEditor)).status, 401);
+  assert.equal((await get(contactEditor, roleHeaders('support'))).status, 403);
+  assert.match(await (await get(aboutEditor + '?lang=fr-CH', editorAuth)).text(), /Titre du bloc/);
+  const aboutChanges = { revision: '0', title_de: 'Über Movility', intro_de: 'Mobilität und Alltag',
+    title_fr: 'Le projet Movility', intro_fr: 'Mobilité et vie quotidienne',
+    heading_de_0: 'Unser Angebot', body_de_0: 'Testtext <script>als Text</script>',
+    heading_fr_0: 'Notre gamme', body_fr_0: 'Un texte de test' };
+  assert.equal((await post(aboutEditor, { ...aboutChanges, body_fr_0: '' }, editorAuth)).status, 400);
+  assert.equal((await post(aboutEditor, aboutChanges, editorAuth)).status, 303);
+  const editedGerman = await (await get('/de-CH/about')).text();
+  assert.match(editedGerman, /<title>Über Movility \| Movility<\/title>/);
+  assert.match(editedGerman, /Testtext &lt;script&gt;als Text&lt;\/script&gt;/);
+  assert.match(await (await get('/fr-CH/about')).text(), /Le projet Movility[\s\S]*Notre gamme/);
+  assert.equal((await post(aboutEditor, aboutChanges, editorAuth)).status, 409);
+  const contactChanges = { revision: '0', title_de: 'Kontakt', intro_de: 'Schreib uns.',
+    title_fr: 'Contact', intro_fr: 'Écrivez à notre équipe.', email: 'service@example.com', phone: '+41 22 123 45 67',
+    hours_de: 'Montag 9–17 Uhr', hours_fr: 'Lundi 9 h–17 h' };
+  assert.equal((await post(contactEditor, { ...contactChanges, phone: 'javascript:alert(1)' }, editorAuth)).status, 400);
+  assert.equal((await post(contactEditor, contactChanges, editorAuth)).status, 303);
+  const editedContact = await (await get('/fr-CH/contact')).text();
+  assert.match(editedContact, /Écrivez à notre équipe[\s\S]*Envoyer le message[\s\S]*mailto:service@example.com[\s\S]*tel:\+41221234567[\s\S]*Lundi 9 h–17 h/);
+  assert.match(await (await get('/de-CH/contact')).text(), /Montag 9–17 Uhr/);
+  assert.equal((await post(contactEditor, { ...contactChanges, revision: '1', email: '', phone: '', hours_de: '', hours_fr: '' }, editorAuth)).status, 303);
+  assert.doesNotMatch(await (await get('/fr-CH/contact')).text(), /mailto:service@example.com|tel:\+41221234567|Lundi 9 h–17 h/);
   const service = await (await get('/fr-CH/delivery-returns-warranty')).text();
   assert.match(service, /<h1 class="page-title">Livraison, retours et garantie<\/h1>/);
   assert.match(service, /href="\/de-CH\/delivery-returns-warranty" lang="de-CH"/);

@@ -10,6 +10,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
+import { informationAdmin, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
 import { faqAdmin, faqFeedback, setupFaq, shopFaqs, updateFaq } from './faq.mjs';
 import { orderEmail } from './postpurchase.mjs';
@@ -202,6 +203,7 @@ transaction(() => {
   setupCampaigns(db);
   setupContact(db);
   setupFaq(db);
+  setupInformation(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -652,6 +654,9 @@ const server = createServer(async (req, res) => {
       : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
         ? `?view=${galleryView}#gallery` : '';
     const discoverable = first === locale && isPublicPage(suffix);
+    const editorial = first === locale && ['/about', '/contact'].includes(suffix)
+      ? informationSettings(db, second, process.env.MOVILITY_CONTACT_EMAIL) : null;
+    const editorialLocale = locale === 'de-CH' ? 'de' : 'fr';
     const cartUnits = [...readCart(req).values()].reduce((sum, quantity) => sum + quantity, 0);
     const consent = analyticsChoice(req);
     const settings = path === `/${locale}/analytics`;
@@ -661,7 +666,8 @@ const server = createServer(async (req, res) => {
     };
     const render = (body, status = 200) => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
-        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}, {
+        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin, editorial &&
+          [editorial['title_' + editorialLocale], editorial['intro_' + editorialLocale]]) : {}, {
           footer: informationLinks(locale) + ' · ' + analyticsLink(locale) + (accountsEnabled
             ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>
               · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),
@@ -725,6 +731,16 @@ const server = createServer(async (req, res) => {
           return send(res, result === 'conflict' ? 409 : 400, panel(faqFeedback(result),
             result === 'invalid' ? { id, fields } : undefined));
         }
+      }
+      const contentRouteMatch = /^\/admin\/content\/(about|contact)$/.exec(path);
+      if (contentRouteMatch && ['GET', 'POST'].includes(req.method)) {
+        const key = contentRouteMatch[1];
+        const panel = result => adminPage(key === 'about' ? 'Quiénes somos' : 'Datos públicos de contacto',
+          informationAdmin(key, informationSettings(db, key, process.env.MOVILITY_CONTACT_EMAIL), result));
+        if (req.method === 'GET') return send(res, 200, panel(searchParams.has('saved') ? { status: 'saved' } : {}));
+        const result = saveInformation(db, key, await form(req, 100000));
+        return result.status === 'saved' ? redirect(res, path + '?saved=1') :
+          send(res, result.status === 'conflict' ? 409 : 400, panel(result));
       }
       if (path === '/admin/contact') {
         if (req.method === 'GET') return send(res, 200, adminPage('Bandeja de contacto',
@@ -1178,7 +1194,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (first === locale && suffix === '/contact' && ['GET', 'POST'].includes(req.method)) {
-      const contactPage = state => informationPage(locale, suffix, process.env.MOVILITY_CONTACT_EMAIL, state);
+      const contactPage = state => informationPage(locale, suffix, editorial, state);
       if (req.method === 'GET') return render(contactPage({ sent: searchParams.get('sent') === '1' }));
       const submission = readContact(await form(req, 40000));
       if (submission.trap) return redirect(res, path + '?sent=1');
@@ -1189,7 +1205,7 @@ const server = createServer(async (req, res) => {
       return redirect(res, path + '?sent=1');
     }
     if (req.method === 'GET' && first === locale && Object.hasOwn(information, suffix)) {
-      return render(informationPage(locale, suffix, process.env.MOVILITY_CONTACT_EMAIL));
+      return render(informationPage(locale, suffix, editorial || {}));
     }
     if (req.method === 'GET' && path === `/${locale}`) {
       const models = orderedProducts(db, [coreCatalogProduct(), ...liveModels()]);
