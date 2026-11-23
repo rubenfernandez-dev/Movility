@@ -2,14 +2,16 @@ import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
 import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
   productImage, sideImage, videoPath, captionsPath, transcriptPath } from './storefront.mjs';
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { orderEmail } from './postpurchase.mjs';
-import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair } from './catalog.mjs';
+import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
+  catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures } from './catalog.mjs';
+import { contentAdmin, receiveMedia } from './catalog-media.mjs';
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
 import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
@@ -90,7 +92,7 @@ const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
 const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
 const displayModelAdmin = message => page('es', 'Modelos del catálogo', modelAdmin(
-  db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all(), message));
+  db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all(), catalogFamilies(db), message));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -100,8 +102,13 @@ const assets = new Map([
   ['/assets/order-push.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/order-push.js', import.meta.url))]],
   ['/push-worker.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/push-worker.js', import.meta.url))]],
 ]);
-const mediaFile = path => process.env.MOVILITY_MEDIA_DIR
-  ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
+const uploadFolder = resolve((dbPath === ':memory:' ? 'data/in-memory-' + randomUUID() : dbPath) + '.media');
+function mediaFile(path) {
+  const managed = join(uploadFolder, basename(path));
+  if (path.startsWith('/assets/models/') && existsSync(managed)) return managed;
+  return process.env.MOVILITY_MEDIA_DIR
+    ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
+}
 function modelVideo(sku, locale) {
   const base = `/assets/models/${sku}`;
   const bundle = { video: base + '.mp4', captions: base + '.' + locale + '.vtt', transcript: base + '.' + locale + '.txt' };
@@ -111,13 +118,17 @@ function modelVideo(sku, locale) {
   return captions.replace(/^\uFEFF/, '').startsWith('WEBVTT') && transcript.trim() ? bundle : null;
 }
 
-function modelMedia(sku, locale) {
+function modelPhotos(sku) {
   const base = `/assets/models/${sku}`;
   const find = extension => existsSync(mediaFile(base + extension)) ? base + extension : '';
-  const photos = { front: find('.jpg'), side: find('.side.jpg'), rear: find('.rear.jpg') };
+  return { front: find('.jpg'), side: find('.side.jpg'), rear: find('.rear.jpg') };
+}
+function modelMedia(sku, locale) {
+  const photos = modelPhotos(sku);
   const photo = photos.front || photos.side || photos.rear;
   const video = modelVideo(sku, locale);
-  return { photo, photos, model: find('.glb'), video: video ? { ...video, poster: photo } : null };
+  const model = `/assets/models/${sku}.glb`;
+  return { photo, photos, model: existsSync(mediaFile(model)) ? model : '', video: video ? { ...video, poster: photo } : null };
 }
 const videoFile = mediaFile(videoPath);
 const videoLocales = new Set();
@@ -507,7 +518,7 @@ const server = createServer(async (req, res) => {
       return carrierResponse(res, { applied: 200, duplicate: 200, conflict: 409, unmatched: 422 }[outcome], outcome);
     }
     const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(?:(side\.|rear\.)?jpg|glb|mp4|(de-CH|fr-CH)\.(?:vtt|txt))$/.exec(path);
-    if (modelAsset && ['GET', 'HEAD'].includes(req.method) && extraModel(modelAsset[1])?.active && existsSync(mediaFile(path))) {
+    if (modelAsset && ['GET', 'HEAD'].includes(req.method) && (modelAsset[1] === coreSKU || extraModel(modelAsset[1])?.active) && existsSync(mediaFile(path))) {
       const [, sku, , trackLocale] = modelAsset;
       if (path.endsWith('.mp4')) {
         if (Object.keys(copy).some(language => modelVideo(sku, language))) return sendVideo(req, res, mediaFile(path));
@@ -610,6 +621,38 @@ const server = createServer(async (req, res) => {
         return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
+      const familyRoute = /^\/admin\/families(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
+      if (role === 'admin' && familyRoute) {
+        const familyPanel = message => page('es', 'Familias', familiesAdmin(catalogFamilies(db), message));
+        if (req.method === 'GET' && !familyRoute[1]) return send(res, 200, familyPanel(searchParams.has('saved')
+          ? '<p role="status">Familia guardada.</p>' : ''));
+        if (req.method === 'POST') {
+          if (!saveFamily(db, await form(req), familyRoute[1])) return send(res, 400, familyPanel(
+            '<p role="alert">Completa los nombres y usa un identificador disponible de 2 a 24 caracteres, con minúsculas, cifras o guiones.</p>'));
+          return redirect(res, '/admin/families?saved=1');
+        }
+      }
+      const contentRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/content(\/upload)?$/.exec(path);
+      if (role === 'admin' && contentRoute) {
+        const [, sku, upload] = contentRoute;
+        const model = sku === coreSKU ? { name: 'Movility One' } : extraModel(sku);
+        if (!model) return send(res, 404, 'Artículo no encontrado');
+        const target = '/admin/models/' + sku + '/content';
+        if (req.method === 'GET' && !upload) return send(res, 200, page('es', 'Contenido del artículo',
+          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'))));
+        if (req.method === 'POST' && upload) {
+          if (!await receiveMedia(req, uploadFolder, sku)) return send(res, 400, page('es', 'Archivo no válido',
+            '<p role="alert">Comprueba el formato y el tamaño del archivo.</p><a href="' + target + '">Volver al artículo</a>'));
+          return redirect(res, target + '?saved=1');
+        }
+        if (req.method === 'POST') {
+          const fields = await form(req, 65536);
+          const entries = ['de', 'fr'].map(lang => fields?.get(lang)?.trim() || '');
+          if (!fields || entries.some(value => value.length > 2500)) return send(res, 400, 'Características no válidas');
+          db.prepare(`INSERT INTO catalog_features VALUES (?,?,?) ON CONFLICT(sku) DO UPDATE SET de=excluded.de,fr=excluded.fr`).run(sku, ...entries);
+          return redirect(res, target + '?saved=1');
+        }
+      }
       if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/customer-codes') {
         return send(res, 200, page('es', 'Buzón simulado de clientes', accountMailbox(db)));
       }
@@ -704,12 +747,11 @@ const server = createServer(async (req, res) => {
       if (req.method === 'POST' && modelEdit) {
         const fields = await form(req);
         const sku = modelEdit[1] || fields?.get('sku')?.trim() || '';
-        const input = modelInput(fields, sku);
+        const input = modelInput(fields, sku, catalogFamilies(db));
         if (!input) return send(res, 400, displayModelAdmin('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>'));
         const saved = transaction(() => {
           const current = extraModel(sku);
           if (modelEdit[1] ? !current || String(current.revision) !== fields.get('revision') : current) return false;
-          if (input[3] && !current?.active && liveModels().length >= 9) return false;
           if (current) {
             db.prepare(`UPDATE extra_models SET name = ?, cents = ?, units = ?, active = ?, description_de = ?,
               description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, family = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
@@ -722,7 +764,7 @@ const server = createServer(async (req, res) => {
           return true;
         });
         return saved ? redirect(res, '/admin/models?saved=1') : send(res, 409, displayModelAdmin(
-          '<p class="form-error" role="alert">El SKU ya existe, el modelo cambió mientras editabas o se alcanzó el límite de diez publicados.</p>'));
+          '<p class="form-error" role="alert">El SKU ya existe o el artículo cambió mientras editabas.</p>'));
       }
       const emailRoute = /^\/admin\/([0-9a-f-]{36})\/email\/([a-z]+)$/.exec(path);
       if (req.method === 'GET' && emailRoute && noticeKinds.includes(emailRoute[2])) {
@@ -930,12 +972,16 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (req.method === 'GET' && path === `/${locale}`) {
-      return render(homepage(locale, catalog().cents, stock() > 0, extraCatalog(locale, liveModels())));
+      return render(homepage(locale, catalog().cents, stock() > 0,
+        extraCatalog(locale, liveModels(), catalogFamilies(db), sku => Object.values(modelPhotos(sku)).find(Boolean))));
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one`) {
       const model = catalog();
       track('view');
-      return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView, video: videoLocales.has(locale) }));
+      const media = modelMedia(coreSKU, locale);
+      return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView,
+        photos: media.photo ? media.photos : undefined, video: media.video || videoLocales.has(locale),
+        features: renderFeatures(locale, catalogFeatures(db, coreSKU)) }));
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
       return render(comparisonPage(locale, searchParams, catalog().cents, liveModels().filter(isWheelchair)));
@@ -946,14 +992,15 @@ const server = createServer(async (req, res) => {
         const media = modelMedia(model.sku, locale);
         if (!modelRoute[2]) {
           track('view');
-          return render(extraProduct(locale, model, media, galleryView));
+          return render(extraProduct(locale, model, media, galleryView, catalogFeatures(db, model.sku)));
         }
         if (media.model) return render(viewerPage(locale, media.photo,
           { name: model.name, url: media.model, productPath: '/models/' + model.sku }));
       }
     }
     if (req.method === 'GET' && path === `/${locale}/movility-one/3d`) {
-      return render(viewerPage(locale, productImage));
+      const media = modelMedia(coreSKU, locale);
+      return render(viewerPage(locale, media.photo || productImage, { url: media.model || modelPath }));
     }
     if (req.method === 'GET' && path === `/${locale}/cart`) {
       if (selectedSKU) {

@@ -2,7 +2,7 @@ import { escapeHtml, money, copy } from './views.mjs';
 import { productGallery, productVideo } from './storefront.mjs';
 import { addToCart, skuPattern } from './cart.mjs';
 
-const families = {
+const initialFamilies = {
   wheelchair: { es: 'Sillas de ruedas', 'de-CH': 'Elektrorollstühle', 'fr-CH': 'Fauteuils roulants électriques' },
   accessory: { es: 'Accesorios', 'de-CH': 'Zubehör', 'fr-CH': 'Accessoires' },
   spare: { es: 'Recambios', 'de-CH': 'Ersatzteile', 'fr-CH': 'Pièces détachées' },
@@ -42,9 +42,34 @@ export function setupModels(db) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
     }
   }
+  db.exec(`CREATE TABLE IF NOT EXISTS catalog_families (id TEXT PRIMARY KEY, es TEXT NOT NULL,
+    "de-CH" TEXT NOT NULL, "fr-CH" TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS catalog_features (sku TEXT PRIMARY KEY, de TEXT NOT NULL, fr TEXT NOT NULL);`);
+  const seed = db.prepare('INSERT OR IGNORE INTO catalog_families VALUES (?, ?, ?, ?)');
+  for (const [id, labels] of Object.entries(initialFamilies)) seed.run(id, labels.es, labels['de-CH'], labels['fr-CH']);
 }
 
-export function modelAdmin(models, message = '') {
+export const catalogFamilies = db => db.prepare('SELECT * FROM catalog_families ORDER BY es, id').all();
+export const catalogFeatures = (db, sku) => db.prepare('SELECT de, fr FROM catalog_features WHERE sku = ?').get(sku);
+export function saveFamily(db, fields, editing) {
+  const id = editing || fields?.get('id')?.trim() || '';
+  const names = ['es', 'de', 'fr'].map(key => fields?.get(key)?.trim() || '');
+  if (!skuPattern.test(id) || names.some(value => !value || value.length > 100)) return false;
+  const statement = editing ? 'UPDATE catalog_families SET es=?, "de-CH"=?, "fr-CH"=? WHERE id=?'
+    : 'INSERT OR IGNORE INTO catalog_families (es,"de-CH","fr-CH",id) VALUES (?,?,?,?)';
+  return Boolean(db.prepare(statement).run(...names, id).changes);
+}
+export function familiesAdmin(families, message = '') {
+  const editor = family => `<form class="confirmation" method="post" action="/admin/families${family ? '/' + family.id : ''}">
+    ${family ? '' : '<label>Identificador <input name="id" required maxlength="24"></label>'}
+    ${[['es','es','Nombre interno'], ['de','de-CH','Nombre en alemán'], ['fr','fr-CH','Nombre en francés']]
+      .map(([key, lang, label]) => `<label>${label}<input name="${key}" required maxlength="100" value="${escapeHtml(family?.[lang] || '')}"></label>`).join('')}
+    <button>${family ? 'Guardar familia' : 'Crear familia'}</button></form>`;
+  return `<h1>Familias del catálogo</h1><p><a href="/admin/models">Volver a artículos</a></p>${message}
+    <h2>Nueva familia</h2>${editor()}${families.map(family => `<details><summary>${escapeHtml(family.es)}</summary>${editor(family)}</details>`).join('')}`;
+}
+
+export function modelAdmin(models, families, message = '') {
   const form = (model) => {
     const editing = Boolean(model);
     const field = (key, label, value, attributes = '') => `<label>${label}<input name="${key}" value="${escapeHtml(String(value))}" ${attributes}></label>`;
@@ -52,8 +77,8 @@ export function modelAdmin(models, message = '') {
     return `<form class="admin-catalog" method="post" action="/admin/models${editing ? '/' + model.sku : ''}">
       ${editing ? `<input type="hidden" name="revision" value="${model.revision}">` : ''}
       <div class="address-row">
-        <label>Familia<select name="family">${Object.entries(families).map(([id, labels]) =>
-          `<option value="${id}" ${(model?.family || 'wheelchair') === id ? 'selected' : ''}>${labels.es}</option>`).join('')}</select></label>
+        <label>Familia<select name="family">${families.map(({ id, es }) =>
+          `<option value="${id}" ${(model?.family || 'wheelchair') === id ? 'selected' : ''}>${escapeHtml(es)}</option>`).join('')}</select></label>
         ${editing ? `<p>SKU <strong>${model.sku}</strong></p>` : field('sku', 'SKU', '', 'required maxlength="24" pattern="[a-z0-9][a-z0-9\\-]{1,23}"')}
         ${field('name', 'Nombre comercial', model?.name ?? '', 'required maxlength="80"')}
         ${field('price', 'Precio en CHF', model ? (model.cents / 100).toFixed(2) : '', 'required inputmode="decimal"')}
@@ -66,18 +91,18 @@ export function modelAdmin(models, message = '') {
       <label><input type="checkbox" name="fold" value="1" ${model?.fold ? 'checked' : ''}> Plegable</label>
       <label><input type="checkbox" name="active" value="1" ${model?.active ? 'checked' : ''}> Publicado en la tienda</label>
       <button>${editing ? 'Guardar modelo' : 'Crear modelo'}</button>
-    </form>`;
+    </form>${editing ? `<p><a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>` : ''}`;
   };
   return `<a href="/admin">Volver a administración</a><h1 class="page-title">Modelos del catálogo</h1>
     <p>El Movility One se gestiona desde el panel principal. Los modelos archivados se conservan para el historial de pedidos.</p>
-    <p>Los archivos de foto, vídeo y 3D se asocian por SKU desde la carpeta de medios.</p>
+    <p><a href="/admin/families">Gestionar familias</a> · <a href="/admin/models/one/content">Contenido y medios del Movility One</a></p>
     ${message}
     <details class="model-editor" open><summary>Crear un modelo</summary>${form()}</details>
-    ${Object.entries(families).map(([id, labels]) => `<section><h2>${labels.es}</h2>
+    ${families.map(({ id, es }) => `<section><h2>${escapeHtml(es)}</h2>
       ${models.filter(model => model.family === id).map(model => `<details class="model-editor"><summary>${escapeHtml(model.name)} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</summary>${form(model)}</details>`).join('') || '<p>Sin artículos adicionales.</p>'}</section>`).join('')}`;
 }
 
-export function modelInput(fields, sku) {
+export function modelInput(fields, sku, families) {
   const read = (key) => fields?.get(key)?.trim() ?? '';
   const name = read('name');
   const price = read('price').replace(',', '.');
@@ -88,25 +113,27 @@ export function modelInput(fields, sku) {
   if (!skuPattern.test(sku) || ['one', 'compact', 'tour', 'movility-one'].includes(sku) || !name || name.length > 80 ||
       !/^\d{1,6}(?:\.\d{1,2})?$/.test(price) || Number(price) <= 0 ||
       descriptions.some(value => !value || value.length > 500) ||
-      !Object.hasOwn(families, family) || quantities.some(value => !/^\d{1,3}$/.test(value)) ||
+      !families.some(row => row.id === family) || quantities.some(value => !/^\d{1,3}$/.test(value)) ||
       (chair && quantities.slice(1).some(value => Number(value) < 1))) return null;
   const [units, width, weight, range] = quantities.map(Number);
   return [name, Math.round(Number(price) * 100), units, Number(read('active') === '1'),
     ...descriptions, width, weight, range, Number(chair && read('fold') === '1'), family];
 }
 
-export function extraCatalog(locale, models) {
-  return Object.entries(families).map(([id, labels]) => {
+export function extraCatalog(locale, models, families, photoFor) {
+  return families.map(({ id, [locale]: label }) => {
     const items = models.filter(model => model.family === id);
-    return items.length ? `<section class="section"><h2>${labels[locale]}</h2><div class="model-grid">
-      ${items.map(model => `<article><h3><a href="/${locale}/models/${model.sku}">${escapeHtml(model.name)}</a></h3>
+    return items.length ? `<section class="section"><h2>${escapeHtml(label)}</h2><div class="model-grid">
+      ${items.map(model => { const photo = photoFor(model.sku); return `<article>
+        ${photo ? `<img class="model-thumb" src="${photo}" alt="" loading="lazy">` : ''}
+        <h3><a href="/${locale}/models/${model.sku}">${escapeHtml(model.name)}</a></h3>
         ${isWheelchair(model) ? `<p>${model.width} cm · ${model.weight} kg · ${model.range} km</p>` : ''}
         <p class="price">${money(locale, model.cents)}</p>
-        ${model.units ? '' : `<p>${copy[locale].soldOut}</p>`}</article>`).join('')}</div></section>` : '';
+        ${model.units ? '' : `<p>${copy[locale].soldOut}</p>`}</article>`; }).join('')}</div></section>` : '';
   }).join('');
 }
 
-export function extraProduct(locale, model, media, view) {
+export function extraProduct(locale, model, media, view, features) {
   const l = language[locale];
   const specs = [[l.width, model.width + ' cm'], [l.weight, model.weight + ' kg'],
     [l.range, model.range + ' km'], [l.fold, model.fold ? l.yes : l.no]];
@@ -119,6 +146,12 @@ export function extraProduct(locale, model, media, view) {
     ${specs.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>` : ''}
     <div class="product-actions cart-action">${model.units ? addToCart(locale, model.sku) : copy[locale].soldOut}
     ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">3D</a>` : ''}
-    ${isWheelchair(model) ? `<a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a>` : ''}</div></div></section>
+    ${isWheelchair(model) ? `<a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a>` : ''}</div>${renderFeatures(locale, features)}</div></section>
     ${productVideo(locale, media.video)}`;
+}
+
+export function renderFeatures(locale, features) {
+  const values = features?.[locale === 'de-CH' ? 'de' : 'fr']?.split(/\r?\n/).map(line => line.trim()).filter(Boolean) || [];
+  return values.length ? `<h2>${locale === 'de-CH' ? 'Eigenschaften' : 'Caractéristiques'}</h2>
+    <ul>${values.map(value => `<li>${escapeHtml(value)}</li>`).join('')}</ul>` : '';
 }

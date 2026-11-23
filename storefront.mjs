@@ -108,20 +108,20 @@ export function productVideo(locale, media) {
     </video><p><a href="${media.transcript}">${l.transcript}</a></p></section>`;
 }
 
-export function productPage(locale, cents, available, model, { view = 'front', video = false } = {}) {
+export function productPage(locale, cents, available, model, { view = 'front', video = false, photos, features = '' } = {}) {
   const l = labels[locale];
   const t = copy[locale];
   const description = (locale === 'de-CH' ? model.description_de : model.description_fr) || t.description;
   return `<section class="product">
-    ${productGallery(locale, 'Movility One', '/movility-one', { front: productImage, side: sideImage }, view, true)}
+    ${productGallery(locale, 'Movility One', '/movility-one', photos || { front: productImage, side: sideImage }, view, !photos)}
     <div><p class="eyebrow">${t.category}</p><h1>Movility One</h1><p class="lead">${escapeHtml(description)}</p>
       ${status(l, t, available)}<p class="price">${money(locale, cents)}</p>
       <div class="product-actions">${available ? addToCart(locale, coreSKU) : ''}${viewerLink(locale)}
         <a href="/${locale}/compare">${compareLabel(locale)}</a></div>
-      <h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl></div>
-  </section>${productVideo(locale, video ? {
+      ${features || `<h2>${l.facts}</h2><dl class="specs">${l.specs.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')}</dl>`}</div>
+  </section>${productVideo(locale, video === true ? {
     video: videoPath, poster: productImage, captions: captionsPath(locale), transcript: transcriptPath(locale),
-  } : null)}`;
+  } : video || null)}`;
 }
 
 export function cartPage(locale, cents, available, model) {

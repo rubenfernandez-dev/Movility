@@ -73,8 +73,12 @@ aceptación de la API. La comprobación de recepción se realiza en el buzón.
 Consulta [las tareas del proyecto](TAREAS.md) para ver qué está listo y qué
 queda para el piloto suizo y la expansión a la UE.
 
-En **Gestionar modelos del catálogo** puedes crear y publicar hasta nueve
-modelos adicionales con stock propio. Desmarca **Publicado en la tienda**
+En **Gestionar modelos del catálogo** puedes crear familias y publicar
+artículos con stock propio sin un tope de catálogo. La ficha **Características,
+fotos y vídeo** permite editar características en ambos idiomas y subir o
+reemplazar archivos. Los archivos subidos se guardan al lado de la base,
+en la carpeta con sufijo `.media`; inclúyela en las copias de medios.
+Desmarca **Publicado en la tienda**
 para archivar un modelo. Coloca sus archivos en `assets/models/` o
 directamente en `MOVILITY_MEDIA_DIR` si se configuró ese directorio.
 

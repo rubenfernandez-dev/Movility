@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, rmdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -171,9 +171,37 @@ test('staging keeps a simulated order after restart and ignores external integra
     const accessoryId = accessoryOrder.headers.get('location').split('/').at(-1);
     assert.equal((await submit(restarted + '/admin/' + accessoryId + '/ship', { tracking: 'STAGING-BAG' },
       { Authorization: auth })).status, 303);
+    const admin = { Authorization: auth };
+    assert.equal((await submit(restarted + '/admin/families', {
+      id: 'home', es: 'Hogar', de: 'Zuhause', fr: 'Maison',
+    }, admin)).status, 303);
+    for (let index = 1; index <= 11; index++) {
+      assert.equal((await submit(restarted + '/admin/models', {
+        ...accessory, sku: 'home-' + index, family: 'home', name: 'Home ' + index,
+      }, admin)).status, 303);
+    }
+    assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Maison[\s\S]*Home 11/);
+    assert.equal((await submit(restarted + '/admin/models/home-11/content', {
+      de: 'Material: Holz', fr: 'Matière : bois',
+    }, admin)).status, 303);
+    const media = new FormData();
+    media.set('kind', 'front');
+    media.set('file', new Blob([readFileSync(new URL('../assets/movility-one.jpg', import.meta.url))], { type: 'image/jpeg' }), 'photo.jpg');
+    const upload = await fetch(restarted + '/admin/models/home-11/content/upload', {
+      method: 'POST', body: media, redirect: 'manual', headers: { Origin: restarted, Authorization: auth },
+    });
+    assert.equal(upload.status, 303);
+    const item = await (await fetch(restarted + '/fr-CH/models/home-11')).text();
+    assert.match(item, /Matière : bois/);
+    assert.match(item, /\/assets\/models\/home-11.jpg/);
+    assert.equal((await fetch(restarted + '/assets/models/home-11.jpg')).headers.get('content-type'), 'image/jpeg');
   } finally {
     await stop();
     unlinkSync(database);
+    if (existsSync(database + '.media')) {
+      unlinkSync(join(database + '.media', 'home-11.jpg'));
+      rmdirSync(database + '.media');
+    }
     rmdirSync(folder);
   }
 });

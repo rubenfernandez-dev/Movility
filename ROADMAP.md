@@ -19,9 +19,10 @@ y expedición desde el almacén suizo. La expansión a la UE es posterior.
 Las pruebas usan datos ficticios. Los cambios de proveedor, la activación
 de cobros reales y la publicación quedan para sus fases respectivas.
 
-El catálogo inicial admite diez artículos publicados en total. El panel
-agrupa sillas, accesorios y recambios. Para ampliar el surtido más allá
-del piloto, revisar el tope, los filtros y las reglas de cada familia.
+El panel permite crear familias bilingües y publicar artículos sin un tope
+de catálogo. Cada artículo admite descripciones y características DE/FR,
+fotos, vídeo y archivos complementarios. Al ampliar el surtido, revisar
+los filtros y las reglas de expedición y fiscalidad de cada familia.
 
 ## Cuenta de cliente y ofertas
 
