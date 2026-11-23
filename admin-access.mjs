@@ -33,6 +33,7 @@ export function adminRouteAllowed(role, method, path) {
     if (['/admin/accounting', '/admin/accounting.csv', '/admin/analytics', '/admin/stripe'].includes(path)) return can(role, 'finance');
     if (path === '/admin/mail') return can(role, 'support');
     if (orderEmail.test(path)) return can(role, 'support');
+    if (/^\/admin\/[0-9a-f-]{36}\/document\/(invoice|credit)$/.test(path)) return can(role, 'finance');
   }
   if (method === 'POST') {
     const action = orderAction.exec(path)?.[1];

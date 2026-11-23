@@ -118,3 +118,6 @@ textarea{display:block;width:100%;padding:.65rem;border:1px solid #66867e;border
 footer{border-top:1px solid var(--line);color:var(--muted)}
 @media(max-width:48rem){.hero,.product,.checkout-grid{grid-template-columns:1fr}.hero{gap:1.5rem}.top-inner{flex-wrap:wrap}.checkout-grid aside{grid-row:1}.summary img{display:none}}
 @media(max-width:30rem){.benefits{grid-template-columns:1fr}.benefits li+li{border-left:0;border-top:1px solid var(--line)}.catalog-card{grid-template-columns:1fr}}
+.billing-document{max-width:62rem;margin:0 auto}
+.billing-document .price{margin-top:1rem}
+@media print{body:has(.billing-document) .top,body:has(.billing-document) footer,body:has(.billing-document) .demo,.document-navigation{display:none!important}}

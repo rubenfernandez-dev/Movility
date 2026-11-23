@@ -151,6 +151,13 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
         <div class="address-row">${field('zip', l.zip, 'inputmode="numeric" pattern="[0-9]{4}" maxlength="4"')}
         ${field('city', l.city, 'maxlength="100"')}</div>
       </fieldset>
+      <details ${Object.values(values.billing || {}).some(Boolean) ? 'open' : ''}>
+        <summary>${locale === 'de-CH' ? 'Abweichende Rechnungsadresse (optional)' : 'Adresse de facturation différente (facultatif)'}</summary>
+        <fieldset><legend>${locale === 'de-CH' ? 'Rechnungsadresse · Schweiz' : 'Adresse de facturation · Suisse'}</legend>
+        ${['name', 'street', 'zip', 'city'].map(key => `<label>${l[key]}<input name="bill_${key}"
+          value="${escapeHtml(values.billing?.[key] || '')}" maxlength="${key === 'zip' ? 4 : key === 'street' ? 160 : 100}"
+          ${key === 'zip' ? 'inputmode="numeric" pattern="[0-9]{4}"' : ''}></label>`).join('')}</fieldset>
+      </details>
       <fieldset><legend>${t.method}</legend><div class="pay-options">${(stripeMethods || methods).map((method) => {
         const label = method === 'Tarjeta' ? (locale === 'de-CH' ? 'Karte (Visa, Mastercard)' : 'Carte (Visa, Mastercard)') : method;
         return `<label class="option"><input type="radio" name="method" value="${method}" ${values.method === method ? 'checked' : ''} required> ${label}</label>`;

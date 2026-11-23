@@ -29,6 +29,7 @@ import { stripeMode, createCheckout, verifyStripeEvent, stripeOutcome, setupStri
   reserveStripe, saveStripeSession, applyStripeOutcome, stripeStatus, stripeAdmin, stripeMethodsFor } from './stripe-payments.mjs';
 import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, requestStripeRefund,
   sendStripeRefund, saveStripeRefundSubmission, applyStripeRefundEvent, refundControls } from './stripe-refunds.mjs';
+import { setupDocuments, billingInput, saveBillingAddress, issueDocument, documentPage } from './billing-documents.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -146,6 +147,7 @@ transaction(() => {
   setupPush(db);
   setupStripePayments(db);
   setupStripeRefunds(db);
+  setupDocuments(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -201,11 +203,12 @@ function orderStock(sku, quantity, reason, orderId) {
   if (!changeStock(sku, quantity)) throw new Error('Stock changed during order operation');
   recordMovement(sku, quantity, reason, orderId);
 }
-function createPaidOrder(id, method, locale, email, address, items) {
+function createPaidOrder(id, method, locale, email, address, items, billing) {
   db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(items));
   const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?)');
   for (const line of items) insertLine.run(id, line.sku, line.name, line.quantity, line.cents);
   db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
+  saveBillingAddress(db, id, billing);
 }
 async function stripeRedirect(res, attempt, locale, render) {
   if (attempt.state === 'paid') return redirect(res, `/${locale}/orders/${attempt.id}`);
@@ -236,6 +239,7 @@ const storeEmail = (order, kind) => {
 const notice = (id, kind) => {
   db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
   const order = orderById(id);
+  if (kind === 'paid' || kind === 'refunded') issueDocument(db, order, kind === 'paid' ? 'invoice' : 'credit');
   storeEmail(order, kind);
   queueEmail(db, id, kind, undefined, emailTest?.target);
   queuePush(db, id, kind);
@@ -347,6 +351,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END) AS refunds
     FROM orders GROUP BY method ORDER BY method`).all();
   const cards = orders.map((order) => {
+    const documents = financeAccess ? db.prepare('SELECT kind FROM billing_documents WHERE order_id = ? ORDER BY number').all(order.id) : [];
     const refund = stripeRefund(db, order.id);
     const stripeOrder = financeAccess && paymentAttempt(db, order.id);
     const lines = orderLines(order.id);
@@ -365,6 +370,8 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${shippingAccess && order.status === 'paid' ? refundPending(refund)
         ? '<p>Expedición en pausa por reembolso pendiente.</p>' : shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
+      ${documents.length ? `<p>${documents.map(({ kind }) =>
+        `<a href="/admin/${order.id}/document/${kind}">${kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba'}</a>`).join(' · ')}</p>` : ''}
       ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
         : financeAccess && order.status !== 'refunded' ? `<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
       ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
@@ -448,7 +455,7 @@ const server = createServer(async (req, res) => {
       const result = transaction(() => applyStripeOutcome(db, outcome, {
         release: line => orderStock(line.sku, line.quantity, 'release', null),
         fulfill: (attempt, data) => {
-          createPaidOrder(attempt.id, attempt.method, data.locale, data.email, data.address, data.lines);
+          createPaidOrder(attempt.id, attempt.method, data.locale, data.email, data.address, data.lines, data.billing);
           notice(attempt.id, 'paid');
         },
       }));
@@ -568,6 +575,13 @@ const server = createServer(async (req, res) => {
       }
       if (!adminRouteAllowed(role, req.method, path)) {
         return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
+      }
+      const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
+      if (req.method === 'GET' && docPath && can(role, 'finance')) {
+        const doc = db.prepare('SELECT * FROM billing_documents WHERE order_id = ? AND kind = ?').get(docPath[1], docPath[2]);
+        if (!doc) return send(res, 404, 'Documento no disponible');
+        const { locale, title, html } = documentPage(doc);
+        return send(res, 200, page(locale, title, html));
       }
       const rolePanel = options => adminView({ ...options, role });
       if (req.method === 'GET' && path === '/admin') {
@@ -885,9 +899,10 @@ const server = createServer(async (req, res) => {
       const cents = lines ? cartTotal(lines) : selected?.cents ?? catalog().cents;
       const address = Object.fromEntries(['name', 'street', 'zip', 'city'].map(key => [key, fields?.get(key)?.trim() || '']));
       const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
-      const values = { ...address, email, method };
+      const billing = billingInput(fields);
+      const values = { ...address, email, method, billing: billing.values };
       if (sku && !selected) return render(`<h1>${t.soldOut}</h1>`, 409);
-      if (!validId ||
+      if (!validId || !billing.valid ||
           email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           !address.name || address.name.length > 100 || !address.street || address.street.length > 160 ||
           !address.city || address.city.length > 100 || !/^[0-9]{4}$/.test(address.zip) ||
@@ -902,7 +917,8 @@ const server = createServer(async (req, res) => {
           if (existing) {
             const previous = JSON.parse(existing.payload);
             return existing.method === method && previous.email === email && previous.locale === locale &&
-              JSON.stringify(previous.address) === JSON.stringify(address) && matchesQuote(previous.lines) ? existing : 'conflict';
+              JSON.stringify(previous.address) === JSON.stringify(address) &&
+              JSON.stringify(previous.billing ?? null) === JSON.stringify(billing.address) && matchesQuote(previous.lines) ? existing : 'conflict';
           }
           if (orderById(id)) return 'conflict';
           const items = cartLines(cart || new Map([[sku || coreSKU, 1]]), purchaseModel);
@@ -910,7 +926,7 @@ const server = createServer(async (req, res) => {
           if (!matchesQuote(items)) return 'price';
           if (!stripeMethodsFor(stripe, cartTotal(items)).includes(method)) return 'method';
           const snapshot = items.map(({ sku, name, quantity, cents }) => ({ sku, name, quantity, cents }));
-          return reserveStripe(db, id, method, { locale, email, address, lines: snapshot }, cartTotal(snapshot),
+          return reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot }, cartTotal(snapshot),
             line => orderStock(line.sku, -line.quantity, 'reservation', null));
         });
         if (reservation === 'price' || reservation === 'method') {
@@ -939,7 +955,7 @@ const server = createServer(async (req, res) => {
           const currentLines = cartLines(cart, purchaseModel);
           if (!canCheckout(currentLines)) return 'out';
           if (fields.get('cartQuote') !== cartQuote(currentLines)) return 'price';
-          createPaidOrder(id, method, locale, email, address, currentLines);
+          createPaidOrder(id, method, locale, email, address, currentLines, billing.address);
           for (const line of currentLines) {
             orderStock(line.sku, -line.quantity, 'order', id);
           }
@@ -955,6 +971,7 @@ const server = createServer(async (req, res) => {
         recordMovement(sku || coreSKU, -1, 'order', id);
         if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?)').run(id, sku, currentModel.name);
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
+        saveBillingAddress(db, id, billing.address);
         notice(id, 'paid');
         return 'ok';
       });

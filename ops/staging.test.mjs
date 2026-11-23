@@ -41,6 +41,7 @@ test('staging keeps a simulated order after restart and ignores external integra
         quotedPrice: body.match(/name="quotedPrice" value="([^"]+)"/)[1],
         email: 'staging@example.com', name: 'Client Test', street: 'Rue Exemple 1',
         zip: '1201', city: 'Genève', method: 'Visa', result: 'paid',
+        bill_name: 'Facturation Test', bill_street: 'Rue Facture 2', bill_zip: '1003', bill_city: 'Lausanne',
       }),
     });
     assert.equal(order.status, 303);
@@ -54,8 +55,25 @@ test('staging keeps a simulated order after restart and ignores external integra
     const restarted = await start();
     assert.match(await (await fetch(restarted + orderPath)).text(), /Paiement de test confirmé/);
     const auth = 'Basic ' + Buffer.from('admin:staging-fixture').toString('base64');
+    const id = orderPath.split('/').at(-1);
+    const docPath = restarted + '/admin/' + id + '/document/';
+    assert.equal((await fetch(docPath + 'invoice')).status, 401);
+    const invoice = await (await fetch(docPath + 'invoice', { headers: { Authorization: auth } })).text();
+    assert.match(invoice, /Facture de test TEST-000001/);
+    assert.match(invoice, /Rue Facture 2/);
+    assert.doesNotMatch(invoice, /Rue Exemple 1<br>1201 Genève<br>.*Client Test/);
+    for (let i = 0; i < 2; i++) {
+      const refund = await fetch(restarted + '/admin/' + id + '/refund', { method: 'POST',
+        redirect: 'manual', headers: { Authorization: auth, Origin: restarted }, body: new URLSearchParams() });
+      assert.equal(refund.status, 303);
+    }
+    const credit = await (await fetch(docPath + 'credit', { headers: { Authorization: auth } })).text();
+    assert.match(credit, /Avoir de test TEST-000002/);
+    assert.match(credit, /TEST-000001/);
+    assert.match(credit, /Rue Facture 2/);
     const csv = await (await fetch(restarted + '/admin/accounting.csv', { headers: { Authorization: auth } })).text();
     assert.match(csv, /"Cobro","Visa","CHF","2499.00"/);
+    assert.equal(csv.match(/"Reembolso","Visa","CHF","-2499.00"/g)?.length, 1);
   } finally {
     await stop();
     unlinkSync(database);

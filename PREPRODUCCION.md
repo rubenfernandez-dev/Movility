@@ -15,12 +15,17 @@ README con `MOVILITY_DB` apuntando al archivo de preproducción.
 
 | Bloque | Datos disponibles | Pendiente para el piloto |
 | --- | --- | --- |
-| Comprador | Nombre, correo, idioma y dirección suiza de entrega | Decidir si hace falta un contacto para entrega y permitir dirección de facturación distinta cuando proceda |
+| Comprador | Nombre, correo, idioma, dirección de entrega y dirección de facturación suiza opcional | Decidir si hace falta un contacto para entrega |
 | Pedido | Referencia, modelos, cantidades, precio en CHF, pago y expedición | Validar catálogo, precios y cargos de entrega reales |
 | Emisor | Perfil de prueba | Confirmar razón social, domicilio, identificadores y datos de contacto que aparecerán en los documentos |
-| Factura y abono | El pedido y el cobro ya están separados en el modelo de datos | Acordar tratamiento fiscal, numeración, fecha de emisión, desglose de impuestos y vínculo entre factura y abono. Implementar y comprobar los documentos |
+| Factura y abono | Documentos de prueba en DE/FR, numerados y vinculados, imprimibles desde Finanzas | Confirmar tratamiento fiscal, numeración comercial y desglose de impuestos antes de emitir documentos válidos |
 | Entorno comercial | Copia y restauración probadas, permisos de prueba | Contratar alojamiento persistente, configurar dominio y HTTPS, accesos individuales y copias programadas |
 
 Antes de aceptar pedidos reales, concilia un pedido de prueba con el
 pago, la factura, el envío y el abono. Cambia el entorno de pagos solo
 después de validar ese recorrido y completar la configuración comercial.
+
+Los documentos se generan para pedidos nuevos. La factura copia los datos
+vigentes al cobro y el abono reutiliza esa copia. Puedes abrirlos desde el
+pedido en Administración o Finanzas e imprimirlos o guardarlos como PDF
+desde el navegador. Llevan un emisor ficticio y un aviso de prueba.
