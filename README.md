@@ -199,6 +199,11 @@ Estas copias incluyen los datos del pedido y del panel. Guárdalas en
 almacenamiento privado, fuera de Git. Los medios y la configuración del
 servidor se recuperan por separado.
 
+## Preproducción
+
+`npm run staging` arranca una tienda local con su propia base y servicios
+simulados. Consulta la [guía de preproducción](PREPRODUCCION.md).
+
 ## GitHub Codespaces
 
 Abre **Terminal → New Terminal** en el editor de Codespaces. En la carpeta

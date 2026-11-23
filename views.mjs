@@ -33,6 +33,11 @@ export function escapeHtml(text) {
 }
 
 const pageFooter = { 'de-CH': 'Schweiz · CHF', 'fr-CH': 'Suisse · CHF', es: 'Movility · Entorno de prueba' };
+const stagingNotice = {
+  'de-CH': 'Vorproduktion · Nur fiktive Daten',
+  'fr-CH': 'Préproduction · Données fictives uniquement',
+  es: 'Preproducción · Solo datos ficticios',
+};
 
 export function page(locale, title, content, header = '', metadata = {}, extras = {}) {
   const t = copy[locale];
@@ -40,6 +45,7 @@ export function page(locale, title, content, header = '', metadata = {}, extras 
 <html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body>
 ${header || '<header class="top"><div class="top-inner"><a class="brand" href="/de-CH">Movility</a></div></header>'}
-<main id="content" tabindex="-1">${t ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}</main>
+<main id="content" tabindex="-1">${process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
+  : t ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}</main>
 <footer>${pageFooter[locale]}${extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
 }

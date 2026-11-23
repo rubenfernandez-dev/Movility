@@ -67,6 +67,8 @@ confirmarán la entidad vendedora, el dominio y los proveedores comerciales.
   Aceptación: pedido de prueba conciliado con pago, documento y expedición en
   el dominio definitivo, antes de abrir los cobros reales y la indexación.
   - [x] Copia y recuperación verificadas de SQLite, con protección contra sobrescritura.
+  - [x] Preproducción local con base aislada, integraciones simuladas y prueba de persistencia tras reinicio.
+  - [ ] Emisión de factura y abono según el perfil fiscal del vendedor y la dirección de facturación.
   - [ ] Revisar navegación por teclado, foco y formularios del checkout en alemán y francés.
 - [ ] **7. Expansión a la UE.** Validar cada país y ruta desde Suiza, quién
   importa, IVA, aduanas, costes completos y devoluciones antes de habilitarlos.
