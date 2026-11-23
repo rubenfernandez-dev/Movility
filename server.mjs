@@ -672,29 +672,35 @@ const server = createServer(async (req, res) => {
       }
       const compatibilityRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/compatibility$/.exec(path);
       if (role === 'admin' && compatibilityRoute && ['GET', 'POST'].includes(req.method)) {
-        const part = extraModel(compatibilityRoute[1]);
-        if (!isPart(part)) return send(res, 404, 'Accesorio o recambio no encontrado');
-        const chairs = adminCatalogProducts().filter(isWheelchair);
+        const sku = compatibilityRoute[1];
+        const model = sku === coreSKU ? coreCatalogProduct() : extraModel(sku);
+        if (!model || (!isPart(model) && !isWheelchair(model))) return send(res, 404, 'Artículo no encontrado');
+        const editingPart = isPart(model);
+        const candidates = adminCatalogProducts().filter(editingPart ? isWheelchair : isPart);
+        const entriesForModel = () => editingPart ? compatibilityForPart(sku) : [...compatibilityForChair(sku).values()];
         const panel = (message, status = 200) => send(res, status, page('es', 'Compatibilidad',
-          compatibilityAdmin(part, chairs, compatibilityForPart(part.sku), message)));
+          compatibilityAdmin(model, candidates, entriesForModel(), message)));
         if (req.method === 'GET') return panel(searchParams.has('saved') ? '<p role="status">Compatibilidad guardada.</p>' : '');
-        const entries = compatibilityInput(await form(req, 262144), chairs);
-        if (!entries) return panel('<p role="alert">Revisa los modelos y escribe cada condición en los dos idiomas.</p>', 400);
+        const entries = compatibilityInput(await form(req, 262144), candidates, editingPart ? 'chair' : 'part');
+        if (!entries) return panel('<p role="alert">Revisa la selección y escribe cada condición en los dos idiomas.</p>', 400);
         transaction(() => {
-          db.prepare('DELETE FROM catalog_compatibility WHERE part=?').run(part.sku);
+          db.prepare(editingPart ? 'DELETE FROM catalog_compatibility WHERE part=?' :
+            'DELETE FROM catalog_compatibility WHERE chair=?').run(sku);
           const insert = db.prepare('INSERT INTO catalog_compatibility (part, chair, note_de, note_fr) VALUES (?,?,?,?)');
-          for (const entry of entries) insert.run(part.sku, ...entry);
+          for (const [other, de, fr] of entries) {
+            insert.run(editingPart ? sku : other, editingPart ? other : sku, de, fr);
+          }
         });
         return redirect(res, path + '?saved=1');
       }
       const contentRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/content(\/upload)?$/.exec(path);
       if (role === 'admin' && contentRoute) {
         const [, sku, upload] = contentRoute;
-        const model = sku === coreSKU ? { name: 'Movility One' } : extraModel(sku);
+        const model = sku === coreSKU ? coreCatalogProduct() : extraModel(sku);
         if (!model) return send(res, 404, 'Artículo no encontrado');
         const target = '/admin/models/' + sku + '/content';
         if (req.method === 'GET' && !upload) return send(res, 200, page('es', 'Contenido del artículo',
-          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'), isPart(model))));
+          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'), isPart(model) || isWheelchair(model))));
         if (req.method === 'POST' && upload) {
           if (!await receiveMedia(req, uploadFolder, sku)) return send(res, 400, page('es', 'Archivo no válido',
             '<p role="alert">Comprueba el formato y el tamaño del archivo.</p><a href="' + target + '">Volver al artículo</a>'));

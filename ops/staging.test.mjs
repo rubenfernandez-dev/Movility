@@ -179,6 +179,26 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.match(await (await fetch(restarted + '/de-CH/models/travel-bag')).text(), /Kompatible Rollstühle[\s\S]*Movility One<\/a> · Nur Version 2/);
     assert.equal((await submit(compatibilityPath, {}, compatHeaders)).status, 303);
     assert.match(await (await fetch(restarted + '/fr-CH?family=accessory&compatible=one')).text(), /Aucun article compatible trouvé/);
+    const chairEditor = restarted + '/admin/models/one/compatibility';
+    assert.equal((await submit(restarted + '/admin/models', {
+      ...accessory, sku: 'test-chair', name: 'Test Chair', family: 'wheelchair', width: '60', weight: '40', range: '20',
+    }, compatHeaders)).status, 303);
+    assert.equal((await submit(restarted + '/admin/models', {
+      ...accessory, sku: 'test-wheel', name: 'Test Wheel', family: 'spare',
+    }, compatHeaders)).status, 303);
+    assert.equal((await submit(compatibilityPath, { chair: 'test-chair' }, compatHeaders)).status, 303);
+    assert.match(await (await fetch(chairEditor, { headers: compatHeaders })).text(), /Accesorios[\s\S]*Travel Bag[\s\S]*Recambios[\s\S]*Test Wheel/);
+    const addBoth = await fetch(chairEditor, {
+      method: 'POST', redirect: 'manual', headers: { ...compatHeaders, Origin: restarted },
+      body: new URLSearchParams([['part', 'travel-bag'], ['part', 'test-wheel'], ['de-test-wheel', 'Ab Version 2'],
+        ['fr-test-wheel', 'Dès la version 2']]),
+    });
+    assert.equal(addBoth.status, 303);
+    assert.match(await (await fetch(restarted + '/fr-CH/movility-one')).text(), /Travel Bag[\s\S]*Test Wheel<\/a> · Dès la version 2/);
+    assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /name="chair" value="one" checked/);
+    assert.equal((await submit(chairEditor, {}, compatHeaders)).status, 303);
+    assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /name="chair" value="test-chair" checked/);
+    assert.doesNotMatch(await (await fetch(restarted + '/fr-CH/movility-one')).text(), /Test Wheel/);
     const accessoryCheckout = await (await fetch(restarted + '/fr-CH/checkout?model=travel-bag')).text();
     const accessoryOrder = await submit(restarted + '/fr-CH/checkout', {
       id: accessoryCheckout.match(/name="id" value="([^"]+)"/)[1], quotedPrice: '4900', model: 'travel-bag',

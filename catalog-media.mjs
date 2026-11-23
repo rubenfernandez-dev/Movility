@@ -15,10 +15,10 @@ const types = {
   model: ['.glb', 'Modelo 3D GLB', '.glb'],
 };
 
-export function contentAdmin(sku, name, features, saved, isPart = false) {
+export function contentAdmin(sku, name, features, saved, hasCompatibility = false) {
   const path = '/admin/models/' + sku + '/content';
   return `<h1>${escapeHtml(name)}</h1><p><a href="/admin/models">Volver al catálogo</a></p>
-    ${isPart ? `<p><a href="/admin/models/${sku}/compatibility">Configurar compatibilidad</a></p>` : ''}
+    ${hasCompatibility ? `<p><a href="/admin/models/${sku}/compatibility">Configurar compatibilidad</a></p>` : ''}
     ${saved ? '<p role="status">Contenido guardado.</p>' : ''}
     <h2>Características</h2><form class="confirmation" method="post" action="${path}">
     <label>Alemán, una característica por línea<textarea name="de" maxlength="2500" rows="6">${escapeHtml(features?.de || '')}</textarea></label>

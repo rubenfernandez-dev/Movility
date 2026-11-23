@@ -192,7 +192,7 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
           <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</p>
           <div class="admin-item-actions">
           <a class="button secondary" href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a>
-          ${isPart(model) ? `<a class="button secondary" href="/admin/models/${model.sku}/compatibility">Configurar compatibilidad</a>` : ''}
+          ${isPart(model) || isWheelchair(model) ? `<a class="button secondary" href="/admin/models/${model.sku}/compatibility">${isPart(model) ? 'Configurar compatibilidad' : 'Asignar accesorios y recambios'}</a>` : ''}
           ${model.sku === coreSKU ? '<a class="button secondary" href="/admin#catalog-editor">Editar datos del artículo</a>' : ''}
           </div>
           ${model.sku === coreSKU ? '' :

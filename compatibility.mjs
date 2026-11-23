@@ -11,27 +11,35 @@ export function setupCompatibility(db) {
 export const isPart = model => ['accessory', 'spare'].includes(model?.family);
 const chairPath = sku => sku === coreSKU ? '/movility-one' : '/models/' + sku;
 
-export function compatibilityAdmin(part, chairs, entries, message = '') {
-  const selected = new Map(entries.map(entry => [entry.chair, entry]));
-  return `<p><a href="/admin/models?family=${part.family}">Volver a ${part.family === 'spare' ? 'Recambios' : 'Accesorios'}</a> ·
-    <a href="/admin/models/${part.sku}/content">Características, fotos y vídeo</a></p>
-    <h1>Compatibilidad de ${escapeHtml(part.name)}</h1>
-    <p>Marca los modelos compatibles. Si la pieza depende de una variante, medida o número de serie, indica la condición en ambos idiomas.</p>
-    ${message}<form method="post" action="/admin/models/${part.sku}/compatibility"><div class="admin-item-grid">
-    ${chairs.map(chair => {
-      const entry = selected.get(chair.sku);
-      return `<fieldset class="model-editor"><legend>${escapeHtml(chair.name)}${chair.active ? '' : ' · Archivado'}</legend>
-        <label class="admin-check"><input type="checkbox" name="chair" value="${chair.sku}" ${entry ? 'checked' : ''}> Compatible</label>
+export function compatibilityAdmin(model, candidates, entries, message = '') {
+  const field = isPart(model) ? 'chair' : 'part';
+  const selected = new Map(entries.map(entry => [entry[field], entry]));
+  const groups = field === 'chair' ? [['Sillas de ruedas', candidates]] :
+    [['Accesorios', candidates.filter(item => item.family === 'accessory')],
+      ['Recambios', candidates.filter(item => item.family === 'spare')]];
+  const card = item => {
+      const entry = selected.get(item.sku);
+      return `<fieldset class="model-editor"><legend>${escapeHtml(item.name)}${item.active ? '' : ' · Archivado'}</legend>
+        <label class="admin-check"><input type="checkbox" name="${field}" value="${item.sku}" ${entry ? 'checked' : ''}> Compatible</label>
         <details ${entry?.note_de ? 'open' : ''}><summary>Condiciones de compatibilidad</summary>
-        <label>Condición en alemán <input name="de-${chair.sku}" maxlength="240" value="${escapeHtml(entry?.note_de || '')}"></label>
-        <label>Condición en francés <input name="fr-${chair.sku}" maxlength="240" value="${escapeHtml(entry?.note_fr || '')}"></label></details></fieldset>`;
-    }).join('')}</div><button>Guardar compatibilidad</button></form>`;
+        <label>Condición en alemán <input name="de-${item.sku}" maxlength="240" value="${escapeHtml(entry?.note_de || '')}"></label>
+        <label>Condición en francés <input name="fr-${item.sku}" maxlength="240" value="${escapeHtml(entry?.note_fr || '')}"></label></details></fieldset>`;
+  };
+  return `<p><a href="/admin/models?family=${model.family}">Volver al catálogo</a> ·
+    <a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>
+    <h1>Compatibilidad de ${escapeHtml(model.name)}</h1>
+    <p>${field === 'chair' ? 'Marca las piezas compatibles con esta silla.' : 'Marca los modelos compatibles con esta pieza.'}
+    Si hay una condición por versión, medida o número de serie, escríbela en ambos idiomas.</p>
+    ${message}<form method="post" action="/admin/models/${model.sku}/compatibility">
+    ${groups.map(([label, items]) => `<h2>${label}</h2>
+      ${items.length ? `<div class="admin-item-grid">${items.map(card).join('')}</div>` : '<p>Sin artículos en esta familia.</p>'}`).join('')}
+    ${candidates.length ? '<button>Guardar compatibilidad</button>' : ''}</form>`;
 }
 
-export function compatibilityInput(fields, chairs) {
+export function compatibilityInput(fields, candidates, field) {
   if (!fields) return null;
-  const allowed = new Set(chairs.map(chair => chair.sku));
-  const entries = [...new Set(fields.getAll('chair'))].map(sku =>
+  const allowed = new Set(candidates.map(item => item.sku));
+  const entries = [...new Set(fields.getAll(field))].map(sku =>
     [sku, ...['de', 'fr'].map(lang => fields.get(lang + '-' + sku)?.trim() || '')]);
   return entries.every(([sku, de, fr]) => allowed.has(sku) && de.length <= 240 && fr.length <= 240 &&
     Boolean(de) === Boolean(fr)) ? entries : null;
