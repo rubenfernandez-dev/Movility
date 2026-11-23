@@ -28,6 +28,8 @@ compra como invitado sigue disponible y el piloto puede comenzar con ella.
    seguimiento de pedidos propios. Permitir vincular un pedido de invitado
    solo tras verificar el correo y acreditar el acceso a ese pedido.
    Probar la baja de cuenta y definir qué registros comerciales se conservan.
+   - [x] Código de invitado revocable, de un solo uso y con caducidad, probado en preproducción.
+   - [ ] Autenticación de cliente y vinculación con correo verificado. Preparar entrega privada del código.
 2. **Preferencias.** Casilla de ofertas separada y desmarcada por defecto.
    Registrar fecha, origen y versión del texto aceptado, confirmar la
    suscripción por correo y permitir cambiar idioma o darse de baja sin

@@ -73,6 +73,21 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.match(await (await fetch(restarted + orderPath)).text(), /Paiement de test confirmé/);
     const auth = 'Basic ' + Buffer.from('admin:staging-fixture').toString('base64');
     const id = orderPath.split('/').at(-1);
+    const codePath = restarted + '/admin/' + id + '/guest-code';
+    const proofPath = restarted + '/fr-CH/guest-access';
+    const submit = (url, fields, headers = {}) => fetch(url, { method: 'POST', redirect: 'manual',
+      headers: { Origin: restarted, ...headers }, body: new URLSearchParams(fields) });
+    assert.equal((await submit(codePath, { action: 'issue' })).status, 401);
+    const codeResponse = await submit(codePath, { action: 'issue' }, { Authorization: auth });
+    const code = (await codeResponse.text()).match(/<code>([A-Za-z0-9_-]{32})<\/code>/)[1];
+    assert.equal((await submit(proofPath, { code, email: 'wrong@example.com' })).status, 400);
+    const redeemed = await submit(proofPath, { code, email: 'STAGING@example.com' });
+    assert.equal(redeemed.status, 303);
+    const proof = redeemed.headers.get('set-cookie').split(';')[0];
+    assert.match(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
+    assert.equal((await submit(proofPath, { code, email: 'staging@example.com' })).status, 400);
+    assert.equal((await submit(codePath, { action: 'revoke' }, { Authorization: auth })).status, 303);
+    assert.doesNotMatch(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     const docPath = restarted + '/admin/' + id + '/document/';
     assert.equal((await fetch(docPath + 'invoice')).status, 401);
     const invoice = await (await fetch(docPath + 'invoice', { headers: { Authorization: auth } })).text();

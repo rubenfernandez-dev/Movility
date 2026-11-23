@@ -30,6 +30,8 @@ import { stripeMode, createCheckout, verifyStripeEvent, stripeOutcome, setupStri
 import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, requestStripeRefund,
   sendStripeRefund, saveStripeRefundSubmission, applyStripeRefundEvent, refundControls } from './stripe-refunds.mjs';
 import { setupDocuments, billingInput, saveBillingAddress, issueDocument, documentPage } from './billing-documents.mjs';
+import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, guestProofCookie,
+  verifiedGuestOrder, guestAccessPage, codePage } from './guest-proof.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
@@ -148,6 +150,7 @@ transaction(() => {
   setupStripePayments(db);
   setupStripeRefunds(db);
   setupDocuments(db);
+  setupGuestProof(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -370,6 +373,11 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       ${shippingAccess && order.status === 'paid' ? refundPending(refund)
         ? '<p>Expedición en pausa por reembolso pendiente.</p>' : shipmentForm({ ...order, lines }) : ''}
       ${serialSummary(serials)}
+      ${role === 'admin' ? `<details><summary>Verificación de pedido invitado</summary>
+        <form method="post" action="/admin/${order.id}/guest-code">
+          <button class="secondary" name="action" value="issue">Generar código</button>
+          <button class="secondary" name="action" value="revoke">Revocar código y verificación</button>
+        </form></details>` : ''}
       ${documents.length ? `<p>${documents.map(({ kind }) =>
         `<a href="/admin/${order.id}/document/${kind}">${kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba'}</a>`).join(' · ')}</p>` : ''}
       ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
@@ -585,6 +593,18 @@ const server = createServer(async (req, res) => {
         return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
+      if (req.method === 'POST' && role === 'admin' && third === 'guest-code' && orderIdPattern.test(second) &&
+          path === `/admin/${second}/guest-code`) {
+        const fields = await form(req);
+        const order = orderById(second);
+        if (!order) return send(res, 404, 'Pedido desconocido');
+        if (fields?.get('action') === 'revoke') {
+          revokeGuestCode(db, second);
+          return redirect(res, '/admin#order-' + second);
+        }
+        if (fields?.get('action') !== 'issue') return send(res, 400, 'Acción inválida');
+        return send(res, 200, page('es', 'Código de pedido invitado', codePage(order, issueGuestCode(db, second))));
+      }
       if (req.method === 'GET' && docPath && can(role, 'finance')) {
         const doc = db.prepare('SELECT * FROM billing_documents WHERE order_id = ? AND kind = ?').get(docPath[1], docPath[2]);
         if (!doc) return send(res, 404, 'Documento no disponible');
@@ -803,6 +823,16 @@ const server = createServer(async (req, res) => {
         }));
         if (found === 'refund-pending') return send(res, 409, rolePanel({ error: 'Espera la confirmación de Stripe antes de expedir este pedido.' }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
+      }
+    }
+    if (path === `/${locale}/guest-access`) {
+      if (req.method === 'GET') return render(guestAccessPage(locale, false, verifiedGuestOrder(db, req.headers.cookie)));
+      if (req.method === 'POST') {
+        const fields = await form(req);
+        const proof = redeemGuestCode(db, fields?.get('code')?.trim() || '', fields?.get('email')?.trim() || '');
+        if (!proof) return render(guestAccessPage(locale, true), 400);
+        res.setHeader('Set-Cookie', guestProofCookie(proof.proof, Boolean(codespaceOrigin || stripeOrigin)));
+        return redirect(res, path);
       }
     }
     if (req.method === 'GET' && settings) return render(analyticsPrompt(locale, consent, path, true));
