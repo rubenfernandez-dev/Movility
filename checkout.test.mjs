@@ -139,6 +139,26 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   assert.equal((await post('/fr-CH/contact', contactFields)).status, 303);
   assert.equal((await post('/fr-CH/contact', contactFields)).status, 429);
   assert.match(await (await get('/fr-CH')).text(), /href="#catalogue">Voir le catalogue[\s\S]*Comment savoir si une pièce est compatible/);
+  const faqPath = '/admin/faqs';
+  assert.equal((await get(faqPath)).status, 401);
+  assert.equal((await get(faqPath, roleHeaders('support'))).status, 403);
+  assert.match(await (await get(faqPath, { Authorization: auth })).text(), /Wie finde ich den passenden Rollstuhl\?/);
+  const newFaq = {
+    question_de: 'Testfrage zum Zubehör?', answer_de: 'Antwort <strong>als Text</strong>.',
+    question_fr: 'Question de test sur les accessoires ?', answer_fr: 'Réponse de test.',
+    position: '1', destination: '/contact', label_de: 'Kontaktieren', label_fr: 'Nous contacter',
+  };
+  const faqAuth = { Authorization: auth };
+  assert.equal((await post(faqPath, { ...newFaq, question_fr: '' }, faqAuth)).status, 400);
+  assert.equal((await post(faqPath, { ...newFaq, destination: '//outside.example' }, faqAuth)).status, 400);
+  assert.equal((await post(faqPath, newFaq, faqAuth)).status, 303);
+  assert.doesNotMatch(await (await get('/de-CH')).text(), /Testfrage zum Zubehör/);
+  assert.equal((await post(faqPath + '/9', { ...newFaq, revision: '0', published: '1' }, faqAuth)).status, 303);
+  assert.match(await (await get('/de-CH')).text(), /Testfrage zum Zubehör\?[\s\S]*&lt;strong&gt;als Text&lt;\/strong&gt;[\s\S]*Wie finde ich den passenden Rollstuhl/);
+  assert.match(await (await get('/fr-CH')).text(), /Question de test sur les accessoires[\s\S]*href="\/fr-CH\/contact">Nous contacter/);
+  assert.equal((await post(faqPath + '/9', { ...newFaq, revision: '0' }, faqAuth)).status, 409);
+  assert.equal((await post(faqPath + '/9', { ...newFaq, revision: '1' }, faqAuth)).status, 303);
+  assert.doesNotMatch(await (await get('/fr-CH')).text(), /Question de test sur les accessoires/);
   assert.match(await (await get('/de-CH/about')).text(), /<h1 class="page-title">Über uns<\/h1>/);
   const service = await (await get('/fr-CH/delivery-returns-warranty')).text();
   assert.match(service, /<h1 class="page-title">Livraison, retours et garantie<\/h1>/);

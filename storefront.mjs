@@ -18,16 +18,7 @@ const labels = {
     transcript: 'Transkript zum Produktvideo lesen', videoUnavailable: 'Dieses Video kann in deinem Browser nicht abgespielt werden.',
     delivery: 'Lieferung im Test', total: 'Gesamtbetrag', quantity: 'Menge', demoData: 'Verwende für diese Testbestellung nur fiktive Angaben.',
     address: 'Lieferadresse', name: 'Vor- und Nachname', street: 'Strasse und Hausnummer', zip: 'Postleitzahl', city: 'Ort',
-    faq: 'Häufige Fragen', questions: [
-      ['Wie finde ich den passenden Rollstuhl?', 'Vergleiche Breite, Gewicht, Reichweite und Faltbarkeit. Prüfe dabei auch die Masse deiner Türen und den Platz, den du beim Transport hast.', '/compare', 'Rollstühle vergleichen'],
-      ['Wo sehe ich, ob ein Ersatzteil zu meinem Rollstuhl passt?', 'Wähle im Zubehör- oder Ersatzteilkatalog dein Rollstuhlmodell. Prüfe auf der Artikelseite auch eventuelle Hinweise zur Version oder Seriennummer.', '?family=spare#catalogue', 'Ersatzteile ansehen'],
-      ['Wohin liefert der Shop?', 'Der Testshop ist für Lieferadressen in der Schweiz eingerichtet.', '/delivery-returns-warranty', 'Lieferinformationen'],
-      ['Wird meine Karte belastet?', 'Die Bestellung simuliert die Zahlung. Es werden keine Kartendaten verlangt.'],
-      ['Wie verfolge ich meine Lieferung?', 'Die Versandmitteilung enthält einen Link mit Sendungsnummer und Lieferstatus. Er ist bis sieben Tage nach der erfassten Zustellung verfügbar.'],
-      ['Brauche ich ein Konto?', 'Bei der Testbestellung kannst du als Gast einkaufen. Wenn der Zugriff auf deine Bestellung abgelaufen ist, kannst du über den Bestelllink einen Code an deine Bestell-E-Mail-Adresse anfordern.'],
-      ['Wo finde ich Informationen zu Rückgabe und Garantie?', 'Die Angaben werden vor dem Verkaufsstart auf der Serviceseite vervollständigt.', '/delivery-returns-warranty', 'Rückgabe und Garantie'],
-      ['Wie kann ich eine Frage stellen?', 'Wähle im Kontaktformular ein Thema und beschreibe, was du wissen möchtest. Nenne bei Fragen zu einem Ersatzteil das Rollstuhlmodell.', '/contact', 'Kontaktformular öffnen'],
-    ], reference: 'Bestellreferenz', progress: 'Bestellstatus',
+    faq: 'Häufige Fragen', reference: 'Bestellreferenz', progress: 'Bestellstatus',
   },
   'fr-CH': {
     nav: 'Fauteuil', help: 'Conseils et FAQ', basket: 'Panier', skip: 'Aller au contenu',
@@ -42,16 +33,7 @@ const labels = {
     transcript: 'Lire la transcription de la vidéo', videoUnavailable: 'Votre navigateur ne peut pas lire cette vidéo.',
     delivery: 'Livraison simulée', total: 'Total', quantity: 'Quantité', demoData: 'Utilisez uniquement des informations fictives pour cette commande de test.',
     address: 'Adresse de livraison', name: 'Prénom et nom', street: 'Rue et numéro', zip: 'Code postal', city: 'Localité',
-    faq: 'Questions fréquentes', questions: [
-      ['Comment choisir un fauteuil ?', 'Comparez la largeur, le poids, l’autonomie et le pliage. Vérifiez aussi la largeur de vos portes et la place dont vous disposez pour le transport.', '/compare', 'Comparer les fauteuils'],
-      ['Comment savoir si une pièce est compatible ?', 'Sélectionnez votre fauteuil dans le catalogue des accessoires ou des pièces détachées. Vérifiez aussi les indications de version ou de numéro de série sur la fiche.', '?family=spare#catalogue', 'Voir les pièces détachées'],
-      ['Où livrez-vous ?', 'La boutique de test est configurée pour les adresses de livraison en Suisse.', '/delivery-returns-warranty', 'Informations de livraison'],
-      ['Ma carte sera-t-elle débitée ?', 'Le paiement est simulé. Aucune donnée de carte bancaire ne vous est demandée.'],
-      ['Comment suivre ma livraison ?', 'Le message d’expédition contient un lien avec le numéro et l’état du suivi. Il reste disponible jusqu’à sept jours après la livraison enregistrée.'],
-      ['Ai-je besoin d’un compte ?', 'Vous pouvez passer une commande de test en tant qu’invité. Si l’accès a expiré, utilisez le lien de la commande pour demander un code à l’adresse e-mail utilisée lors de l’achat.'],
-      ['Où trouver les informations sur les retours et la garantie ?', 'Les informations seront complétées sur la page dédiée avant l’ouverture des ventes.', '/delivery-returns-warranty', 'Retours et garantie'],
-      ['Comment poser une question ?', 'Choisissez un motif dans le formulaire et expliquez votre demande. Pour une pièce détachée, indiquez le modèle de votre fauteuil.', '/contact', 'Ouvrir le formulaire'],
-    ], reference: 'Référence de commande', progress: 'État de la commande',
+    faq: 'Questions fréquentes', reference: 'Référence de commande', progress: 'État de la commande',
   },
 };
 
@@ -74,7 +56,7 @@ export function navigation(locale, suffix, query = '', units = 0) {
     <div class="top-actions"><a href="/${alt}${suffix}${escapeHtml(query)}" lang="${alt}">${alt === 'fr-CH' ? 'Français' : 'Deutsch'}</a><a class="basket" href="/${locale}/cart">${l.basket}${units ? ` (${units})` : ''}</a></div></div></header>`;
 }
 
-export function homepage(locale, { filters, products, featuredPhoto = productImage }) {
+export function homepage(locale, { filters, products, faqs, featuredPhoto = productImage }) {
   const l = labels[locale];
   const t = copy[locale];
   const product = href(locale, '/movility-one');
@@ -87,8 +69,10 @@ export function homepage(locale, { filters, products, featuredPhoto = productIma
   <ul class="benefits">${l.benefits.map((line) => `<li>${line}</li>`).join('')}</ul>
   <section class="section" id="catalogue" tabindex="-1"><h2>${l.browse}</h2>${filters}${products}</section>
   <section class="section faq" id="faq"><h2>${l.faq}</h2>
-    ${l.questions.map(([question, answer, path, link]) => `<details><summary>${question}</summary><p>${answer}</p>
-      ${path ? `<p><a href="${href(locale, path)}">${link}</a></p>` : ''}</details>`).join('')}
+    ${faqs.length ? faqs.map(({ question, answer, destination, label }) => `<details>
+      <summary>${escapeHtml(question)}</summary><p class="faq-answer">${escapeHtml(answer)}</p>
+      ${destination ? `<p><a href="${escapeHtml(href(locale, destination))}">${escapeHtml(label)}</a></p>` : ''}</details>`).join('')
+      : `<p><a href="/${locale}/contact">${information['/contact'][locale][0]}</a></p>`}
   </section>`;
 }
 

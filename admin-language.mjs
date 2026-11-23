@@ -61,6 +61,7 @@ const navigationGroups = [
     ['/admin/stripe', 'Pagos de prueba con Stripe'],
     ['/admin/analytics', 'Embudo de compra'],
   ]],
+  ['Contenido', [['/admin/faqs', 'Preguntas frecuentes']]],
   ['Configuración', [['/admin/security', 'Seguridad del panel']]],
 ];
 

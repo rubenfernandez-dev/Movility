@@ -11,6 +11,7 @@ import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
+import { faqAdmin, faqFeedback, setupFaq, shopFaqs, updateFaq } from './faq.mjs';
 import { orderEmail } from './postpurchase.mjs';
 import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
   catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters,
@@ -200,6 +201,7 @@ transaction(() => {
   setupOffers(db);
   setupCampaigns(db);
   setupContact(db);
+  setupFaq(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -711,6 +713,19 @@ const server = createServer(async (req, res) => {
       if (!adminRouteAllowed(role, req.method, path)) {
         return send(res, 403, adminPage('Acceso restringido', adminFragment('<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>')));
       }
+      const faqRoute = /^\/admin\/faqs(?:\/([1-9]\d{0,11}))?$/.exec(path);
+      if (faqRoute) {
+        const panel = (message, attempt) => adminPage('Preguntas frecuentes', faqAdmin(db, message, attempt));
+        if (req.method === 'GET' && !faqRoute[1]) return send(res, 200, panel(searchParams.has('saved') ? faqFeedback('saved') : ''));
+        if (req.method === 'POST') {
+          const id = faqRoute[1] ? Number(faqRoute[1]) : undefined;
+          const fields = await form(req, 100000);
+          const result = updateFaq(db, id, fields);
+          if (result === 'saved') return redirect(res, '/admin/faqs?saved=1');
+          return send(res, result === 'conflict' ? 409 : 400, panel(faqFeedback(result),
+            result === 'invalid' ? { id, fields } : undefined));
+        }
+      }
       if (path === '/admin/contact') {
         if (req.method === 'GET') return send(res, 200, adminPage('Bandeja de contacto',
           contactInbox(db, searchParams.get('resolved') === '1')));
@@ -1193,6 +1208,7 @@ const server = createServer(async (req, res) => {
       return render(homepage(locale, {
         filters: storefrontFamilyFilters(locale, families, family) + (partFamily ? compatibilityFilter(locale, family, chairs, selected) : ''),
         featuredPhoto,
+        faqs: shopFaqs(db, locale),
         products: products || (locale === 'fr-CH' ? '<p>Aucun article compatible trouvé.</p>' : '<p>Keine passenden Artikel gefunden.</p>'),
       }));
     }

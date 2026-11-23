@@ -7,6 +7,30 @@ Ir al contenido|Zum Inhalt|Aller au contenu
 Finanzas e informes|Finanzen und Berichte|Finances et rapports
 Configuración|Einstellungen|Paramètres
 Clientes y ofertas|Kunden und Angebote|Clients et offres
+Contenido|Inhalte|Contenu
+Preguntas frecuentes|Häufige Fragen|Questions fréquentes
+Pregunta en alemán|Frage auf Deutsch|Question en allemand
+Respuesta en alemán|Antwort auf Deutsch|Réponse en allemand
+Pregunta en francés|Frage auf Französisch|Question en français
+Respuesta en francés|Antwort auf Französisch|Réponse en français
+Enlace opcional|Optionaler Link|Lien facultatif
+Sin enlace|Ohne Link|Sans lien
+Comparador|Vergleich|Comparateur
+Contacto|Kontakt|Contact
+Quiénes somos|Über uns|Qui sommes-nous ?
+Envíos, devoluciones y garantía|Lieferung, Rückgabe und Garantie|Livraison, retours et garantie
+Texto del enlace en alemán|Linktext auf Deutsch|Texte du lien en allemand
+Texto del enlace en francés|Linktext auf Französisch|Texte du lien en français
+Posición|Position|Position
+Publicada en la tienda|Im Shop veröffentlicht|Publiée dans la boutique
+Crear pregunta|Frage erstellen|Créer la question
+Nueva pregunta|Neue Frage|Nouvelle question
+Publicada|Veröffentlicht|Publiée
+Borrador|Entwurf|Brouillon
+Pregunta guardada.|Frage gespeichert.|Question enregistrée.
+Las posiciones más bajas aparecen primero. Puedes dejar una pregunta como borrador.|Niedrigere Positionen erscheinen zuerst. Du kannst eine Frage als Entwurf speichern.|Les positions les plus basses apparaissent en premier. Vous pouvez enregistrer une question en brouillon.
+La pregunta cambió mientras editabas. Revisa la versión actual y vuelve a guardar.|Die Frage wurde inzwischen geändert. Prüfe die aktuelle Version und speichere erneut.|La question a changé entre-temps. Vérifiez la version actuelle et enregistrez à nouveau.
+Completa la pregunta y respuesta en ambos idiomas, la posición y, si eliges un enlace, sus dos textos.|Fülle Frage und Antwort in beiden Sprachen sowie die Position aus. Gib bei einem Link beide Linktexte an.|Renseignez la question et la réponse dans les deux langues, la position et, si vous choisissez un lien, ses deux libellés.
 Pendientes de atención|Offene Aufgaben|À traiter
 Pedidos por expedir|Zu versendende Bestellungen|Commandes à expédier
 Detalle del pedido|Bestelldetails|Détail de la commande
