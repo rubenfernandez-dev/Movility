@@ -10,6 +10,7 @@ import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
+import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
 import { orderEmail } from './postpurchase.mjs';
 import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
   catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters,
@@ -198,6 +199,7 @@ transaction(() => {
   setupAccounts(db);
   setupOffers(db);
   setupCampaigns(db);
+  setupContact(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -446,7 +448,11 @@ function adminView({ role, error, saved, draft, filter = '' }) {
   return adminPage('Administración de prueba', adminHtml`<h1>Administración de prueba</h1>
     ${role === 'admin' && accountsEnabled ? adminFragment('<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>') : ''}
     <p>Perfil: ${adminText(roleNames[role])}</p>
-    ${role === 'admin' ? adminFragment('<p><a href="/admin/security">Seguridad del panel</a></p>') : ''}
+    <div class="product-actions admin-catalog-links">
+      <a class="button" href="#admin-orders">Ir a pedidos</a>
+      ${supportAccess ? adminFragment('<a class="button secondary" href="/admin/contact">Bandeja de contacto</a>') : ''}
+      ${role === 'admin' ? adminFragment('<a class="button secondary" href="/admin/security">Seguridad del panel</a>') : ''}
+    </div>
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     ${catalogAccess ? adminHtml`<section class="model-editor admin-catalog-home"><h2>Catálogo</h2>
       <div class="product-actions">
@@ -484,7 +490,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
       </fieldset>
     </form>` : ''}
     ${catalogAccess && units === 0 ? adminFragment('<form method="post" action="/admin/restock"><button>Reponer una unidad de prueba</button></form>') : ''}
-    <h2>Pedidos</h2>
+    <h2 id="admin-orders" tabindex="-1">Pedidos</h2>
     <form class="order-filter" method="get" action="/admin">
       <label>Estado del pedido <select name="status"><option value="">Todos</option>
       ${Object.entries(orderLabels).map(([value, label]) => adminHtml`<option value="${value}" ${filter === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
@@ -672,6 +678,17 @@ const server = createServer(async (req, res) => {
       }
       if (!adminRouteAllowed(role, req.method, path)) {
         return send(res, 403, adminPage('Acceso restringido', adminFragment('<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>')));
+      }
+      if (path === '/admin/contact') {
+        if (req.method === 'GET') return send(res, 200, adminPage('Bandeja de contacto',
+          contactInbox(db, searchParams.get('resolved') === '1')));
+        if (req.method === 'POST') {
+          const fields = await form(req, 2048);
+          if (!fields || !updateContactStatus(db, fields.get('id') || '', fields.get('status'))) {
+            return send(res, 400, adminPage('Bandeja de contacto', adminFragment('<p role="alert">Consulta no disponible.</p>')));
+          }
+          return redirect(res, '/admin/contact');
+        }
       }
       if (path === '/admin/security' && ['GET', 'POST'].includes(req.method)) {
         const security = (body, status = 200) => send(res, status, adminPage('Seguridad del panel',
@@ -1101,6 +1118,17 @@ const server = createServer(async (req, res) => {
       return redirect(res, analyticsReturn(locale, fields.get('return') || ''));
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
+    if (first === locale && suffix === '/contact' && ['GET', 'POST'].includes(req.method)) {
+      const contactPage = state => informationPage(locale, suffix, process.env.MOVILITY_CONTACT_EMAIL, state);
+      if (req.method === 'GET') return render(contactPage({ sent: searchParams.get('sent') === '1' }));
+      const submission = readContact(await form(req, 40000));
+      if (submission.trap) return redirect(res, path + '?sent=1');
+      if (submission.invalid.length) return render(contactPage(submission), 400);
+      if (!transaction(() => saveContact(db, locale, submission.values))) {
+        return render(contactPage({ values: submission.values, limited: true }), 429);
+      }
+      return redirect(res, path + '?sent=1');
+    }
     if (req.method === 'GET' && first === locale && Object.hasOwn(information, suffix)) {
       return render(informationPage(locale, suffix, process.env.MOVILITY_CONTACT_EMAIL));
     }

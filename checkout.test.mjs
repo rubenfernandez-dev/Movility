@@ -116,7 +116,29 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const contact = await (await get('/fr-CH/contact')).text();
   assert.match(contact, /<h1 class="page-title">Contact<\/h1>/);
   assert.match(contact, /href="\/de-CH\/contact" lang="de-CH"/);
-  assert.match(contact, /coordonnées du service client seront publiées/);
+  assert.match(contact, /Envoyer le message/);
+  assert.match(await (await get('/de-CH/contact')).text(), /Nachricht senden/);
+  const contactFields = { name: 'QA Contact', email: 'contact-fixture@example.com', topic: 'compatibility',
+    message: '<img src=x onerror=alert(1)>', reference: 'DEMO-42' };
+  const invalidContact = await post('/fr-CH/contact', { ...contactFields, email: 'invalid' });
+  assert.equal(invalidContact.status, 400);
+  assert.match(await invalidContact.text(), /href="#contact-email"/);
+  const contactSent = await post('/fr-CH/contact', contactFields);
+  assert.equal(contactSent.headers.get('location'), '/fr-CH/contact?sent=1');
+  assert.match(await (await get(contactSent.headers.get('location'))).text(), /Merci pour votre message/);
+  const contactInbox = '/admin/contact';
+  assert.equal((await get(contactInbox)).status, 401);
+  assert.equal((await get(contactInbox, roleHeaders('finance'))).status, 403);
+  const inbox = await (await get(contactInbox, roleHeaders('support'))).text();
+  assert.match(inbox, /QA Contact[\s\S]*DEMO-42[\s\S]*&lt;img src=x onerror=alert\(1\)&gt;/);
+  const inquiry = inbox.match(/name="id" value="(\d+)"/)[1];
+  assert.equal((await post(contactInbox, { id: inquiry, status: 'resolved' }, roleHeaders('support'))).status, 303);
+  assert.doesNotMatch(await (await get(contactInbox, roleHeaders('support'))).text(), /QA Contact/);
+  assert.match(await (await get(contactInbox + '?resolved=1', roleHeaders('support'))).text(), /QA Contact/);
+  assert.equal((await post('/fr-CH/contact', contactFields)).status, 303);
+  assert.equal((await post('/fr-CH/contact', contactFields)).status, 303);
+  assert.equal((await post('/fr-CH/contact', contactFields)).status, 429);
+  assert.match(await (await get('/fr-CH')).text(), /href="#catalogue">Voir le catalogue[\s\S]*Comment savoir si une pièce est compatible/);
   assert.match(await (await get('/de-CH/about')).text(), /<h1 class="page-title">Über uns<\/h1>/);
   const service = await (await get('/fr-CH/delivery-returns-warranty')).text();
   assert.match(service, /<h1 class="page-title">Livraison, retours et garantie<\/h1>/);
@@ -172,6 +194,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   const edit = { expectedUnits: '1', expectedPrice: '249900', price: '2599,90', units: '1',
     descriptionDe: 'Neuer Testtext', descriptionFr: 'Description révisée <test>' };
   const panel = await get('/admin', headers);
+  assert.match(await panel.clone().text(), /href="#admin-orders">Ir a pedidos[\s\S]*id="admin-orders"/);
   assert.equal(panel.headers.get('referrer-policy'), 'same-origin');
   const invalidEdit = await post('/admin/catalog', { ...edit, price: 'abc' }, headers);
   assert.equal(invalidEdit.status, 400);

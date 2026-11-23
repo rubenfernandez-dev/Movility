@@ -79,6 +79,7 @@ const orderEmail = /^\/admin\/[0-9a-f-]{36}\/email\/(paid|shipped|refunded|deliv
 
 export function adminRouteAllowed(role, method, path) {
   if (role === 'admin') return true;
+  if (path === '/admin/contact' && ['GET', 'POST'].includes(method)) return can(role, 'support');
   if (method === 'GET') {
     if (path === '/admin') return true;
     if (path === '/admin/serials') return can(role, 'serials');

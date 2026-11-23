@@ -119,6 +119,13 @@ Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos 
 Acceso restringido|Zugriff eingeschränkt|Accès restreint
 Tu perfil no tiene acceso a esta operación.|Deine Rolle erlaubt diesen Vorgang nicht.|Votre profil ne permet pas cette opération.
 Pedidos|Bestellungen|Commandes
+Ir a pedidos|Zu den Bestellungen|Accéder aux commandes
+Bandeja de contacto|Kontaktanfragen|Demandes de contact
+Resueltas|Erledigt|Résolues
+Reabrir consulta|Anfrage wieder öffnen|Rouvrir la demande
+Marcar como resuelta|Als erledigt markieren|Marquer comme résolue
+No hay consultas en esta vista.|Keine Anfragen in dieser Ansicht.|Aucune demande dans cette vue.
+Consulta no disponible.|Anfrage nicht verfügbar.|Demande indisponible.
 Cobros|Zahlungseingänge|Encaissements
 Reembolsos|Erstattungen|Remboursements
 Neto|Netto|Net

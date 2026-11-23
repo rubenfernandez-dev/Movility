@@ -10,8 +10,8 @@ const labels = {
     hero: 'Mobilität, die zu dir passt.', intro: 'Entdecke einen kompakten Elektrorollstuhl für deinen Alltag. Informiere dich in Ruhe und probiere die Bestellung auf Deutsch aus.',
     discover: 'Movility One entdecken', image: 'Illustrative Studioaufnahme eines kompakten schwarzen Elektrorollstuhls',
     sample: 'Illustration des Demomodells', benefits: ['Versand innerhalb der Schweiz', 'Preise in Schweizer Franken', 'TWINT, PayPal und Karte'],
-    browse: 'Das Modell im Überblick', fit: 'Kompakt und faltbar', drive: 'Steuerung per Joystick',
-    stock: 'Auf Lager', details: 'Details ansehen', facts: 'Beispiel-Spezifikationen',
+    browse: 'Produktkatalog', browseAction: 'Katalog ansehen',
+    stock: 'Auf Lager', facts: 'Beispiel-Spezifikationen',
     specs: [['Bauweise', 'Faltbarer Rahmen'], ['Bedienung', 'Joystick'], ['Einsatz', 'Alltag und Reisen']],
     zoom: 'Produktbild vergrössern', add: 'Zum Warenkorb', summary: 'Bestellübersicht', country: 'Schweiz',
     gallery: 'Produktgalerie', front: 'Schräg von vorn', side: 'Seitenansicht', rear: 'Rückansicht', video: 'Produktvideo',
@@ -19,9 +19,14 @@ const labels = {
     delivery: 'Lieferung im Test', total: 'Gesamtbetrag', quantity: 'Menge', demoData: 'Verwende für diese Testbestellung nur fiktive Angaben.',
     address: 'Lieferadresse', name: 'Vor- und Nachname', street: 'Strasse und Hausnummer', zip: 'Postleitzahl', city: 'Ort',
     faq: 'Häufige Fragen', questions: [
-      ['Wohin liefert der Shop?', 'Der Testshop ist für Lieferadressen in der Schweiz eingerichtet.'],
+      ['Wie finde ich den passenden Rollstuhl?', 'Vergleiche Breite, Gewicht, Reichweite und Faltbarkeit. Prüfe dabei auch die Masse deiner Türen und den Platz, den du beim Transport hast.', '/compare', 'Rollstühle vergleichen'],
+      ['Wo sehe ich, ob ein Ersatzteil zu meinem Rollstuhl passt?', 'Wähle im Zubehör- oder Ersatzteilkatalog dein Rollstuhlmodell. Prüfe auf der Artikelseite auch eventuelle Hinweise zur Version oder Seriennummer.', '?family=spare#catalogue', 'Ersatzteile ansehen'],
+      ['Wohin liefert der Shop?', 'Der Testshop ist für Lieferadressen in der Schweiz eingerichtet.', '/delivery-returns-warranty', 'Lieferinformationen'],
       ['Wird meine Karte belastet?', 'Die Bestellung simuliert die Zahlung. Es werden keine Kartendaten verlangt.'],
-      ['Wie verfolge ich die Bestellung?', 'Auf der Bestellseite erscheint die Sendungsnummer, sobald der Versand im Testpanel erfasst wurde.'],
+      ['Wie verfolge ich meine Lieferung?', 'Die Versandmitteilung enthält einen Link mit Sendungsnummer und Lieferstatus. Er ist bis sieben Tage nach der erfassten Zustellung verfügbar.'],
+      ['Brauche ich ein Konto?', 'Bei der Testbestellung kannst du als Gast einkaufen. Wenn der Zugriff auf deine Bestellung abgelaufen ist, kannst du über den Bestelllink einen Code an deine Bestell-E-Mail-Adresse anfordern.'],
+      ['Wo finde ich Informationen zu Rückgabe und Garantie?', 'Die Angaben werden vor dem Verkaufsstart auf der Serviceseite vervollständigt.', '/delivery-returns-warranty', 'Rückgabe und Garantie'],
+      ['Wie kann ich eine Frage stellen?', 'Wähle im Kontaktformular ein Thema und beschreibe, was du wissen möchtest. Nenne bei Fragen zu einem Ersatzteil das Rollstuhlmodell.', '/contact', 'Kontaktformular öffnen'],
     ], reference: 'Bestellreferenz', progress: 'Bestellstatus',
   },
   'fr-CH': {
@@ -29,8 +34,8 @@ const labels = {
     hero: 'La mobilité qui vous ressemble.', intro: 'Découvrez un fauteuil roulant électrique compact pour le quotidien. Prenez le temps de le découvrir et testez la commande en français.',
     discover: 'Découvrir le Movility One', image: 'Vue illustrative en studio d’un fauteuil roulant électrique noir et compact',
     sample: 'Illustration du modèle de démonstration', benefits: ['Livraison en Suisse', 'Prix en francs suisses', 'TWINT, PayPal et carte'],
-    browse: 'Le fauteuil en un coup d’œil', fit: 'Compact et pliable', drive: 'Commande par joystick',
-    stock: 'En stock', details: 'Voir les détails', facts: 'Exemples de caractéristiques',
+    browse: 'Catalogue de produits', browseAction: 'Voir le catalogue',
+    stock: 'En stock', facts: 'Exemples de caractéristiques',
     specs: [['Structure', 'Châssis pliable'], ['Commande', 'Joystick'], ['Utilisation', 'Quotidien et voyages']],
     zoom: 'Agrandir la photo du fauteuil', add: 'Voir le panier', summary: 'Récapitulatif', country: 'Suisse',
     gallery: 'Galerie du fauteuil', front: 'Vue de trois quarts', side: 'Vue de profil', rear: 'Vue arrière', video: 'Vidéo du fauteuil',
@@ -38,9 +43,14 @@ const labels = {
     delivery: 'Livraison simulée', total: 'Total', quantity: 'Quantité', demoData: 'Utilisez uniquement des informations fictives pour cette commande de test.',
     address: 'Adresse de livraison', name: 'Prénom et nom', street: 'Rue et numéro', zip: 'Code postal', city: 'Localité',
     faq: 'Questions fréquentes', questions: [
-      ['Où livrez-vous ?', 'La boutique de test est configurée pour les adresses de livraison en Suisse.'],
+      ['Comment choisir un fauteuil ?', 'Comparez la largeur, le poids, l’autonomie et le pliage. Vérifiez aussi la largeur de vos portes et la place dont vous disposez pour le transport.', '/compare', 'Comparer les fauteuils'],
+      ['Comment savoir si une pièce est compatible ?', 'Sélectionnez votre fauteuil dans le catalogue des accessoires ou des pièces détachées. Vérifiez aussi les indications de version ou de numéro de série sur la fiche.', '?family=spare#catalogue', 'Voir les pièces détachées'],
+      ['Où livrez-vous ?', 'La boutique de test est configurée pour les adresses de livraison en Suisse.', '/delivery-returns-warranty', 'Informations de livraison'],
       ['Ma carte sera-t-elle débitée ?', 'Le paiement est simulé. Aucune donnée de carte bancaire ne vous est demandée.'],
-      ['Comment suivre ma commande ?', 'Le numéro de suivi apparaît sur la page de commande dès que l’expédition est enregistrée dans le panneau de test.'],
+      ['Comment suivre ma livraison ?', 'Le message d’expédition contient un lien avec le numéro et l’état du suivi. Il reste disponible jusqu’à sept jours après la livraison enregistrée.'],
+      ['Ai-je besoin d’un compte ?', 'Vous pouvez passer une commande de test en tant qu’invité. Si l’accès a expiré, utilisez le lien de la commande pour demander un code à l’adresse e-mail utilisée lors de l’achat.'],
+      ['Où trouver les informations sur les retours et la garantie ?', 'Les informations seront complétées sur la page dédiée avant l’ouverture des ventes.', '/delivery-returns-warranty', 'Retours et garantie'],
+      ['Comment poser une question ?', 'Choisissez un motif dans le formulaire et expliquez votre demande. Pour une pièce détachée, indiquez le modèle de votre fauteuil.', '/contact', 'Ouvrir le formulaire'],
     ], reference: 'Référence de commande', progress: 'État de la commande',
   },
 };
@@ -70,13 +80,15 @@ export function homepage(locale, { filters, products, featuredPhoto = productIma
   const product = href(locale, '/movility-one');
   return `<section class="hero">
     <div class="hero-copy"><p class="eyebrow">${t.category}</p><h1>${l.hero}</h1><p class="lead">${l.intro}</p>
-      <div class="product-actions">${button(product, l.discover)}${viewerLink(locale)}</div></div>
+      <div class="product-actions">${button('#catalogue', l.browseAction)}
+        <a class="button secondary" href="${product}">${l.discover}</a>${viewerLink(locale)}</div></div>
     <figure><img src="${featuredPhoto}" width="1200" height="900" alt="${l.image}"><figcaption>${l.sample}</figcaption></figure>
   </section>
   <ul class="benefits">${l.benefits.map((line) => `<li>${line}</li>`).join('')}</ul>
-  <section class="section" id="catalogue"><h2>${l.browse}</h2>${filters}${products}</section>
+  <section class="section" id="catalogue" tabindex="-1"><h2>${l.browse}</h2>${filters}${products}</section>
   <section class="section faq" id="faq"><h2>${l.faq}</h2>
-    ${l.questions.map(([question, answer]) => `<details><summary>${question}</summary><p>${answer}</p></details>`).join('')}
+    ${l.questions.map(([question, answer, path, link]) => `<details><summary>${question}</summary><p>${answer}</p>
+      ${path ? `<p><a href="${href(locale, path)}">${link}</a></p>` : ''}</details>`).join('')}
   </section>`;
 }
 

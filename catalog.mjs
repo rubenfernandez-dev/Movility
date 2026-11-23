@@ -239,15 +239,23 @@ export function modelInput(fields, sku, families) {
 }
 
 export function extraCatalog(locale, models, families, photoFor) {
+  const l = language[locale];
   return families.map(({ id, [locale]: label }) => {
     const items = models.filter(model => model.family === id);
-    return items.length ? `<section class="section"><h3>${escapeHtml(label)}</h3><div class="model-grid">
-      ${items.map(model => { const photo = photoFor(model.sku); return `<article>
-        ${photo ? `<img class="model-thumb" src="${photo}" alt="" loading="lazy">` : ''}
-        <h4><a href="/${locale}${model.sku === coreSKU ? '/movility-one' : '/models/' + model.sku}">${escapeHtml(model.name)}</a></h4>
-        ${isWheelchair(model) && model.width ? `<p>${model.width} cm · ${model.weight} kg · ${model.range} km</p>` : ''}
-        <p class="price">${money(locale, model.cents)}</p>
-        ${model.units ? '' : `<p>${copy[locale].soldOut}</p>`}</article>`; }).join('')}</div></section>` : '';
+    return items.length ? `<section class="catalog-family"><h3>${escapeHtml(label)}</h3><div class="model-grid">
+      ${items.map(model => {
+        const photo = photoFor(model.sku);
+        const url = '/' + locale + (model.sku === coreSKU ? '/movility-one' : '/models/' + model.sku);
+        const specs = [[l.width, model.width, 'cm'], [l.weight, model.weight, 'kg'], [l.range, model.range, 'km']];
+        return `<article class="catalog-product">
+          <h4><a href="${url}">
+            ${photo ? `<img class="model-thumb" src="${photo}" alt="" loading="lazy">` : ''}
+            ${escapeHtml(model.name)}</a></h4>
+          ${isWheelchair(model) && model.width ? `<dl class="catalog-product-specs">${specs.map(([label, value, unit]) =>
+            `<div><dt>${label}</dt><dd>${value} ${unit}</dd></div>`).join('')}</dl>` : ''}
+          <p class="price">${money(locale, model.cents)}</p>
+          ${model.units ? '' : `<p class="catalog-product-status">${copy[locale].soldOut}</p>`}</article>`;
+      }).join('')}</div></section>` : '';
   }).join('');
 }
 

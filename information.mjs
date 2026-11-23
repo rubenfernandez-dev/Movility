@@ -1,9 +1,10 @@
 import { escapeHtml } from './views.mjs';
+import { contactForm } from './contact.mjs';
 
 export const information = {
   '/about': {
-    'de-CH': ['Über uns', 'Movility ist ein Schweizer Shop-Projekt für Elektrorollstühle, Zubehör und Ersatzteile.'],
-    'fr-CH': ['Qui sommes-nous ?', 'Movility est un projet de boutique pour la Suisse, consacré aux fauteuils roulants électriques, aux accessoires et aux pièces détachées.'],
+    'de-CH': ['Über uns', 'Wir bauen Movility auf, damit du Elektrorollstühle, Zubehör und Ersatzteile für den Alltag leichter findest und vergleichen kannst.'],
+    'fr-CH': ['Qui sommes-nous ?', 'Nous créons Movility pour vous aider à trouver et à comparer des fauteuils roulants électriques, des accessoires et des pièces détachées pour le quotidien.'],
   },
   '/contact': {
     'de-CH': ['Kontakt', 'Fragen zur Modellauswahl, zu Ersatzteilen, zur Lieferung oder zu einer Bestellung?'],
@@ -28,7 +29,20 @@ const serviceSections = {
   ],
 };
 
-export function informationPage(locale, suffix, configuredEmail) {
+const aboutSections = {
+  'de-CH': [
+    ['Den passenden Rollstuhl finden', 'Vergleiche Breite, Gewicht, Reichweite und Faltbarkeit. Achte bei deiner Auswahl auch darauf, wie viel Platz du zu Hause, unterwegs oder im Fahrzeug hast.'],
+    ['Zubehör und Ersatzteile zuordnen', 'Im Katalog kannst du Teile nach Rollstuhlmodell filtern. Wenn eine Variante oder Seriennummer entscheidend ist, prüfe den Hinweis in der Produktbeschreibung oder frage bei uns nach.'],
+    ['Für die Schweiz aufgebaut', 'Movility ist zunächst für Bestellungen in der Schweiz geplant. Der Katalog und der Bestellablauf stehen auf Deutsch und Französisch zur Verfügung.'],
+  ],
+  'fr-CH': [
+    ['Trouver un fauteuil adapté', 'Comparez la largeur, le poids, l’autonomie et le pliage. Tenez aussi compte de l’espace dont vous disposez à la maison, en déplacement ou dans votre véhicule.'],
+    ['Identifier les accessoires et pièces détachées', 'Filtrez le catalogue par modèle de fauteuil. Si la compatibilité dépend d’une version ou d’un numéro de série, vérifiez la fiche ou posez-nous la question.'],
+    ['Pensé pour la Suisse', 'Movility se prépare à servir d’abord les clients en Suisse. Le catalogue et le parcours de commande sont disponibles en français et en allemand.'],
+  ],
+};
+
+export function informationPage(locale, suffix, configuredEmail, contactState) {
   const french = locale === 'fr-CH';
   const [title, intro] = information[suffix][locale];
   if (suffix === '/delivery-returns-warranty') {
@@ -39,14 +53,21 @@ export function informationPage(locale, suffix, configuredEmail) {
   const email = configuredEmail?.trim();
   const channel = email && /^[\w.+-]+@[a-z\d.-]+\.[a-z]{2,}$/i.test(email)
     ? `<p><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>`
-    : `<p>${french ? 'Les coordonnées du service client seront publiées ici avant l’ouverture de la boutique.' :
-      'Die Kontaktdaten des Kundendiensts werden hier vor der Shop-Eröffnung veröffentlicht.'}</p>`;
+    : '';
   const content = suffix === '/about'
-    ? `<p>${french ? 'Le catalogue permet de comparer les dimensions, le poids et l’autonomie des modèles pour préparer votre choix.' :
-      'Im Katalog kannst du Masse, Gewicht und Reichweite der Modelle vergleichen und deine Auswahl vorbereiten.'}</p>
-      <p><a href="/${locale}/compare">${french ? 'Comparer les fauteuils' : 'Rollstühle vergleichen'}</a> ·
-      <a href="/${locale}/contact">${information['/contact'][locale][0]}</a></p>`
-    : `${channel}<p><a href="/${locale}#faq">${french ? 'Consulter les questions fréquentes' : 'Häufige Fragen lesen'}</a></p>`;
+    ? `<div class="about-grid">${aboutSections[locale].map(([heading, text]) =>
+        `<article><h2>${heading}</h2><p>${text}</p></article>`).join('')}</div>
+      <div class="product-actions"><a class="button" href="/${locale}#catalogue">${french ? 'Voir le catalogue' : 'Katalog ansehen'}</a>
+      <a class="button secondary" href="/${locale}/compare">${french ? 'Comparer les fauteuils' : 'Rollstühle vergleichen'}</a>
+      <a href="/${locale}/contact">${information['/contact'][locale][0]}</a></div>`
+    : `<div class="contact-grid">${contactForm(locale, contactState)}
+      <aside class="confirmation"><h2>${french ? 'Préparer votre demande' : 'Deine Anfrage vorbereiten'}</h2>
+        <p>${french ? 'Pour une pièce, indiquez le modèle du fauteuil. Pour une livraison, ajoutez la référence de commande si vous l’avez.' :
+          'Nenne bei Ersatzteilen das Rollstuhlmodell. Bei Fragen zur Lieferung hilft die Bestellreferenz, falls du sie zur Hand hast.'}</p>
+        ${channel}<ul>
+          <li><a href="/${locale}#faq">${french ? 'Questions fréquentes' : 'Häufige Fragen'}</a></li>
+          <li><a href="/${locale}/delivery-returns-warranty">${information['/delivery-returns-warranty'][locale][0]}</a></li>
+        </ul></aside></div>`;
   return `<section class="section"><h1 class="page-title">${escapeHtml(title)}</h1><p class="lead">${escapeHtml(intro)}</p>${content}</section>`;
 }
 
