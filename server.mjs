@@ -11,7 +11,8 @@ import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationLinks, informationPage } from './information.mjs';
 import { orderEmail } from './postpurchase.mjs';
 import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
-  catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters } from './catalog.mjs';
+  catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters,
+  orderedProducts, saveCatalogPosition, catalogOrderAdmin } from './catalog.mjs';
 import { contentAdmin, receiveMedia } from './catalog-media.mjs';
 import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
@@ -92,9 +93,11 @@ setupModels(db);
 const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
 const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
 const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
+const coreCatalogProduct = () => ({ ...purchaseModel(coreSKU), sku: coreSKU, family: 'wheelchair', active: 1 });
+const adminCatalogProducts = () => orderedProducts(db, [coreCatalogProduct(),
+  ...db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all()]);
 const displayModelAdmin = (message, params) => page('es', 'Artículos del catálogo', modelAdmin(
-  [{ sku: 'one', name: 'Movility One', family: 'wheelchair', active: 1, units: stock() },
-    ...db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all()], catalogFamilies(db), message, params));
+  adminCatalogProducts(), catalogFamilies(db), message, params));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -623,6 +626,17 @@ const server = createServer(async (req, res) => {
         return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
+      if (role === 'admin' && path === '/admin/catalog-order') {
+        const orderPanel = message => page('es', 'Orden del catálogo',
+          catalogOrderAdmin(catalogFamilies(db), adminCatalogProducts(), message));
+        if (req.method === 'POST') {
+          if (!saveCatalogPosition(db, await form(req))) return send(res, 400,
+            orderPanel('<p role="alert">Introduce una posición válida para una familia o un artículo existente.</p>'));
+          return redirect(res, '/admin/catalog-order?saved=1');
+        }
+        if (req.method === 'GET') return send(res, 200, orderPanel(searchParams.has('saved')
+          ? '<p role="status">Posición guardada.</p>' : ''));
+      }
       const familyRoute = /^\/admin\/families(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
       if (role === 'admin' && familyRoute) {
         const familyPanel = message => page('es', 'Familias', familiesAdmin(catalogFamilies(db), message));
@@ -978,7 +992,7 @@ const server = createServer(async (req, res) => {
       return render(informationPage(locale, suffix, process.env.MOVILITY_CONTACT_EMAIL));
     }
     if (req.method === 'GET' && path === `/${locale}`) {
-      const models = [{ ...purchaseModel(coreSKU), sku: coreSKU, family: 'wheelchair' }, ...liveModels()];
+      const models = orderedProducts(db, [coreCatalogProduct(), ...liveModels()]);
       const featuredPhoto = modelPhotos(coreSKU).front || productImage;
       const families = catalogFamilies(db).filter(row => row.id === 'wheelchair' ||
         models.some(model => model.family === row.id));

@@ -185,6 +185,18 @@ test('staging keeps a simulated order after restart and ignores external integra
       }, admin)).status, 303);
     }
     assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Maison[\s\S]*Home 11/);
+    const catalogOrderPath = restarted + '/admin/catalog-order';
+    assert.match(await (await fetch(catalogOrderPath, { headers: admin })).text(), /Movility One/);
+    assert.equal((await submit(catalogOrderPath, { kind: 'family', id: 'home', position: '10' }, admin)).status, 303);
+    assert.equal((await submit(catalogOrderPath, { kind: 'product', id: 'home-11', position: '10' }, admin)).status, 303);
+    assert.equal((await submit(catalogOrderPath, { kind: 'product', id: 'home-1', position: '0' }, admin)).status, 400);
+    for (const locale of ['de-CH', 'fr-CH']) {
+      const ordered = await (await fetch(restarted + '/' + locale)).text();
+      assert.match(ordered, /family=home#catalogue[\s\S]*family=accessory#catalogue/);
+      assert.match(ordered, /\/models\/home-11"[\s\S]*\/models\/home-1"/);
+    }
+    assert.equal((await submit(catalogOrderPath, { kind: 'product', id: 'home-11', position: '' }, admin)).status, 303);
+    assert.match(await (await fetch(restarted + '/fr-CH?family=home')).text(), /\/models\/home-1"[\s\S]*\/models\/home-11"/);
     const archived = await submit(restarted + '/admin/models?q=HOME-DRA&family=home&status=archived', {
       ...accessory, sku: 'home-draft', family: 'home', name: 'Étagère test', active: '0',
     }, admin);
