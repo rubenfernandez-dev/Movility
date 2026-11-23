@@ -430,8 +430,15 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>' : ''}
     <p>Perfil: ${roleNames[role]}</p>
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
+    ${catalogAccess ? `<section class="model-editor admin-catalog-home"><h2>Catálogo</h2>
+      <div class="product-actions">
+        <a class="button" href="/admin/models">Artículos del catálogo</a>
+        <a class="button secondary" href="/admin/families">Familias</a>
+        <a class="button secondary" href="/admin/catalog-order">Ordenar catálogo</a>
+        <a class="button secondary" href="/admin/models?family=accessory">Accesorios</a>
+        <a class="button secondary" href="/admin/models?family=spare">Recambios</a>
+      </div></section>` : ''}
     <div class="product-actions">
-      ${catalogAccess ? '<a class="button secondary" href="/admin/models">Artículos del catálogo</a>' : ''}
       ${stockAccess ? '<a class="button secondary" href="/admin/inventory">Movimientos de stock</a>' : ''}
       ${serialAccess ? '<a class="button secondary" href="/admin/serials">Buscar número de serie</a>' : ''}
       ${supportAccess ? '<a class="button secondary" href="/admin/mail">Cola de correos</a>' : ''}

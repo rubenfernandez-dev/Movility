@@ -13,17 +13,19 @@ const chairPath = sku => sku === coreSKU ? '/movility-one' : '/models/' + sku;
 
 export function compatibilityAdmin(part, chairs, entries, message = '') {
   const selected = new Map(entries.map(entry => [entry.chair, entry]));
-  return `<p><a href="/admin/models/${part.sku}/content">Volver al artículo</a></p>
+  return `<p><a href="/admin/models?family=${part.family}">Volver a ${part.family === 'spare' ? 'Recambios' : 'Accesorios'}</a> ·
+    <a href="/admin/models/${part.sku}/content">Características, fotos y vídeo</a></p>
     <h1>Compatibilidad de ${escapeHtml(part.name)}</h1>
     <p>Marca los modelos compatibles. Si la pieza depende de una variante, medida o número de serie, indica la condición en ambos idiomas.</p>
-    ${message}<form method="post" action="/admin/models/${part.sku}/compatibility">
+    ${message}<form method="post" action="/admin/models/${part.sku}/compatibility"><div class="admin-item-grid">
     ${chairs.map(chair => {
       const entry = selected.get(chair.sku);
       return `<fieldset class="model-editor"><legend>${escapeHtml(chair.name)}${chair.active ? '' : ' · Archivado'}</legend>
-        <label><input type="checkbox" name="chair" value="${chair.sku}" ${entry ? 'checked' : ''}> Compatible</label>
+        <label class="admin-check"><input type="checkbox" name="chair" value="${chair.sku}" ${entry ? 'checked' : ''}> Compatible</label>
+        <details ${entry?.note_de ? 'open' : ''}><summary>Condiciones de compatibilidad</summary>
         <label>Condición en alemán <input name="de-${chair.sku}" maxlength="240" value="${escapeHtml(entry?.note_de || '')}"></label>
-        <label>Condición en francés <input name="fr-${chair.sku}" maxlength="240" value="${escapeHtml(entry?.note_fr || '')}"></label></fieldset>`;
-    }).join('')}<button>Guardar compatibilidad</button></form>`;
+        <label>Condición en francés <input name="fr-${chair.sku}" maxlength="240" value="${escapeHtml(entry?.note_fr || '')}"></label></details></fieldset>`;
+    }).join('')}</div><button>Guardar compatibilidad</button></form>`;
 }
 
 export function compatibilityInput(fields, chairs) {

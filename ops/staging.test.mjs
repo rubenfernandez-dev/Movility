@@ -193,11 +193,18 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.equal((await submit(restarted + '/admin/families', {
       id: 'home', es: 'Hogar', de: 'Zuhause', fr: 'Maison',
     }, admin)).status, 303);
-    for (let index = 1; index <= 11; index++) {
+    for (let index = 1; index <= 21; index++) {
       assert.equal((await submit(restarted + '/admin/models', {
         ...accessory, sku: 'home-' + index, family: 'home', name: 'Home ' + index,
       }, admin)).status, 303);
     }
+    const filteredAdmin = restarted + '/admin/models?q=home&family=home&status=published';
+    const firstPage = await (await fetch(filteredAdmin, { headers: admin })).text();
+    assert.match(firstPage, /1–20 de 21 artículos/);
+    assert.match(firstPage, /q=home&amp;family=home&amp;status=published&amp;page=2#catalog-results/);
+    const secondPage = await (await fetch(filteredAdmin + '&page=2', { headers: admin })).text();
+    assert.match(secondPage, /21–21 de 21 artículos/);
+    assert.match(secondPage, /Página 2 de 2/);
     assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Maison[\s\S]*Home 11/);
     const catalogOrderPath = restarted + '/admin/catalog-order';
     assert.match(await (await fetch(catalogOrderPath, { headers: admin })).text(), /Movility One/);

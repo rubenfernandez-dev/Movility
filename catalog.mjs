@@ -129,6 +129,19 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
   if (search) filters.set('q', search);
   if (family) filters.set('family', family);
   if (status) filters.set('status', status);
+  const pageSize = 20;
+  const pageCount = Math.ceil(visible.length / pageSize);
+  const requestedPage = params.get('page') || '';
+  const currentPage = /^\d+$/.test(requestedPage) ? Math.max(1, Math.min(Number(requestedPage), pageCount)) : 1;
+  const start = (currentPage - 1) * pageSize;
+  const grouped = Map.groupBy(visible, model => model.family);
+  const pageItems = families.flatMap(({ id }) => grouped.get(id) || []).slice(start, start + pageSize);
+  const pageLink = number => {
+    const query = new URLSearchParams(filters);
+    query.set('page', String(number));
+    return '/admin/models?' + escapeHtml(query.toString()) + '#catalog-results';
+  };
+  if (currentPage > 1) filters.set('page', String(currentPage));
   const query = filters.size ? '?' + escapeHtml(filters.toString()) : '';
   const form = (model) => {
     const editing = Boolean(model);
@@ -150,13 +163,16 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
       ${description('de', 'alemán')}${description('fr', 'francés')}
       <label><input type="checkbox" name="fold" value="1" ${model?.fold ? 'checked' : ''}> Plegable</label>
       <label><input type="checkbox" name="active" value="1" ${model?.active ? 'checked' : ''}> Publicado en la tienda</label>
-      <button>${editing ? 'Guardar modelo' : 'Crear modelo'}</button>
+      <button>${editing ? 'Guardar cambios' : 'Crear artículo'}</button>
     </form>`;
   };
   return `<a href="/admin">Volver a administración</a><h1 class="page-title">Artículos del catálogo</h1>
-    <p><a href="/admin/families">Gestionar familias</a> · <a href="/admin/catalog-order">Ordenar catálogo</a></p>
+    <div class="product-actions admin-catalog-links">
+      <a class="button secondary" href="/admin/families">Gestionar familias</a>
+      <a class="button secondary" href="/admin/catalog-order">Ordenar catálogo</a>
+    </div>
     ${message}
-    <details class="model-editor"><summary>Crear artículo</summary>${form()}</details>
+    <details class="model-editor admin-create-item"><summary>Crear artículo</summary>${form()}</details>
     <form class="catalog-filters" action="/admin/models" method="get">
       <label>Nombre o SKU <input type="search" name="q" maxlength="80" value="${escapeHtml(search)}"></label>
       <label>Familia <select name="family"><option value="">Todas las familias</option>
@@ -168,17 +184,26 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
       </select></label>
       <button>Buscar</button>${filters.size ? '<a href="/admin/models">Limpiar búsqueda y filtros</a>' : ''}
     </form>
-    ${visible.length ? families.map(({ id, es }) => {
-      const items = visible.filter(model => model.family === id);
-      return items.length ? `<section><h2>${escapeHtml(es)}</h2>
+    <div id="catalog-results">
+    ${visible.length ? `<p>${pageCount > 1 ? `${start + 1}–${start + pageItems.length} de ` : ''}${visible.length} ${visible.length === 1 ? 'artículo' : 'artículos'}</p>` + families.map(({ id, es }) => {
+      const items = pageItems.filter(model => model.family === id);
+      return items.length ? `<section><h2>${escapeHtml(es)}</h2><div class="admin-item-grid">
         ${items.map(model => `<article class="model-editor">
           <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? 'Publicado' : 'Archivado'} · ${model.units} ud.</p>
-          <p><a href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a></p>
-          ${isPart(model) ? `<p><a href="/admin/models/${model.sku}/compatibility">Configurar compatibilidad</a></p>` : ''}
-          ${model.sku === 'one' ? '<p><a href="/admin#catalog-editor">Editar precio, stock y descripciones</a></p>' :
+          <div class="admin-item-actions">
+          <a class="button secondary" href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a>
+          ${isPart(model) ? `<a class="button secondary" href="/admin/models/${model.sku}/compatibility">Configurar compatibilidad</a>` : ''}
+          ${model.sku === coreSKU ? '<a class="button secondary" href="/admin#catalog-editor">Editar datos del artículo</a>' : ''}
+          </div>
+          ${model.sku === coreSKU ? '' :
             `<details><summary>Editar artículo</summary>${form(model)}</details>`}
-          </article>`).join('')}</section>` : '';
-    }).join('') : '<p>No hay artículos que coincidan con estos filtros.</p>'}`;
+          </article>`).join('')}</div></section>` : '';
+    }).join('') : '<p>No hay artículos que coincidan con estos filtros.</p>'}
+    ${pageCount > 1 ? `<nav class="product-actions" aria-label="Páginas del catálogo">
+      ${currentPage > 1 ? `<a class="button secondary" href="${pageLink(currentPage - 1)}">Anterior</a>` : ''}
+      <span>Página ${currentPage} de ${pageCount}</span>
+      ${currentPage < pageCount ? `<a class="button secondary" href="${pageLink(currentPage + 1)}">Siguiente</a>` : ''}
+    </nav>` : ''}</div>`;
 }
 
 export function storefrontFamilyFilters(locale, families, activeFamily) {
