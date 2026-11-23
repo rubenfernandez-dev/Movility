@@ -77,9 +77,14 @@ export function catalogFilter(params, families) {
 export function modelAdmin(models, families, message = '', params = new URLSearchParams()) {
   const family = catalogFilter(params, families);
   const status = ['published', 'archived'].includes(params.get('status')) ? params.get('status') : '';
+  const search = (params.get('q') || '').trim().slice(0, 80);
+  const normalize = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const term = normalize(search);
   const visible = models.filter(model => (!family || model.family === family) &&
-    (!status || Boolean(model.active) === (status === 'published')));
+    (!status || Boolean(model.active) === (status === 'published')) &&
+    (!term || normalize(model.name).includes(term) || normalize(model.sku).includes(term)));
   const filters = new URLSearchParams();
+  if (search) filters.set('q', search);
   if (family) filters.set('family', family);
   if (status) filters.set('status', status);
   const query = filters.size ? '?' + escapeHtml(filters.toString()) : '';
@@ -112,6 +117,7 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
     ${message}
     <details class="model-editor" open><summary>Crear un modelo</summary>${form()}</details>
     <form class="catalog-filters" action="/admin/models" method="get">
+      <label>Nombre o SKU <input type="search" name="q" maxlength="80" value="${escapeHtml(search)}"></label>
       <label>Familia <select name="family"><option value="">Todas las familias</option>
         ${families.map(({ id, es }) => `<option value="${id}" ${family === id ? 'selected' : ''}>${escapeHtml(es)}</option>`).join('')}
       </select></label>
@@ -119,7 +125,7 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
         <option value="published" ${status === 'published' ? 'selected' : ''}>Publicado</option>
         <option value="archived" ${status === 'archived' ? 'selected' : ''}>Archivado</option>
       </select></label>
-      <button>Filtrar</button>${filters.size ? '<a href="/admin/models">Quitar filtros</a>' : ''}
+      <button>Buscar</button>${filters.size ? '<a href="/admin/models">Limpiar búsqueda y filtros</a>' : ''}
     </form>
     ${visible.length ? families.map(({ id, es }) => {
       const items = visible.filter(model => model.family === id);

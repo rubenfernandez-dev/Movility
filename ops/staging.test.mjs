@@ -181,17 +181,21 @@ test('staging keeps a simulated order after restart and ignores external integra
       }, admin)).status, 303);
     }
     assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Maison[\s\S]*Home 11/);
-    const archived = await submit(restarted + '/admin/models?family=home&status=archived', {
-      ...accessory, sku: 'home-draft', family: 'home', name: 'Home Draft', active: '0',
+    const archived = await submit(restarted + '/admin/models?q=HOME-DRA&family=home&status=archived', {
+      ...accessory, sku: 'home-draft', family: 'home', name: 'Étagère test', active: '0',
     }, admin);
-    assert.equal(archived.headers.get('location'), '/admin/models?family=home&status=archived&saved=1');
+    assert.equal(archived.headers.get('location'), '/admin/models?q=HOME-DRA&family=home&status=archived&saved=1');
     const adminResults = await (await fetch(restarted + archived.headers.get('location'), { headers: admin })).text();
-    assert.match(adminResults, /Home Draft · Archivado/);
+    assert.match(adminResults, /Étagère test · Archivado/);
+    assert.match(adminResults, /name="q" maxlength="80" value="HOME-DRA"/);
     assert.doesNotMatch(adminResults, /Home 11|Travel Bag/);
+    const searchByName = async status => (await fetch(restarted + '/admin/models?q=ETAGERE&status=' + status, { headers: admin })).text();
+    assert.match(await searchByName('archived'), /Étagère test · Archivado/);
+    assert.match(await searchByName('published'), /No hay artículos que coincidan/);
     const frenchCatalogue = await (await fetch(restarted + '/fr-CH?family=home')).text();
     assert.match(frenchCatalogue, /family=home#catalogue" aria-current="true">Maison/);
     assert.match(frenchCatalogue, /Home 11/);
-    assert.doesNotMatch(frenchCatalogue, /Home Draft|Travel Bag|class="catalog-card"/);
+    assert.doesNotMatch(frenchCatalogue, /Étagère test|Travel Bag|class="catalog-card"/);
     const germanCatalogue = await (await fetch(restarted + '/de-CH?family=wheelchair')).text();
     assert.match(germanCatalogue, /family=wheelchair#catalogue" aria-current="true">Elektrorollstühle/);
     assert.match(germanCatalogue, /class="catalog-card"/);

@@ -131,6 +131,6 @@ footer{border-top:1px solid var(--line);color:var(--muted)}
 .family-filters a{display:inline-flex;align-items:center;min-height:2.75rem;padding:.35rem .8rem;border:1px solid #66867e;border-radius:1.5rem}
 .family-filters a[aria-current]{background:#145e54;color:#fff}
 .catalog-filters{display:flex;flex-wrap:wrap;align-items:end;gap:.75rem;margin:1rem 0}
-.catalog-filters select{display:block;min-height:2.75rem;max-width:100%;margin-top:.3rem;padding:.4rem;border:1px solid #66867e;border-radius:.4rem;background:#fff;color:inherit;font:inherit}
+.catalog-filters :is(input,select){display:block;min-height:2.75rem;max-width:100%;margin-top:.3rem;padding:.4rem;border:1px solid #66867e;border-radius:.4rem;background:#fff;color:inherit;font:inherit}
 .catalog-filters label{min-width:0;max-width:100%}
 .catalog-filters>a{align-self:center}
