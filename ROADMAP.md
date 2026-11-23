@@ -18,3 +18,24 @@ y expedición desde el almacén suizo. La expansión a la UE es posterior.
 
 Las pruebas usan datos ficticios. Los cambios de proveedor, la activación
 de cobros reales y la publicación quedan para sus fases respectivas.
+
+## Cuenta de cliente y ofertas
+
+Esta ampliación sigue a la revisión de privacidad y acceso a pedidos. La
+compra como invitado sigue disponible y el piloto puede comenzar con ella.
+
+1. **Mi cuenta.** Alta voluntaria, correo verificado y acceso al historial y
+   seguimiento de pedidos propios. Permitir vincular un pedido de invitado
+   solo tras verificar el correo y acreditar el acceso a ese pedido.
+   Probar la baja de cuenta y definir qué registros comerciales se conservan.
+2. **Preferencias.** Casilla de ofertas separada y desmarcada por defecto.
+   Registrar fecha, origen y versión del texto aceptado, confirmar la
+   suscripción por correo y permitir cambiar idioma o darse de baja sin
+   iniciar sesión. La baja bloquea campañas futuras y el correo de pedido
+   sigue funcionando.
+3. **Campañas.** Empezar con ofertas generales y novedades en DE/FR. Verificar
+   consentimiento y bajas antes del envío, con audiencias de prueba primero.
+   Usar el idioma elegido y evitar deducir condiciones de salud a partir de
+   compras o visitas. Validar el remitente antes de enviar a clientes.
+
+[Guía de la autoridad suiza de protección de datos sobre correo publicitario](https://www.edoeb.admin.ch/en/advertising-marketing).
