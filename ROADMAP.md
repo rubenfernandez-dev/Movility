@@ -42,5 +42,9 @@ compra como invitado sigue disponible y el piloto puede comenzar con ella.
    consentimiento y bajas antes del envío, con audiencias de prueba primero.
    Usar el idioma elegido y evitar deducir condiciones de salud a partir de
    compras o visitas. Validar el remitente antes de enviar a clientes.
+   - [x] Panel de campañas simulado con selección, todos los suscritos,
+     programación, idioma por persona y verificación de bajas al procesar.
+   - [ ] Conectar el proveedor y añadir remitente verificado, enlace de baja
+     y prueba de entrega con destinatarios autorizados.
 
 [Guía de la autoridad suiza de protección de datos sobre correo publicitario](https://www.edoeb.admin.ch/en/advertising-marketing).

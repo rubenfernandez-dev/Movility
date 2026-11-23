@@ -111,6 +111,9 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: customer } })).text(), new RegExp(orderPath));
     const offers = restarted + '/fr-CH/offers';
     const offerInbox = restarted + '/admin/offer-codes';
+    assert.equal((await fetch(restarted + '/admin/campaigns')).status, 401);
+    assert.match(await (await fetch(restarted + '/admin/campaigns', { headers: { Authorization: auth } })).text(),
+      /Programar para todos los suscritos/);
     const offerEmail = 'offers@example.com';
     assert.equal((await fetch(offerInbox)).status, 401);
     assert.equal((await submit(offers, { action: 'request', email: offerEmail })).status, 400);

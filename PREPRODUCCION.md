@@ -29,8 +29,11 @@ habilita en preproducción.
 
 Las preferencias de ofertas están en `/fr-CH/offers` y `/de-CH/offers`.
 Confirma el alta mediante el código de `/admin/offer-codes`; el buzón
-también muestra el código para probar la baja sin cuenta. No hay campañas
-ni correo externo en esta instancia.
+también muestra el código para probar la baja sin cuenta. En
+`/admin/campaigns` puedes redactar una
+campaña DE/FR, seleccionar personas o a todos los suscritos al programarla
+y elegir cuándo procesarla. La cola comprueba el consentimiento otra vez
+antes de simular el envío y excluye las bajas.
 
 ## Primer pedido y factura
 

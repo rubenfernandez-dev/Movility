@@ -35,6 +35,7 @@ import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, gues
 import { setupAccounts, accountEmail, issueAccountCode, verifyAccountCode, signedInCustomer, endCustomerSession,
   customerCookie, linkGuestOrder, customerPage, accountMailbox } from './customer-accounts.mjs';
 import { setupOffers, requestOffers, confirmOffers, stopOffers, offersPage, offerMailbox } from './offers.mjs';
+import { setupCampaigns, queueCampaign, processCampaigns, campaignPage } from './offer-campaigns.mjs';
 
 const port = Number(process.env.PORT || 3000);
 const accountsEnabled = process.env.MOVILITY_STAGE === 'staging';
@@ -157,9 +158,16 @@ transaction(() => {
   setupGuestProof(db);
   setupAccounts(db);
   setupOffers(db);
+  setupCampaigns(db);
   purgePush(db);
   purgeFunnel(db);
 });
+if (accountsEnabled) {
+  setInterval(() => {
+    try { transaction(() => processCampaigns(db)); }
+    catch (error) { console.error('Campaign simulation failed', error); }
+  }, 3000).unref();
+}
 setInterval(() => {
   try { purgeFunnel(db); purgePush(db); }
   catch (error) { console.error('Could not purge expired analytics and push state', error); }
@@ -392,7 +400,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     </article>`;
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
-    ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a></p>' : ''}
+    ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a> · <a href="/admin/offer-codes">Buzón de ofertas de prueba</a> · <a href="/admin/campaigns">Campañas de ofertas</a></p>' : ''}
     <p>Perfil: ${roleNames[role]}</p>
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     <div class="product-actions">
@@ -607,6 +615,15 @@ const server = createServer(async (req, res) => {
       }
       if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/offer-codes') {
         return send(res, 200, page('es', 'Buzón de ofertas de prueba', offerMailbox(db)));
+      }
+      if (accountsEnabled && role === 'admin' && path === '/admin/campaigns') {
+        const panel = result => page('es', 'Campañas de ofertas', campaignPage(db, result));
+        if (req.method === 'GET') return send(res, 200, panel(searchParams.get('result')));
+        if (req.method === 'POST') {
+          const fields = await form(req, 262144);
+          if (!transaction(() => queueCampaign(db, fields))) return send(res, 400, panel('invalid'));
+          return redirect(res, '/admin/campaigns?result=queued');
+        }
       }
       if (req.method === 'POST' && role === 'admin' && third === 'guest-code' && orderIdPattern.test(second) &&
           path === `/admin/${second}/guest-code`) {
