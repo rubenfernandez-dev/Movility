@@ -38,6 +38,7 @@ figcaption{margin-top:.45rem;font-size:.875rem;color:var(--muted)}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .discovery-section{position:relative;background:#e9ece6}
 .discovery-controls{position:absolute;z-index:1;inset:50% clamp(.6rem,2.5vw,2rem) auto;transform:translateY(-50%);display:flex;justify-content:space-between;pointer-events:none}
+.discovery-controls{top:min(50%,34svh)}
 .discovery-controls[hidden]{display:none}
 .discovery-controls button{width:2.75rem;height:2.75rem;padding:0;border-color:white;background:#fff;color:var(--ink);font-size:1.25rem;pointer-events:auto}
 .discovery-controls button:hover{background:#e6efe9}
@@ -46,16 +47,16 @@ figcaption{margin-top:.45rem;font-size:.875rem;color:var(--muted)}
   overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
 .discovery-track::-webkit-scrollbar{display:none}
 .discovery-track:focus-visible{outline-offset:-4px}
-.discovery-card{position:relative;min-width:0;height:clamp(18rem,68vh,43rem);height:clamp(18rem,68svh,43rem);overflow:hidden;scroll-snap-align:start}
-.discovery-photo{display:block;width:100%;height:100%;object-fit:cover;object-position:center 56%}
+.discovery-card{position:relative;min-width:0;aspect-ratio:4/3;overflow:hidden;scroll-snap-align:start}
+.discovery-photo{display:block;width:100%;height:100%;object-fit:contain}
 .discovery-action{position:absolute;left:50%;bottom:clamp(.9rem,3vw,2rem);transform:translateX(-50%);
   max-width:calc(100% - 2rem);text-align:center;background:#fff;color:var(--ink);border-color:#fff;box-shadow:0 2px 14px #142f3440}
+@supports(height:1svh){.discovery-action{top:min(calc(100% - 4rem),55svh);bottom:auto}}
 .discovery-action:hover{background:#e6efe9}
 @media(max-width:55rem){.top-inner{flex-wrap:wrap;gap:.65rem 1rem}
   .top-inner.storefront-header{flex-wrap:nowrap;gap:.5rem}
   .storefront-nav{display:none}
   .storefront-menu{display:block}
-  .discovery-card{height:auto;aspect-ratio:4/3}
   .discovery-action{padding:.55rem .7rem}}
 @media(max-width:26rem){.top-inner{padding-block:.65rem}
   .storefront-header .brand{font-size:1.1rem;gap:.35rem}
