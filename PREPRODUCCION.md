@@ -18,6 +18,15 @@ local con `npm run staging:verify -- http://127.0.0.1:3041`.
 El endpoint `GET /healthz` devuelve 200 si puede consultar la base,
 o 503 si la consulta falla. No incluye registros de clientes.
 
+### Mi cuenta en pruebas
+
+Desde `/fr-CH/account` o `/de-CH/account`, solicita un código con un
+correo ficticio. El administrador puede recogerlo en `/admin/customer-codes`.
+Para vincular un pedido, genera también su código desde Administración,
+verifícalo como invitado con el mismo correo y elige **Asociar el pedido**
+en Mi cuenta. El correo permanece en simulación y esta función solo se
+habilita en preproducción.
+
 ## Primer pedido y factura
 
 | Bloque | Datos disponibles | Pendiente para el piloto |

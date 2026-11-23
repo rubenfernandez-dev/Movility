@@ -86,6 +86,28 @@ test('staging keeps a simulated order after restart and ignores external integra
     const proof = redeemed.headers.get('set-cookie').split(';')[0];
     assert.match(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     assert.equal((await submit(proofPath, { code, email: 'staging@example.com' })).status, 400);
+    const account = restarted + '/fr-CH/account';
+    const mailbox = restarted + '/admin/customer-codes';
+    assert.equal((await fetch(mailbox)).status, 401);
+    async function signIn(email) {
+      assert.equal((await submit(account, { action: 'request', email })).status, 303);
+      const html = await (await fetch(mailbox, { headers: { Authorization: auth } })).text();
+      const loginCode = html.match(/<code>([A-Za-z0-9_-]{32})<\/code>/)[1];
+      const login = await submit(account, { action: 'verify', email, code: loginCode });
+      assert.equal(login.status, 303);
+      assert.equal((await submit(account, { action: 'verify', email, code: loginCode })).status, 400);
+      return login.headers.get('set-cookie').split(';')[0];
+    }
+    const other = await signIn('other@example.com');
+    assert.equal((await submit(account, { action: 'link' }, { Cookie: other + '; ' + proof })).status, 400);
+    const customer = await signIn('staging@example.com');
+    assert.equal((await submit(account, { action: 'link' }, { Cookie: customer })).status, 400);
+    assert.equal((await submit(account, { action: 'link' }, { Cookie: customer + '; ' + proof })).status, 303);
+    const signedIn = await (await fetch(account, { headers: { Cookie: customer } })).text();
+    assert.match(signedIn, new RegExp(orderPath));
+    assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: other } })).text(), new RegExp(orderPath));
+    assert.equal((await submit(account, { action: 'logout' }, { Cookie: customer })).status, 303);
+    assert.doesNotMatch(await (await fetch(account, { headers: { Cookie: customer } })).text(), new RegExp(orderPath));
     assert.equal((await submit(codePath, { action: 'revoke' }, { Authorization: auth })).status, 303);
     assert.doesNotMatch(await (await fetch(proofPath, { headers: { Cookie: proof } })).text(), /Ouvrir la commande/);
     const docPath = restarted + '/admin/' + id + '/document/';

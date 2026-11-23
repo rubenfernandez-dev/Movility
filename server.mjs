@@ -32,8 +32,11 @@ import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, reque
 import { setupDocuments, billingInput, saveBillingAddress, issueDocument, documentPage } from './billing-documents.mjs';
 import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, guestProofCookie,
   verifiedGuestOrder, guestAccessPage, codePage } from './guest-proof.mjs';
+import { setupAccounts, accountEmail, issueAccountCode, verifyAccountCode, signedInCustomer, endCustomerSession,
+  customerCookie, linkGuestOrder, customerPage, accountMailbox } from './customer-accounts.mjs';
 
 const port = Number(process.env.PORT || 3000);
+const accountsEnabled = process.env.MOVILITY_STAGE === 'staging';
 const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
 const stripe = stripeMode(process.env, siteOrigin);
 const stripeHost = stripe ? new URL(stripe.origin).host : '';
@@ -151,6 +154,7 @@ transaction(() => {
   setupStripeRefunds(db);
   setupDocuments(db);
   setupGuestProof(db);
+  setupAccounts(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -386,6 +390,7 @@ function adminView({ role, error, saved, draft, filter = '' }) {
     </article>`;
   }).join('');
   return page('es', 'Administración de prueba', `<h1>Administración de prueba</h1>
+    ${role === 'admin' && accountsEnabled ? '<p><a href="/admin/customer-codes">Buzón simulado de clientes</a></p>' : ''}
     <p>Perfil: ${roleNames[role]}</p>
     <p>${stockAccess ? `Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     <div class="product-actions">
@@ -526,7 +531,7 @@ const server = createServer(async (req, res) => {
     const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
-    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics'].includes(suffix) ||
+    const languagePath = ['/movility-one', '/movility-one/3d', '/compare', '/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access'].includes(suffix) ||
       modelRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
@@ -547,7 +552,8 @@ const server = createServer(async (req, res) => {
     const render = (body, status = 200) => send(res, status,
       page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin) : {}, {
-          footer: analyticsLink(locale),
+          footer: analyticsLink(locale) + (accountsEnabled
+            ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>` : ''),
           prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
             ? analyticsPrompt(locale, consent, path) : '',
         }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute));
@@ -593,6 +599,9 @@ const server = createServer(async (req, res) => {
         return send(res, 403, page('es', 'Acceso restringido', '<h1>Acceso restringido</h1><p>Tu perfil no tiene acceso a esta operación.</p><a href="/admin">Volver al panel</a>'));
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
+      if (accountsEnabled && role === 'admin' && req.method === 'GET' && path === '/admin/customer-codes') {
+        return send(res, 200, page('es', 'Buzón simulado de clientes', accountMailbox(db)));
+      }
       if (req.method === 'POST' && role === 'admin' && third === 'guest-code' && orderIdPattern.test(second) &&
           path === `/admin/${second}/guest-code`) {
         const fields = await form(req);
@@ -823,6 +832,38 @@ const server = createServer(async (req, res) => {
         }));
         if (found === 'refund-pending') return send(res, 409, rolePanel({ error: 'Espera la confirmación de Stripe antes de expedir este pedido.' }));
         return found === 'ok' ? redirect(res, '/admin') : send(res, 404, 'Pedido desconocido');
+      }
+    }
+    if (accountsEnabled && path === `/${locale}/account`) {
+      const email = signedInCustomer(db, req.headers.cookie);
+      if (req.method === 'GET') {
+        const state = searchParams.get('result');
+        return render(customerPage(db, locale, email, ['linked', 'requested'].includes(state) ? state : ''));
+      }
+      if (req.method === 'POST') {
+        const fields = await form(req);
+        const action = fields?.get('action');
+        if (email && action === 'logout') {
+          endCustomerSession(db, req.headers.cookie);
+          res.setHeader('Set-Cookie', customerCookie(''));
+          return redirect(res, path);
+        }
+        if (email && action === 'link' && transaction(() => linkGuestOrder(db, email, req.headers.cookie))) {
+          return redirect(res, path + '?result=linked');
+        }
+        const submitted = accountEmail(fields?.get('email')?.trim());
+        if (!email && submitted && action === 'request') {
+          issueAccountCode(db, submitted);
+          return redirect(res, path + '?result=requested');
+        }
+        if (!email && submitted && action === 'verify') {
+          const session = transaction(() => verifyAccountCode(db, submitted, fields.get('code')?.trim() || ''));
+          if (session) {
+            res.setHeader('Set-Cookie', customerCookie(session));
+            return redirect(res, path);
+          }
+        }
+        return render(customerPage(db, locale, email, 'invalid'), 400);
       }
     }
     if (path === `/${locale}/guest-access`) {

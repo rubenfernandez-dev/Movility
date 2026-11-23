@@ -29,7 +29,8 @@ compra como invitado sigue disponible y el piloto puede comenzar con ella.
    solo tras verificar el correo y acreditar el acceso a ese pedido.
    Probar la baja de cuenta y definir qué registros comerciales se conservan.
    - [x] Código de invitado revocable, de un solo uso y con caducidad, probado en preproducción.
-   - [ ] Autenticación de cliente y vinculación con correo verificado. Preparar entrega privada del código.
+   - [x] Cuenta de prueba con código en buzón simulado y vinculación únicamente si coincide la verificación del pedido.
+   - [ ] Entrega privada por correo verificado y validación de acceso, protección ante abuso y baja de cuenta antes de habilitarlo comercialmente.
 2. **Preferencias.** Casilla de ofertas separada y desmarcada por defecto.
    Registrar fecha, origen y versión del texto aceptado, confirmar la
    suscripción por correo y permitir cambiar idioma o darse de baja sin
