@@ -22,6 +22,10 @@ de cobros reales y la publicación quedan para sus fases respectivas.
 Carrito y checkout comprobados con teclado en alemán y francés a 320 px.
 Se verificaron la edición del carrito, el foco del resumen de errores y
 el salto al campo que hay que corregir. Queda la prueba con lector de pantalla.
+En Chrome se verificó un pedido ficticio desde el catálogo hasta la entrega,
+el reembolso, la recepción con reposición de stock y la recuperación por
+código. También se revisaron los nombres y roles expuestos al árbol de
+accesibilidad de Chrome.
 
 El panel permite crear familias bilingües y publicar artículos sin un tope
 de catálogo. Cada artículo admite descripciones y características DE/FR,

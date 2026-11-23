@@ -1197,7 +1197,7 @@ const server = createServer(async (req, res) => {
       return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', null, undefined, stripeMethodsFor(stripe, model.cents)));
     }
     if (stripe && first === locale && second === 'payment' && orderIdPattern.test(third) && path === `/${locale}/payment/${third}`) {
-      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('Referrer-Policy', 'strict-origin');
       if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled, third), 403);
       const attempt = paymentAttempt(db, third);
       if (!attempt || JSON.parse(attempt.payload).locale !== locale) return render('<h1>404</h1>', 404);
@@ -1356,7 +1356,8 @@ const server = createServer(async (req, res) => {
       return redirect(res, `/${locale}/guest-access?requested=1`);
     }
     if (req.method === 'GET' && orderPageRoute) {
-      res.setHeader('Referrer-Policy', 'no-referrer');
+      // Keep the order path out of referrers while allowing Chrome to send Origin on form POSTs.
+      res.setHeader('Referrer-Policy', 'strict-origin');
       if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled, third), 403);
       const order = orderById(third);
       if (order) {

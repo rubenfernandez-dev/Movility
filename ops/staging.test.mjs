@@ -77,7 +77,7 @@ test('staging keeps a simulated order after restart and ignores external integra
     const restarted = await start();
     const buyerCookie = order.headers.getSetCookie()[0].split(';')[0];
     const orderResponse = await fetch(restarted + orderPath, { headers: { Cookie: buyerCookie } });
-    assert.equal(orderResponse.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(orderResponse.headers.get('referrer-policy'), 'strict-origin');
     assert.equal(orderResponse.headers.get('cache-control'), 'no-store');
     assert.match(await orderResponse.text(), /Paiement de test confirmé/);
     const auth = 'Basic ' + Buffer.from('admin:staging-fixture').toString('base64');
