@@ -187,7 +187,13 @@ test('staging keeps a simulated order after restart and ignores external integra
       ...accessory, sku: 'test-wheel', name: 'Test Wheel', family: 'spare',
     }, compatHeaders)).status, 303);
     assert.equal((await submit(compatibilityPath, { chair: 'test-chair' }, compatHeaders)).status, 303);
-    assert.match(await (await fetch(chairEditor, { headers: compatHeaders })).text(), /Accesorios[\s\S]*Travel Bag[\s\S]*Recambios[\s\S]*Test Wheel/);
+    const chairPanel = await fetch(chairEditor, { headers: compatHeaders });
+    assert.match(chairPanel.headers.get('content-security-policy'), /script-src 'self'/);
+    const chairPanelHtml = await chairPanel.text();
+    assert.match(chairPanelHtml, /Accesorios[\s\S]*Travel Bag[\s\S]*Recambios[\s\S]*Test Wheel/);
+    assert.match(chairPanelHtml, /data-name="Travel Bag" data-sku="travel-bag"/);
+    assert.match(chairPanelHtml, /src="\/assets\/compatibility-search.js" defer/);
+    assert.match((await fetch(restarted + '/assets/compatibility-search.js')).headers.get('content-type'), /javascript/);
     const addBoth = await fetch(chairEditor, {
       method: 'POST', redirect: 'manual', headers: { ...compatHeaders, Origin: restarted },
       body: new URLSearchParams([['part', 'travel-bag'], ['part', 'test-wheel'], ['de-test-wheel', 'Ab Version 2'],

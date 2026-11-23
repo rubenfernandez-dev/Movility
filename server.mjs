@@ -116,6 +116,7 @@ const assets = new Map([
   [modelPath, ['model/gltf-binary', readFileSync(new URL('./assets/movility-one.glb', import.meta.url))]],
   [viewerScript, ['text/javascript; charset=utf-8', readFileSync(new URL('./node_modules/@google/model-viewer/dist/model-viewer.min.js', import.meta.url))]],
   ['/assets/order-push.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/order-push.js', import.meta.url))]],
+  ['/assets/compatibility-search.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/compatibility-search.js', import.meta.url))]],
   ['/push-worker.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/push-worker.js', import.meta.url))]],
 ]);
 const uploadFolder = resolve((dbPath === ':memory:' ? 'data/in-memory-' + randomUUID() : dbPath) + '.media');
@@ -307,7 +308,7 @@ transaction(() => {
   for (const event of previousEvents) storeEmail(orderById(event.id), event.kind);
 });
 
-function send(res, status, body, withViewer = false, withPush = false) {
+function send(res, status, body, withViewer = false, withPush = false, withAdminScript = false) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -317,7 +318,8 @@ function send(res, status, body, withViewer = false, withPush = false) {
     'Content-Security-Policy': withViewer
       ? "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
       : "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" +
-        (withPush ? "; script-src 'self'; connect-src 'self'; worker-src 'self'" : ''),
+        (withPush ? "; script-src 'self'; connect-src 'self'; worker-src 'self'"
+          : withAdminScript ? "; script-src 'self'" : ''),
   });
   res.end(body);
 }
@@ -679,7 +681,7 @@ const server = createServer(async (req, res) => {
         const candidates = adminCatalogProducts().filter(editingPart ? isWheelchair : isPart);
         const entriesForModel = () => editingPart ? compatibilityForPart(sku) : [...compatibilityForChair(sku).values()];
         const panel = (message, status = 200) => send(res, status, page('es', 'Compatibilidad',
-          compatibilityAdmin(model, candidates, entriesForModel(), message)));
+          compatibilityAdmin(model, candidates, entriesForModel(), message)), false, false, true);
         if (req.method === 'GET') return panel(searchParams.has('saved') ? '<p role="status">Compatibilidad guardada.</p>' : '');
         const entries = compatibilityInput(await form(req, 262144), candidates, editingPart ? 'chair' : 'part');
         if (!entries) return panel('<p role="alert">Revisa la selección y escribe cada condición en los dos idiomas.</p>', 400);

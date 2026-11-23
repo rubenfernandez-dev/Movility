@@ -19,7 +19,9 @@ export function compatibilityAdmin(model, candidates, entries, message = '') {
       ['Recambios', candidates.filter(item => item.family === 'spare')]];
   const card = item => {
       const entry = selected.get(item.sku);
-      return `<fieldset class="model-editor"><legend>${escapeHtml(item.name)}${item.active ? '' : ' · Archivado'}</legend>
+      return `<fieldset class="model-editor" data-compat-item data-name="${escapeHtml(item.name)}" data-sku="${item.sku}">
+        <legend>${escapeHtml(item.name)}${item.active ? '' : ' · Archivado'}</legend>
+        <p class="compat-sku">SKU ${item.sku}</p>
         <label class="admin-check"><input type="checkbox" name="${field}" value="${item.sku}" ${entry ? 'checked' : ''}> Compatible</label>
         <details ${entry?.note_de ? 'open' : ''}><summary>Condiciones de compatibilidad</summary>
         <label>Condición en alemán <input name="de-${item.sku}" maxlength="240" value="${escapeHtml(entry?.note_de || '')}"></label>
@@ -30,10 +32,14 @@ export function compatibilityAdmin(model, candidates, entries, message = '') {
     <h1>Compatibilidad de ${escapeHtml(model.name)}</h1>
     <p>${field === 'chair' ? 'Marca las piezas compatibles con esta silla.' : 'Marca los modelos compatibles con esta pieza.'}
     Si hay una condición por versión, medida o número de serie, escríbela en ambos idiomas.</p>
-    ${message}<form method="post" action="/admin/models/${model.sku}/compatibility">
-    ${groups.map(([label, items]) => `<h2>${label}</h2>
-      ${items.length ? `<div class="admin-item-grid">${items.map(card).join('')}</div>` : '<p>Sin artículos en esta familia.</p>'}`).join('')}
-    ${candidates.length ? '<button>Guardar compatibilidad</button>' : ''}</form>`;
+    ${message}<form method="post" action="/admin/models/${model.sku}/compatibility" data-compat-editor>
+    ${candidates.length ? `<div class="catalog-filters" data-compat-search hidden>
+      <label>Buscar por nombre o SKU <input type="search" data-compat-query></label>
+      <p role="status" data-compat-status></p></div>` : ''}
+    ${groups.map(([label, items]) => `<section data-compat-group><h2>${label}</h2>
+      ${items.length ? `<div class="admin-item-grid">${items.map(card).join('')}</div>` : '<p>Sin artículos en esta familia.</p>'}</section>`).join('')}
+    ${candidates.length ? '<button>Guardar compatibilidad</button>' : ''}</form>
+    ${candidates.length ? '<script src="/assets/compatibility-search.js" defer></script>' : ''}`;
 }
 
 export function compatibilityInput(fields, candidates, field) {
