@@ -87,10 +87,10 @@ export function basketPage(locale, lines, message = '') {
     ${lines.length ? `<div class="basket-lines">${lines.map(item => {
       const name = escapeHtml(item.name);
       const path = item.sku === coreSKU ? '/movility-one' : '/models/' + item.sku;
-      return `<article><h2><a href="/${locale}${path}">${name}</a></h2>
+      return `<article><h2 id="basket-item-${item.sku}"><a href="/${locale}${path}">${name}</a></h2>
         ${item.available ? '' : `<p class="form-error">${l.unavailable}</p>`}
         <p>${l.price}: ${money(locale, item.cents)} · ${l.total}: ${money(locale, item.cents * item.quantity)}</p>
-        <form class="basket-edit" method="post" action="/${locale}/cart">
+        <form class="basket-edit" method="post" action="/${locale}/cart" aria-labelledby="basket-item-${item.sku}">
           <input type="hidden" name="sku" value="${item.sku}">
           <label>${l.quantity}<input type="number" name="quantity" min="1" max="${maxQuantity}" value="${item.quantity}" required></label>
           <button name="action" value="update">${l.update}</button>

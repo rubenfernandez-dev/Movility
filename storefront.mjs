@@ -136,6 +136,7 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
   const t = copy[locale];
   const german = locale === 'de-CH';
   const billingTitle = german ? 'Rechnungsadresse' : 'Adresse de facturation';
+  const autocomplete = { email: 'email', name: 'name', street: 'street-address', zip: 'postal-code', city: 'address-level2' };
   const names = { ...l, email: t.email, method: t.method };
   const label = key => key.startsWith('bill_') ? billingTitle + ' · ' + names[key.slice(5)] : names[key];
   const error = key => key.endsWith('zip')
@@ -146,15 +147,24 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
   const invalidAttrs = key => invalid.includes(key) ? `aria-invalid="true" aria-describedby="error-${key}"` : '';
   const inlineError = key => invalid.includes(key) ? `<p class="field-error" id="error-${key}">${error(key)}</p>` : '';
   const field = (name, title, attributes, optional = false) => {
-    const value = optional ? values.billing?.[name.slice(5)] : values[name];
+    const key = optional ? name.slice(5) : name;
+    const value = optional ? values.billing?.[key] : values[key];
     return `<div><label for="checkout-${name}">${title}</label><input id="checkout-${name}" name="${name}"
-      value="${escapeHtml(value || '')}" ${optional ? '' : 'required'} ${attributes} ${invalidAttrs(name)}>${inlineError(name)}</div>`;
+      value="${escapeHtml(value || '')}" autocomplete="${optional ? 'billing' : 'shipping'} ${autocomplete[key]}"
+      ${optional ? '' : 'required'} ${attributes} ${invalidAttrs(name)}>${inlineError(name)}</div>`;
   };
+  const summary = `<aside class="summary" aria-labelledby="checkout-summary"><h2 id="checkout-summary">${l.summary}</h2>
+    ${lines ? `<ul>${lines.map(line => `<li>${line.quantity} × ${escapeHtml(line.name)} · ${money(locale, line.quantity * line.cents)}</li>`).join('')}</ul>`
+      : `${model ? '' : image(l)}<h3>${escapeHtml(model?.name || 'Movility One')}</h3>`}
+    <dl class="specs">
+      ${lines ? '' : `<div><dt>${l.quantity}</dt><dd>1</dd></div>`}<div><dt>${l.delivery}</dt><dd>${money(locale, 0)}</dd></div>
+      <div><dt>${l.total}</dt><dd>${money(locale, cents)}</dd></div>
+    </dl></aside>`;
   return `<h1 class="page-title">${t.checkout}</h1><p>${l.demoData}</p>
     ${message ? `<section class="form-error" tabindex="-1" autofocus aria-labelledby="checkout-error">
       <h2 id="checkout-error">${message}</h2>${invalid.length ? `<ul>${invalid.map(key =>
         `<li><a href="#checkout-${key}">${label(key)} · ${error(key)}</a></li>`).join('')}</ul>` : ''}</section>` : ''}
-    <div class="checkout-grid"><form method="post" novalidate action="/${locale}/checkout${lines ? '/cart' : ''}">
+    <div class="checkout-grid">${summary}<form method="post" novalidate action="/${locale}/checkout${lines ? '/cart' : ''}">
       <input type="hidden" name="id" value="${id}">
       <input type="hidden" name="quotedPrice" value="${cents}">
       ${lines ? `<input type="hidden" name="cartQuote" value="${escapeHtml(cartQuote(lines))}">` : ''}
@@ -165,7 +175,7 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
         <div class="address-row">${field('zip', l.zip, 'inputmode="numeric" pattern="[0-9]{4}" maxlength="4"')}
         ${field('city', l.city, 'maxlength="100"')}</div>
       </fieldset>
-      <details ${Object.values(values.billing || {}).some(Boolean) ? 'open' : ''}>
+      <details ${Object.values(values.billing || {}).some(Boolean) || invalid.some(key => key.startsWith('bill_')) ? 'open' : ''}>
         <summary>${locale === 'de-CH' ? 'Abweichende Rechnungsadresse (optional)' : 'Adresse de facturation différente (facultatif)'}</summary>
         <fieldset><legend>${locale === 'de-CH' ? 'Rechnungsadresse · Schweiz' : 'Adresse de facturation · Suisse'}</legend>
         ${['name', 'street', 'zip', 'city'].map(key => field('bill_' + key, l[key],
@@ -177,17 +187,11 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
         return `<label class="option"><input type="radio" id="checkout-method${index ? '-' + index : ''}" name="method"
           value="${method}" ${values.method === method ? 'checked' : ''} required ${invalidAttrs('method')}> ${label}</label>`;
       }).join('')}</div></fieldset>
-      ${stripeMethods ? stripeMethods.length
+      <div class="product-actions checkout-actions">${stripeMethods ? stripeMethods.length
         ? `<button name="result" value="stripe">${locale === 'de-CH' ? 'Weiter zu Stripe (Test)' : 'Continuer vers Stripe (test)'}</button>`
         : `<p>${locale === 'de-CH' ? 'Für diesen Betrag ist keine Testzahlungsart verfügbar.' : 'Aucun mode de paiement test disponible pour ce montant.'}</p>`
-        : `<button name="result" value="paid">${t.pay}</button><button class="secondary" name="result" value="failed">${t.fail}</button>`}
-    </form><aside class="summary"><h2>${l.summary}</h2>
-      ${lines ? `<ul>${lines.map(line => `<li>${line.quantity} × ${escapeHtml(line.name)} · ${money(locale, line.quantity * line.cents)}</li>`).join('')}</ul>`
-        : `${model ? '' : image(l)}<h3>${escapeHtml(model?.name || 'Movility One')}</h3>`}
-      <dl class="specs">
-        ${lines ? '' : `<div><dt>${l.quantity}</dt><dd>1</dd></div>`}<div><dt>${l.delivery}</dt><dd>${money(locale, 0)}</dd></div>
-        <div><dt>${l.total}</dt><dd>${money(locale, cents)}</dd></div>
-      </dl></aside></div>`;
+        : `<button name="result" value="paid">${t.pay}</button><button class="secondary" name="result" value="failed">${t.fail}</button>`}</div>
+    </form></div>`;
 }
 
 export function orderPage(locale, order, events = [], push = '') {

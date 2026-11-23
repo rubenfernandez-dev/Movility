@@ -48,6 +48,9 @@ test('staging keeps a simulated order after restart and ignores external integra
       assert.equal(invalid.status, 400);
       const errors = await invalid.text();
       assert.match(errors, /tabindex="-1" autofocus aria-labelledby="checkout-error"/);
+      assert.match(errors, /<aside class="summary" aria-labelledby="checkout-summary">[\s\S]*<form method="post" novalidate/);
+      assert.match(errors, /autocomplete="shipping postal-code"/);
+      assert.match(errors, /autocomplete="billing postal-code"/);
       assert.match(errors, /href="#checkout-bill_zip"/);
       assert.match(errors, /aria-invalid="true" aria-describedby="error-bill_zip"/);
       assert.match(errors, /<details open>/);

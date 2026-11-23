@@ -19,6 +19,10 @@ y expedición desde el almacén suizo. La expansión a la UE es posterior.
 Las pruebas usan datos ficticios. Los cambios de proveedor, la activación
 de cobros reales y la publicación quedan para sus fases respectivas.
 
+Carrito y checkout comprobados con teclado en alemán y francés a 320 px.
+Se verificaron la edición del carrito, el foco del resumen de errores y
+el salto al campo que hay que corregir. Queda la prueba con lector de pantalla.
+
 El panel permite crear familias bilingües y publicar artículos sin un tope
 de catálogo. Cada artículo admite descripciones y características DE/FR,
 fotos, vídeo y archivos complementarios. La tienda permite filtrar por
