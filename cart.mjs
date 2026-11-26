@@ -63,40 +63,49 @@ const labels = {
     quantity: 'Menge', price: 'Einzelpreis', total: 'Gesamtbetrag', update: 'Aktualisieren', remove: 'Entfernen',
     unavailable: 'Die gewünschte Menge ist nicht mehr verfügbar. Passe den Warenkorb an.',
     changed: 'Dein Warenkorb oder ein Preis hat sich geändert. Prüfe den Gesamtbetrag und bestätige erneut.',
+    added: 'Zum Warenkorb hinzugefügt', see: 'Zum Warenkorb', keep: 'Weiter einkaufen',
+    available: 'Verfügbar', subtotal: 'Zwischensumme', correction: 'Bitte ändere die Menge oder entferne diesen Artikel.',
   },
   'fr-CH': {
     cart: 'Panier', add: 'Ajouter au panier', empty: 'Votre panier est vide.', browse: 'Voir les modèles',
     quantity: 'Quantité', price: 'Prix unitaire', total: 'Total', update: 'Mettre à jour', remove: 'Retirer',
     unavailable: 'La quantité demandée n’est plus disponible. Modifiez votre panier.',
     changed: 'Votre panier ou un prix a changé. Vérifiez le total et confirmez à nouveau.',
+    added: 'Ajouté au panier', see: 'Voir le panier', keep: 'Continuer mes achats',
+    available: 'Disponible', subtotal: 'Sous-total', correction: 'Modifiez la quantité ou retirez cet article.',
   },
 };
 export const cartText = locale => labels[locale];
 
-export function addToCart(locale, sku) {
+export function addToCart(locale, sku, secondary = false) {
   return `<form class="cart-add" method="post" action="/${locale}/cart">
     <input type="hidden" name="sku" value="${sku}">
-    <button name="action" value="add">${labels[locale].add}</button></form>`;
+    <button${secondary ? ' class="secondary"' : ''} name="action" value="add">${labels[locale].add}</button></form>`;
 }
 
-export function basketPage(locale, lines, message = '') {
+export function basketPage(locale, lines, message = '', { added = '', rejected = '', live = false } = {}) {
   const l = labels[locale];
   const t = copy[locale];
+  const addedLine = lines.find(line => line.sku === added);
   return `<h1 class="page-title">${l.cart}</h1>
-    ${message ? `<p class="form-error" role="alert">${message}</p>` : ''}
-    ${lines.length ? `<div class="basket-lines">${lines.map(item => {
+    ${message ? `<p class="form-error" role="alert" tabindex="-1" autofocus>${rejected ? escapeHtml(rejected) + ' · ' : ''}${message}</p>` : ''}
+    ${addedLine ? `<section class="cart-feedback" aria-labelledby="cart-added" tabindex="-1" autofocus>
+      <h2 id="cart-added">${l.added}</h2><p>${escapeHtml(addedLine.name)} · ${l.quantity}: ${addedLine.quantity}</p>
+      <div class="product-actions"><a class="button" href="#basket-items">${l.see}</a><a class="button secondary" href="/${locale}#catalogue">${l.keep}</a></div></section>` : ''}
+    ${lines.length ? `<div class="basket-lines" id="basket-items" tabindex="-1">${lines.map(item => {
       const name = escapeHtml(item.name);
-      const path = item.sku === coreSKU ? '/movility-one' : '/models/' + item.sku;
+      const path = item.sku === coreSKU ? '/mobility-one' : '/models/' + item.sku;
       return `<article><h2 id="basket-item-${item.sku}"><a href="/${locale}${path}">${name}</a></h2>
-        ${item.available ? '' : `<p class="form-error">${l.unavailable}</p>`}
-        <p>${l.price}: ${money(locale, item.cents)} · ${l.total}: ${money(locale, item.cents * item.quantity)}</p>
+        ${item.available ? `<span class="stock available">${l.available}</span>` :
+          `<p class="field-error">${l.available}: ${item.units}. ${l.correction}</p>`}
+        <p>${l.price}: ${money(locale, item.cents)} · ${l.subtotal}: ${money(locale, item.cents * item.quantity)}</p>
         <form class="basket-edit" method="post" action="/${locale}/cart" aria-labelledby="basket-item-${item.sku}">
           <input type="hidden" name="sku" value="${item.sku}">
-          <label>${l.quantity}<input type="number" name="quantity" min="1" max="${maxQuantity}" value="${item.quantity}" required></label>
-          <button name="action" value="update">${l.update}</button>
+          <label>${l.quantity}<input type="number" name="quantity" min="1" max="${Math.min(maxQuantity, item.units)}" value="${item.quantity}" required ${item.units ? '' : 'disabled'}></label>
+          <button name="action" value="update" ${item.units ? '' : 'disabled'}>${l.update}</button>
           <button class="secondary" name="action" value="remove" formnovalidate>${l.remove}</button>
         </form></article>`;
-    }).join('')}</div><p class="price">${l.total}: ${money(locale, cartTotal(lines))}</p>` : `<p>${l.empty}</p>`}
-    <div class="product-actions">${canCheckout(lines) ? `<a class="button" href="/${locale}/checkout/cart">${t.checkout}</a>` : ''}
-      <a class="button secondary" href="/${locale}">${l.browse}</a></div>`;
+    }).join('')}</div><p class="basket-total"><span>${l.subtotal}</span><strong>${money(locale, cartTotal(lines))}</strong></p>` : `<p class="basket-empty">${l.empty}</p>`}
+    <div class="product-actions basket-actions">${canCheckout(lines) ? `<a class="button basket-checkout" href="/${locale}/checkout/cart">${live ? t.commercialCheckout : t.checkout}</a>` : ''}
+      <a class="button${lines.length ? ' secondary' : ''}" href="/${locale}#catalogue">${l.browse}</a></div>`;
 }

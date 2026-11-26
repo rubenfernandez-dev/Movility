@@ -55,20 +55,21 @@ const navigationGroups = [
   ['Atención al cliente', [
     ['/admin/contact', 'Bandeja de contacto'],
     ['/admin/mail', 'Cola de correos'],
+    ['/admin/push', 'Avisos push'],
   ]],
   ['Finanzas e informes', [
     ['/admin/accounting', 'Conciliación de pedidos'],
     ['/admin/stripe', 'Pagos de prueba con Stripe'],
-    ['/admin/analytics', 'Embudo de compra'],
+    ['/admin/analytics', 'Estadísticas de la tienda'],
   ]],
   ['Contenido', [
     ['/admin/faqs', 'Preguntas frecuentes'],
-    ['/admin/legal/impressum', 'Contenidos legales'],
+    ['/admin/legal', 'Contenidos legales'],
     ['/admin/content/about', 'Quiénes somos'],
     ['/admin/content/contact', 'Datos públicos de contacto'],
     ['/admin/content/delivery-returns-warranty', 'Envíos, devoluciones y garantía'],
   ]],
-  ['Configuración', [['/admin/security', 'Seguridad del panel']]],
+  ['Configuración', [['/admin/security', 'Seguridad del panel'], ['/admin/billing', 'Emisor y fiscalidad'], ['/admin/shipping', 'Tarifa de envío en Suiza']]],
 ];
 
 function adminSidebar({ role, accountsEnabled, path, params }) {
@@ -106,7 +107,7 @@ export function adminPage(title, content) {
   const locale = adminLocale();
   const { path, params } = context.getStore() || { path: '/admin', params: new URLSearchParams() };
   const header = `<a class="skip" href="#content">${escapeHtml(adminText('Ir al contenido'))}</a>
-    <header class="top"><div class="top-inner"><a class="brand" href="/admin">Movility</a>
+    <header class="top"><div class="top-inner"><a class="brand" href="/admin">Mobility</a>
     <nav aria-label="${escapeHtml(adminText('Idioma del panel'))}">${Object.entries(locales).map(([code, label]) => {
       const query = new URLSearchParams(params);
       query.set('lang', code);

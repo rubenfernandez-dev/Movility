@@ -1,5 +1,6 @@
 import { cookieDetails } from './legal.mjs';
-import { adminHtml, adminText } from './admin-language.mjs';
+import { adminHtml, adminText, adminLocale } from './admin-language.mjs';
+import { statisticsPeriod, salesStatistics, salesStatisticsSection } from './sales-statistics.mjs';
 import { randomUUID } from 'node:crypto';
 
 const cookieName = 'movility_analytics';
@@ -64,27 +65,29 @@ const labels = {
   'de-CH': {
     settings: 'Cookie-Einstellungen', heading: 'Optionale Besuchsstatistik',
     description: 'Mit deiner Zustimmung zählen wir die Schritte vom Produkt bis zur Bestellung. Die Statistik speichert keine Kontaktdaten. Die Einstellung kannst du jederzeit ändern.',
+    summary: 'Mit deiner Zustimmung messen wir die Schritte bis zur Bestellung.',
     accept: 'Statistik akzeptieren', decline: 'Nur notwendige', withdraw: 'Zustimmung widerrufen',
     active: 'Die Besuchsstatistik ist erlaubt.', inactive: 'Die Besuchsstatistik ist deaktiviert.',
   },
   'fr-CH': {
     settings: 'Réglages des cookies', heading: 'Mesure d’audience facultative',
     description: 'Avec votre accord, nous comptons les étapes entre la fiche produit et la commande. Les statistiques ne contiennent pas vos coordonnées. Vous pouvez modifier ce choix à tout moment.',
+    summary: 'Avec votre accord, nous mesurons les étapes jusqu’à la commande.',
     accept: 'Accepter les statistiques', decline: 'Seulement les cookies nécessaires', withdraw: 'Retirer mon accord',
     active: 'La mesure d’audience est autorisée.', inactive: 'La mesure d’audience est désactivée.',
   },
 };
 
-const paths = /^\/(de-CH|fr-CH)(?:\/(?:movility-one(?:\/3d)?|models\/[a-z0-9][a-z0-9-]{1,23}(?:\/3d)?|compare|cart|checkout(?:\/cart)?|analytics|about|contact|delivery-returns-warranty|privacy|impressum|terms))?$/;
+const paths = /^\/(de-CH|fr-CH)(?:\/(?:mo[bv]ility-one(?:\/3d)?|models\/[a-z0-9][a-z0-9-]{1,23}(?:\/3d)?|compare|cart|checkout(?:\/cart)?|analytics|about|contact|delivery-returns-warranty|privacy|impressum|terms))?$/;
 export function analyticsReturn(locale, path) {
-  return paths.exec(path)?.[1] === locale ? path : `/${locale}`;
+  return paths.exec(path)?.[1] === locale ? path.replace(/^(\/(?:de-CH|fr-CH)\/)movility-one/, '$1mobility-one') : `/${locale}`;
 }
 
 export function analyticsPrompt(locale, choice, returnPath, settings = false) {
   const l = labels[locale];
   const title = settings ? 'h1' : 'h2';
   return `<section class="analytics-choice${settings ? '' : ' cookie-banner'}" aria-labelledby="cookie-choice-title"><${title} id="cookie-choice-title">${settings ? l.settings : l.heading}</${title}>
-    <p>${l.description}</p>
+    <p>${settings ? l.description : l.summary}</p>
     ${settings && choice ? `<p>${choice === 'off' ? l.inactive : l.active}</p>` : ''}
     <form class="product-actions" method="post" action="/${locale}/analytics">
       <input type="hidden" name="return" value="${analyticsReturn(locale, returnPath)}">
@@ -96,29 +99,41 @@ export function analyticsPrompt(locale, choice, returnPath, settings = false) {
 export const analyticsLink = locale => `<a href="/${locale}/analytics">${labels[locale].settings}</a>`;
 
 export function funnelReport(db, query) {
-  const days = query.get('days') === '7' ? 7 : 30;
+  const period = statisticsPeriod(query);
+  const { days, from, to } = period;
   const selectedLanguage = query.get('locale');
   const language = selectedLanguage === 'de-CH' || selectedLanguage === 'fr-CH' ? selectedLanguage : '';
-  const row = db.prepare(`SELECT COUNT(*) AS view, COALESCE(SUM(cart), 0) AS cart, COALESCE(SUM(checkout), 0) AS checkout,
+  const row = !period.invalid && db.prepare(`SELECT COUNT(*) AS view, COALESCE(SUM(cart), 0) AS cart, COALESCE(SUM(checkout), 0) AS checkout,
     COALESCE(SUM(purchase), 0) AS purchase FROM funnel_journeys
-    WHERE started_at >= unixepoch() - ? AND accepted_at > unixepoch() - ? AND (? = '' OR locale = ?)`)
-    .get(days * 86400, retentionSeconds, language, language);
+    WHERE started_at >= ? AND started_at < ? AND accepted_at > unixepoch() - ? AND (? = '' OR locale = ?)`)
+    .get(+period.start / 1000, +period.end / 1000, retentionSeconds, language, language);
   const names = ['Ficha de producto', 'Carrito', 'Inicio de pago', 'Pedido confirmado'];
-  const rate = (value, base) => base ? new Intl.NumberFormat('es', { style: 'percent', maximumFractionDigits: 1 }).format(value / base) : '—';
-  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Embudo de compra</h1>
-    <p>Recorridos con consentimiento que empiezan en una ficha. Se cuenta cada etapa una vez por recorrido, en orden.</p>
+  const rate = (value, base) => base ? new Intl.NumberFormat(adminLocale(), { style: 'percent', maximumFractionDigits: 1 }).format(value / base) : '—';
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Estadísticas de la tienda</h1>
+    <p>Datos de prueba · Fechas de Europe/Zurich</p>
     <form class="order-filter accounting-filter" action="/admin/analytics" method="get">
       <label>Periodo<select name="days"><option value="7" ${days === 7 ? 'selected' : ''}>7 días</option>
       <option value="30" ${days === 30 ? 'selected' : ''}>30 días</option></select></label>
+      <label>Desde<input type="date" name="from" value="${query.get('from') ? from : ''}"></label>
+      <label>Hasta<input type="date" name="to" value="${query.get('to') ? to : ''}"></label>
       <label>Idioma de inicio<select name="locale"><option value="">Todos</option>
       <option value="de-CH" ${language === 'de-CH' ? 'selected' : ''}>Alemán</option>
       <option value="fr-CH" ${language === 'fr-CH' ? 'selected' : ''}>Francés</option></select></label>
-      <button>Filtrar</button></form>
+      <button>Filtrar</button>
+      <a href="/admin/analytics">Limpiar búsqueda y filtros</a></form>
+    <p>Si indicas fechas, ambas son obligatorias y sustituyen al periodo predefinido.</p>
+    ${period.invalid ? adminHtml`<p role="alert">Indica un intervalo válido de hasta 366 días.</p>` : adminHtml`
+    <p><time datetime="${from}">${from}</time> – <time datetime="${to}">${to}</time></p>
+    ${salesStatisticsSection(salesStatistics(db, period))}
+    <section aria-labelledby="funnel-title"><h2 id="funnel-title">Embudo de compra</h2>
+    <p>Recorridos con consentimiento que empiezan en una ficha. Se cuenta cada etapa una vez por recorrido, en orden. La fecha y el idioma corresponden a la primera ficha. El filtro de idioma solo afecta al embudo.</p>
     <div class="inventory-table"><table><thead><tr>
-      <th scope="col">Etapa</th><th scope="col">Recorridos</th><th scope="col">Desde la etapa anterior</th><th scope="col">Desde la ficha</th>
+      <th scope="col">Etapa</th><th scope="col">Recorridos</th><th scope="col">Desde la etapa anterior</th><th scope="col">Desde la ficha</th><th scope="col">No llegaron desde la etapa anterior</th>
     </tr></thead><tbody>${stages.map((stage, index) => adminHtml`<tr>
       <th scope="row">${adminText(names[index])}</th><td>${row[stage]}</td>
       <td>${index ? rate(row[stage], row[stages[index - 1]]) : '—'}</td><td>${rate(row[stage], row.view)}</td>
+      <td>${index ? row[stages[index - 1]] - row[stage] : '—'}</td>
     </tr>`).join('')}</tbody></table></div>
-    <p>Los recuentos corresponden a recorridos, no a todos los pedidos. Los datos se conservan hasta 30 días.</p>`;
+    <p>Desde la etapa anterior: recorridos en esta etapa divididos por los de la etapa previa. Desde la ficha: recorridos en esta etapa divididos por los que vieron una ficha. Un denominador cero se muestra como —.</p>
+    <p>Los recuentos corresponden a recorridos, no a todos los pedidos. Los datos se conservan hasta 30 días.</p></section>`}`;
 }

@@ -10,12 +10,12 @@ const now = () => Math.floor(Date.now() / 1000);
 
 const languages = {
   'de-CH': { title: 'Angebote und Neuigkeiten', email: 'E-Mail-Adresse',
-    consent: 'Ich möchte Angebote und Neuigkeiten von Movility per E-Mail erhalten.',
+    consent: 'Ich möchte Angebote und Neuigkeiten von Mobility per E-Mail erhalten.',
     request: 'Anmeldung anfordern', verify: 'Anmeldung bestätigen', code: 'Bestätigungscode',
     unsubscribe: 'Abmelden', unsubCode: 'Abmeldecode', requested: 'Der Bestätigungscode liegt im simulierten Postfach.',
     active: 'Die Anmeldung wurde bestätigt.', off: 'Du bist von Angeboten abgemeldet.', error: 'Die Angaben konnten nicht bestätigt werden.' },
   'fr-CH': { title: 'Offres et nouveautés', email: 'Adresse e-mail',
-    consent: 'J’accepte de recevoir les offres et nouveautés de Movility par e-mail.',
+    consent: 'J’accepte de recevoir les offres et nouveautés de Mobility par e-mail.',
     request: 'Demander l’inscription', verify: 'Confirmer l’inscription', code: 'Code de confirmation',
     unsubscribe: 'Se désinscrire', unsubCode: 'Code de désinscription', requested: 'Le code est disponible dans la boîte simulée.',
     active: 'Votre inscription a été confirmée.', off: 'Vous êtes désinscrit des offres.', error: 'Les informations n’ont pas pu être confirmées.' },

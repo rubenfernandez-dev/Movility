@@ -1,49 +1,60 @@
-import { setupLegal, legalPaths, legalTitle, legalDraft, publishedLegal, saveLegal, legalAdmin, legalPage, footerGroups } from './legal.mjs';
+import { importPath, maxCsvBytes, catalogTemplate, catalogImportPlan, importConfirmation, applyCatalogImport, catalogImportPage } from './catalog-import.mjs';
 import { adminFragment, adminHtml, adminLanguage, adminLocale, adminPage, adminText, setAdminNavigation } from './admin-language.mjs';
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { basename, join, resolve } from 'node:path';
+import { coreDemoSpecs } from './product-specs.mjs';
+import { setupOneDetails, oneDetails, oneDetailsEditor, saveOneDetails, resetOneVideoPurpose } from './movility-one-details.mjs';
+import { deliveryCountries } from './delivery-countries.mjs';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
-import { navigation, homepage, productPage, cartPage, checkoutPage as renderCheckoutPage, orderPage,
+import { navigation, homepage, homeHero, homeModelDetail, productPage, cartPage, checkoutPage, orderPage,
   productImage, sideImage, videoPath, captionsPath, transcriptPath } from './storefront.mjs';
-import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
+import { comparisonPage, comparisonQuery, comparisonSelection, selectedModels, viewerPage, modelPath, viewerScript } from './discovery.mjs';
+import { chairFilterValues, matchesChairFilters, chairFilterPanel, noChairMatches } from './chair-filters.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
 import { information, informationPage } from './information.mjs';
-import { discoveryAccessoriesImage, discoveryCompareImage, homeDiscovery } from './home-discovery.mjs';
+import { aboutImage, aboutDraftImage, aboutPreview, aboutDraftSettings, aboutDraftEditor, saveAboutDraft } from './about-editorial.mjs';
+import { discoveryAccessoriesImage, discoveryCompareImage } from './home-discovery.mjs';
+import { setupLegal, legalPaths, legalTitle, legalDraft, publishedLegal, saveLegal, legalAdmin, legalPage, footerGroups } from './legal.mjs';
 import { informationAdmin, informationAdminTitles, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
 import { faqAdmin, faqFeedback, setupFaq, shopFaqs, updateFaq } from './faq.mjs';
+import { seedStagingCatalog } from './ops/staging-catalog.mjs';
 import { orderEmail } from './postpurchase.mjs';
-import { setupModels, modelAdmin, modelInput, extraCatalog, extraProduct, isWheelchair,
+import { setupModels, modelAdmin, modelInput, insertModel, previewLinks, extraCatalog, extraProduct, isWheelchair,
   catalogFamilies, saveFamily, familiesAdmin, catalogFeatures, renderFeatures, catalogFilter, storefrontFamilyFilters,
   orderedProducts, saveCatalogPosition, catalogOrderAdmin } from './catalog.mjs';
-import { contentAdmin, receiveMedia } from './catalog-media.mjs';
-import { setupCompatibility, isPart, compatibilityAdmin, compatibilityInput, compatibilityFilter, compatibilitySection } from './compatibility.mjs';
-import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText, cartTotal,
+import { contentAdmin, receiveMedia, receiveUpload, gallerySettings, saveGallery, mediaAvailability, videoFileKinds } from './catalog-media.mjs';
+import { setupCatalogVideos, catalogVideos, catalogVideo, saveCatalogVideo, catalogVideosAdmin } from './catalog-videos.mjs';
+import { setupCompatibility, isPart, compatibilityAdmin, compatibilityInput, compatibilityFilter, compatibilitySection, noConfirmedParts } from './compatibility.mjs';
+import { basketPage, canCheckout, cartCookie, cartLines, cartQuote, cartText,
   changeCart, coreSKU, readCart, skuPattern } from './cart.mjs';
-import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv } from './inventory.mjs';
+import { setupInventory, purchasedLines, returnControls, inventoryPage, inventoryCsv, inventoryBalances } from './inventory.mjs';
 import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
 import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
-  readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
+  readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup, readSupplierSerials, supplierSerialConflict } from './serials.mjs';
 import { adminAuth, adminRouteAllowed, can, changeLocalAdminPassword, encodeAdminPassword, localAdminPassword, roleNames,
   verifyLocalAdminPassword } from './admin-access.mjs';
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
 import { setupMailQueue, queueEmail, deliverBatch, simulatedMailProvider, retryEmail, deliveryStatus, mailQueuePage,
   isRecoveryMail, retireRecoveryMail } from './mail-queue.mjs';
-import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
+import { resendConfig, resendProvider } from './resend-mail.mjs';
 import { setupTracking, trackingStart, trackingEvents, applyTrackingEvent, trackingHistory, trackingForm,
   manualTrackingEvent, normalizeTrackingEvent, carrierSignatureValid, readCarrierBody, shipmentFromToken,
   shipmentPage, shipmentPath, shipmentTokenPattern } from './tracking.mjs';
 import { setupPush, purgePush, pushConfig, pushSubscription, pushState, addPushSubscription, removePushSubscription,
-  queuePush, deliverPush, pushControls } from './order-push.mjs';
+  queuePush, deliverPush, pushControls, pushAdmin } from './order-push.mjs';
 import { stripeMode, createCheckout, verifyStripeEvent, stripeOutcome, setupStripePayments, paymentAttempt,
   reserveStripe, saveStripeSession, applyStripeOutcome, stripeStatus, stripeAdmin, stripeMethodsFor } from './stripe-payments.mjs';
 import { setupStripeRefunds, stripeRefund, refundPending, refundRetryable, requestStripeRefund,
   sendStripeRefund, saveStripeRefundSubmission, applyStripeRefundEvent, refundControls } from './stripe-refunds.mjs';
 import { setupDocuments, billingInput, saveBillingAddress, issueDocument, documentPage } from './billing-documents.mjs';
+import { setupShipping, shippingSettings, saveShippingSettings, shippingAdmin, shippingBlock,
+  checkoutTotals, shippingQuote, legacyShipping, orderShipping, saveOrderShipping } from './shipping.mjs';
+import { setupBillingSettings, billingSettings, billingReadiness, saveBillingSettings, billingSettingsAdmin } from './billing-settings.mjs';
 import { setupGuestProof, issueGuestCode, redeemGuestCode, revokeGuestCode, guestProofCookie,
   verifiedGuestOrder, guestAccessPage, codePage, issueCheckoutAccess, checkoutAccessCookie, hasCheckoutAccess,
   revokeCheckoutAccess, orderAccessPage, requestOrderRecovery, orderRecoveryEmail } from './guest-proof.mjs';
@@ -58,7 +69,14 @@ const siteOrigin = publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN);
 const publicHost = siteOrigin ? new URL(siteOrigin).host : '';
 const stripe = stripeMode(process.env, siteOrigin);
 const stripeHost = stripe ? new URL(stripe.origin).host : '';
-const emailTest = emailTestConfig(process.env, siteOrigin);
+const resend = resendConfig(process.env, siteOrigin);
+const commercial = Boolean(stripe?.live);
+if (commercial !== Boolean(resend?.live) ||
+    (process.env.MOVILITY_ENABLE_LIVE === '1' || process.env.MOVILITY_STAGE === 'production') && !commercial) {
+  throw new Error('Commercial activation requires both stripe-live and resend-live. Keep the pilot separate.');
+}
+const shopBasket = (locale, lines, message, options) => basketPage(locale, lines, message, { ...options, live: commercial });
+const externalMailMode = resend?.live ? 'live' : Boolean(resend);
 const push = pushConfig(process.env);
 const carrierSecret = process.env.MOVILITY_CARRIER_SECRET || '';
 if (carrierSecret && carrierSecret.length < 32) throw new Error('MOVILITY_CARRIER_SECRET needs at least 32 characters.');
@@ -69,18 +87,25 @@ const codespaceHost = CODESPACES === 'true' && CODESPACE_NAME && GITHUB_CODESPAC
 const dbPath = process.env.MOVILITY_DB || 'data/demo.sqlite';
 if (!process.env.MOVILITY_DB) mkdirSync('data', { recursive: true });
 const configuredAdmin = process.env.MOVILITY_ADMIN_PASSWORD;
+if (commercial && (!process.env.MOVILITY_DB || dbPath === ':memory:' || !configuredAdmin?.trim())) {
+  throw new Error('Commercial mode requires an explicit persistent MOVILITY_DB and MOVILITY_ADMIN_PASSWORD.');
+}
 const fixedLocalPassword = !configuredAdmin && !process.env.MOVILITY_DB && CODESPACES !== 'true' && !siteOrigin && !stripe
   ? resolve('data/admin-password.txt') : '';
 let localCredential = fixedLocalPassword ? localAdminPassword(fixedLocalPassword) : null;
+const profile = process.env.MOVILITY_CATALOG_PROFILE || 'demo';
+if (!['demo', 'commercial'].includes(profile)) throw new Error('Unknown catalog profile.');
 const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA busy_timeout = 5000;
   PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS stock (id INTEGER PRIMARY KEY, units INTEGER NOT NULL CHECK (units >= 0));
-  INSERT OR IGNORE INTO stock VALUES (1, 1);
   CREATE TABLE IF NOT EXISTS orders (
     id TEXT PRIMARY KEY, email TEXT NOT NULL, locale TEXT NOT NULL, method TEXT NOT NULL,
     cents INTEGER NOT NULL, status TEXT NOT NULL, tracking TEXT
+  );
+  CREATE TABLE IF NOT EXISTS core_order_names (
+    order_id TEXT PRIMARY KEY REFERENCES orders(id), name TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS notices (
     order_id TEXT NOT NULL REFERENCES orders(id), kind TEXT NOT NULL,
@@ -99,28 +124,61 @@ db.exec(`
     id INTEGER PRIMARY KEY, cents INTEGER NOT NULL CHECK (cents > 0),
     description_de TEXT NOT NULL DEFAULT '', description_fr TEXT NOT NULL DEFAULT ''
   );
-  INSERT OR IGNORE INTO catalog (id, cents) VALUES (1, 249900);
+  CREATE TABLE IF NOT EXISTS storefront_catalog (
+    id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL,
+    core_published INTEGER NOT NULL CHECK(core_published IN (0,1)), featured TEXT NOT NULL
+  );
 `);
 
+const hasLegacyCatalog = Boolean(db.prepare('SELECT 1 FROM catalog WHERE id=1').get());
+const initialProfile = hasLegacyCatalog ? 'demo' : profile;
+db.prepare('INSERT OR IGNORE INTO storefront_catalog VALUES (1,?,?,?)')
+  .run(initialProfile, Number(initialProfile === 'demo'), initialProfile === 'demo' ? 'one' : '');
+const storefrontCatalog = () => db.prepare('SELECT * FROM storefront_catalog WHERE id=1').get();
+const demoCatalog = storefrontCatalog().profile === 'demo';
+if (commercial && demoCatalog) throw new Error('Commercial integrations require a separate commercial catalog database.');
+const corePublished = () => Boolean(storefrontCatalog().core_published);
+db.prepare('INSERT OR IGNORE INTO stock VALUES (1,?)').run(Number(demoCatalog));
+if (demoCatalog) db.exec('INSERT OR IGNORE INTO catalog (id,cents) VALUES (1,249900)');
+
 setupModels(db);
+setupOneDetails(db);
+setupCatalogVideos(db);
 setupCompatibility(db);
-const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get();
+const catalog = () => db.prepare('SELECT * FROM catalog WHERE id = 1').get() || { cents: 0 };
 const extraModel = sku => db.prepare('SELECT * FROM extra_models WHERE sku = ?').get(sku);
 const liveModels = () => db.prepare('SELECT * FROM extra_models WHERE active = 1 ORDER BY name, sku').all();
-const coreCatalogProduct = () => ({ ...purchaseModel(coreSKU), sku: coreSKU, family: 'wheelchair', active: 1 });
+const coreCatalogProduct = () => {
+  if (!demoCatalog) return null;
+  const details = oneDetails(db);
+  const confirmed = { width: details.total_width, weight: details.weight, range: details.range };
+  return { ...catalog(), name: 'Mobility One', units: stock(), sku: coreSKU, family: 'wheelchair', active: Number(corePublished()), ...coreDemoSpecs,
+    ...Object.fromEntries(Object.entries(confirmed).filter(([, value]) => value != null)),
+    demoSpecs: Object.keys(coreDemoSpecs).filter(key => confirmed[key] == null) };
+};
 const compatibilityForPart = sku => db.prepare('SELECT * FROM catalog_compatibility WHERE part=?').all(sku);
 const compatibilityForChair = sku => new Map(db.prepare('SELECT * FROM catalog_compatibility WHERE chair=?').all(sku)
   .map(entry => [entry.part, entry]));
-const activeChairs = () => [coreCatalogProduct(), ...liveModels().filter(isWheelchair)];
-const relatedParts = (locale, sku) => {
+const publicModels = () => [...(corePublished() ? [coreCatalogProduct()] : []), ...liveModels()];
+const activeChairs = () => publicModels().filter(isWheelchair);
+const featuredChair = () => activeChairs().find(model => model.sku === storefrontCatalog().featured);
+const clearFeatured = sku => db.prepare("UPDATE storefront_catalog SET featured='' WHERE featured=?").run(sku);
+const relatedParts = (locale, sku, preview = false) => {
   const matches = compatibilityForChair(sku);
-  return compatibilitySection(locale, orderedProducts(db, liveModels().filter(model => isPart(model) && matches.has(model.sku)))
-    .map(model => ({ ...matches.get(model.sku), ...model })));
+  return compatibilitySection(locale, orderedProducts(db, (preview ? adminCatalogProducts() : liveModels()).filter(model => isPart(model) && matches.has(model.sku)))
+    .map(model => ({ ...matches.get(model.sku), ...model })), false, preview);
 };
-const adminCatalogProducts = () => orderedProducts(db, [coreCatalogProduct(),
+const partCompatibility = (locale, sku, preview = false) => {
+  const entries = new Map(compatibilityForPart(sku).map(entry => [entry.chair, entry]));
+  const chairs = (preview ? adminCatalogProducts().filter(isWheelchair) : activeChairs())
+    .filter(chair => entries.has(chair.sku)).map(chair => ({ ...entries.get(chair.sku), ...chair }));
+  return { html: compatibilitySection(locale, chairs, true, preview), pending: !chairs.length };
+};
+const familyLabel = (locale, family) => catalogFamilies(db).find(item => item.id === family)?.[locale] || '';
+const adminCatalogProducts = () => orderedProducts(db, [...(demoCatalog ? [coreCatalogProduct()] : []),
   ...db.prepare('SELECT * FROM extra_models ORDER BY active DESC, name, sku').all()]);
-const displayModelAdmin = (message, params) => adminPage('Artículos del catálogo', modelAdmin(
-  adminCatalogProducts(), catalogFamilies(db), message, params));
+const displayModelAdmin = (message, params, attempted) => adminPage('Artículos del catálogo', modelAdmin(
+  adminCatalogProducts(), catalogFamilies(db), message, params, attempted));
 const assets = new Map([
   ['/site.css', ['text/css; charset=utf-8', readFileSync(new URL('./site.css', import.meta.url))]],
   [productImage, ['image/jpeg', readFileSync(new URL('./assets/movility-one.jpg', import.meta.url))]],
@@ -135,14 +193,18 @@ const assets = new Map([
   ['/push-worker.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./assets/push-worker.js', import.meta.url))]],
 ]);
 const uploadFolder = resolve((dbPath === ':memory:' ? 'data/in-memory-' + randomUUID() : dbPath) + '.media');
+const draftImageSku = '__about-editorial';
+const draftImageFile = join(uploadFolder, draftImageSku + '.jpg');
+const editorialImageFile = new URL('.' + aboutImage, import.meta.url);
+const editorialDraftSource = () => existsSync(draftImageFile) ? aboutDraftImage : aboutImage;
 function mediaFile(path) {
   const managed = join(uploadFolder, basename(path));
   if (path.startsWith('/assets/models/') && existsSync(managed)) return managed;
   return process.env.MOVILITY_MEDIA_DIR
     ? join(process.env.MOVILITY_MEDIA_DIR, basename(path)) : new URL('.' + path, import.meta.url);
 }
-function modelVideo(sku, locale) {
-  const base = `/assets/models/${sku}`;
+function modelVideo(sku, locale, id) {
+  const base = `/assets/models/${sku}${id ? '.video-' + id : ''}`;
   const bundle = { video: base + '.mp4', captions: base + '.' + locale + '.vtt', transcript: base + '.' + locale + '.txt' };
   if (!Object.values(bundle).every(path => existsSync(mediaFile(path)))) return null;
   const captions = readFileSync(mediaFile(bundle.captions), 'utf8');
@@ -153,14 +215,27 @@ function modelVideo(sku, locale) {
 function modelPhotos(sku) {
   const base = `/assets/models/${sku}`;
   const find = extension => existsSync(mediaFile(base + extension)) ? base + extension : '';
-  return { front: find('.jpg'), side: find('.side.jpg'), rear: find('.rear.jpg') };
+  const photos = { front: find('.jpg'), side: find('.side.jpg'), rear: find('.rear.jpg') };
+  return Object.fromEntries(gallerySettings(db, sku).order.map(slot => [slot, photos[slot]]));
 }
-function modelMedia(sku, locale) {
-  const photos = modelPhotos(sku);
-  const photo = photos.front || photos.side || photos.rear;
+function modelMedia(sku, locale, preview = false) {
+  const settings = gallerySettings(db, sku);
+  const asset = path => preview && path.startsWith('/assets/models/') ? '/admin' + path : path;
+  const files = modelPhotos(sku);
+  const demoPhotos = sku === coreSKU && !Object.values(files).some(Boolean);
+  const fallback = { front: productImage, side: sideImage };
+  const photos = Object.fromEntries(settings.order.map(slot => [slot, asset(demoPhotos ? fallback[slot] || '' : files[slot])]));
+  const photo = Object.values(photos).find(Boolean);
   const video = modelVideo(sku, locale);
   const model = `/assets/models/${sku}.glb`;
-  return { photo, photos, model: existsSync(mediaFile(model)) ? model : '', video: video ? { ...video, poster: photo } : null };
+  const videoAssets = bundle => Object.fromEntries(Object.entries(bundle).map(([key, path]) => [key, asset(path)]));
+  const videos = catalogVideos(db, sku).filter(item => item.published).flatMap(item => {
+    const bundle = modelVideo(sku, locale, item.id);
+    return bundle && modelVideo(sku, locale === 'de-CH' ? 'fr-CH' : 'de-CH', item.id) ? [{ ...videoAssets(bundle), poster: photo, id: 'model-video-' + item.id,
+      title: item['title_' + locale.slice(0, 2)], purpose: item.purpose }] : [];
+  });
+  return { photo, photos, demoPhotos, alts: settings.alts[locale], model: existsSync(mediaFile(model)) ? asset(model) : '',
+    videos, video: video ? { ...videoAssets(video), poster: photo } : null };
 }
 const videoFile = mediaFile(videoPath);
 const videoLocales = new Set();
@@ -191,13 +266,6 @@ const adminRole = adminAuth({ admin: pilotPasswordChange ? undefined : admin,
   finance: process.env.MOVILITY_FINANCE_PASSWORD },
   pilotPasswordChange || fixedLocalPassword ? currentAdminCredential : undefined);
 
-const currentTermsVersion = () => publishedLegal(db, '/terms')?.version;
-const checkoutPage = (locale, cents, id, values, message, model, lines, stripeMethods, invalid) =>
-  renderCheckoutPage(locale, cents, id, values, message, model, lines, stripeMethods, invalid, currentTermsVersion());
-const saveOrderTerms = (id, version, locale) => {
-  if (version) db.prepare('INSERT INTO order_terms VALUES (?,?,?)').run(id, version, locale);
-};
-
 const transaction = (work) => {
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -211,6 +279,9 @@ const transaction = (work) => {
 };
 const stock = () => db.prepare('SELECT units FROM stock WHERE id = 1').get().units;
 transaction(() => {
+  if (demoCatalog && accountsEnabled && process.env.MOVILITY_STAGING_SEED === '1') seedStagingCatalog(db);
+  db.exec(`UPDATE extra_models SET name='Mobility ' || substr(name, 10), revision=revision+1
+    WHERE (sku GLOB 'demo-*' OR sku IN ('qa-chair','qa-bag')) AND name GLOB 'Movility *'`);
   setupInventory(db);
   setupAccounting(db);
   setupSerials(db);
@@ -218,6 +289,11 @@ transaction(() => {
   setupMailQueue(db);
   setupTracking(db);
   setupPush(db);
+  db.exec(`UPDATE push_jobs SET path = (
+    SELECT '/' || sub.locale || '/shipment/' || links.token
+    FROM push_subscriptions AS sub JOIN shipment_links AS links ON links.order_id = sub.order_id
+    WHERE sub.id = push_jobs.subscription_id
+  ) WHERE path IS NULL AND status IN ('queued', 'sending')`);
   setupStripePayments(db);
   setupStripeRefunds(db);
   setupDocuments(db);
@@ -229,9 +305,17 @@ transaction(() => {
   setupFaq(db);
   setupInformation(db);
   setupLegal(db);
+  setupBillingSettings(db);
+  setupShipping(db);
   purgePush(db);
   purgeFunnel(db);
 });
+const currentBilling = () => billingSettings(db, process.env.MOVILITY_CONTACT_EMAIL);
+const billingProfile = () => billingReadiness(currentBilling());
+if (commercial) {
+  const { missing } = billingProfile();
+  if (missing.length) throw new Error('Activación comercial bloqueada. Completa /admin/billing en simulación: ' + missing.join(', '));
+}
 if (accountsEnabled) {
   setInterval(() => {
     try { transaction(() => processCampaigns(db)); }
@@ -239,14 +323,14 @@ if (accountsEnabled) {
   }, 3000).unref();
 }
 setInterval(() => {
-  try { purgeFunnel(db); purgePush(db); }
+  try { purgeFunnel(db); transaction(() => purgePush(db)); }
   catch (error) { console.error('Could not purge expired analytics and push state', error); }
 }, 3600000).unref();
 const sendSimulated = simulatedMailProvider(db);
-const sendResendTest = resendTestProvider(emailTest);
-const mailProvider = message => message.testTarget ? sendResendTest(message) : sendSimulated(message);
+const sendResend = resendProvider(resend);
+const mailProvider = message => message.testTarget ? sendResend(message) : sendSimulated(message);
 let mailRun;
-const processMail = () => mailRun ??= deliverBatch(db, transaction, mailProvider, undefined, 12, Boolean(emailTest))
+const processMail = () => mailRun ??= deliverBatch(db, transaction, mailProvider, undefined, 12, externalMailMode)
   .finally(() => { mailRun = null; });
 if (process.env.MOVILITY_EMAIL_WORKER !== 'manual') {
   setInterval(() => {
@@ -264,15 +348,16 @@ if (push && process.env.MOVILITY_PUSH_WORKER !== 'manual') {
   }, 3000).unref();
 }
 function purchaseModel(sku) {
-  if (sku === coreSKU) return { name: 'Movility One', cents: catalog().cents, units: stock() };
+  if (sku === coreSKU) return corePublished() ? coreCatalogProduct() : null;
   const model = extraModel(sku);
   return model?.active ? { ...model, requires_serial: Number(isWheelchair(model)) } : null;
 }
 const orderLines = id => db.prepare('SELECT sku, name, quantity, cents, requires_serial FROM order_lines WHERE order_id = ? ORDER BY rowid').all(id);
 function orderById(id) {
-  const order = db.prepare(`SELECT orders.*, order_models.sku AS model_sku, order_models.name AS model_name, order_models.requires_serial
-    FROM orders LEFT JOIN order_models ON orders.id = order_models.order_id WHERE orders.id = ?`).get(id);
-  return order ? { ...order, lines: orderLines(id) } : null;
+  const order = db.prepare(`SELECT orders.*, order_models.sku AS model_sku, COALESCE(order_models.name, core_order_names.name) AS model_name, order_models.requires_serial
+    FROM orders LEFT JOIN order_models ON orders.id = order_models.order_id
+    LEFT JOIN core_order_names ON orders.id = core_order_names.order_id WHERE orders.id = ?`).get(id);
+  return order ? { ...order, lines: orderLines(id), shipping: orderShipping(db, id) } : null;
 }
 function changeStock(sku, quantity) {
   if (sku === coreSKU) {
@@ -283,21 +368,27 @@ function changeStock(sku, quantity) {
 }
 function recordMovement(sku, delta, reason, orderId = null) {
   const balance = sku === coreSKU ? stock() : extraModel(sku).units;
-  db.prepare('INSERT INTO stock_movements (sku, delta, balance, reason, order_id) VALUES (?, ?, ?, ?, ?)')
-    .run(sku, delta, balance, reason, orderId);
+  return db.prepare('INSERT INTO stock_movements (sku, delta, balance, reason, order_id) VALUES (?, ?, ?, ?, ?)')
+    .run(sku, delta, balance, reason, orderId).lastInsertRowid;
 }
 function orderStock(sku, quantity, reason, orderId) {
   if (!changeStock(sku, quantity)) throw new Error('Stock changed during order operation');
   recordMovement(sku, quantity, reason, orderId);
 }
-function createPaidOrder(id, method, locale, email, address, items, billing) {
-  db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, cartTotal(items));
+const termsVersion = () => publishedLegal(db, '/terms')?.version;
+function saveOrderTerms(id, locale, version) {
+  if (version) db.prepare('INSERT INTO order_terms VALUES (?,?,?)').run(id, version, locale);
+}
+function createPaidOrder(id, method, locale, email, address, items, billing, shipping) {
+  db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, checkoutTotals(items, shipping).total);
+  saveOrderShipping(db, id, shipping);
   const insertLine = db.prepare('INSERT INTO order_lines VALUES (?, ?, ?, ?, ?, ?)');
   for (const line of items) insertLine.run(id, line.sku, line.name, line.quantity, line.cents, line.requires_serial ?? 1);
   db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
   saveBillingAddress(db, id, billing);
 }
 async function stripeRedirect(res, attempt, locale, render) {
+  if (Boolean(attempt.livemode) !== stripe.live) return render('<h1>404</h1>', 404);
   if (attempt.state === 'paid') return redirect(res, `/${locale}/orders/${attempt.id}`);
   if (attempt.expires_at <= Math.floor(Date.now() / 1000)) return render(stripeStatus(locale, attempt));
   if (attempt.state === 'open' && attempt.checkout_url) return redirect(res, attempt.checkout_url);
@@ -315,24 +406,32 @@ async function stripeRedirect(res, attempt, locale, render) {
 }
 const orderReceipts = id => db.prepare('SELECT sku, quantity, restocked FROM return_receipts WHERE order_id = ?').all(id);
 const orderIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
-const inventoryRows = (sku, limit) => db.prepare(`SELECT * FROM stock_movements
-  WHERE (? = '' OR sku = ?) ORDER BY id DESC LIMIT ?`).all(sku, sku, limit);
+const inventoryRows = (sku, limit) => db.prepare(`SELECT stock_movements.*,
+    (SELECT json_group_array(serial) FROM supplier_receipts JOIN supplier_serials ON receipt_id = supplier_receipts.id
+      WHERE movement_id = stock_movements.id) AS received_serials FROM stock_movements
+  WHERE (? = '' OR sku = ?) ORDER BY id DESC LIMIT ?`).all(sku, sku, limit)
+  .map(move => ({ ...move, serials: JSON.parse(move.received_serials) }));
 const noticeKinds = ['paid', 'shipped', 'delivered', 'refunded'];
 const emailShipmentPath = (order, kind) => ['shipped', 'delivered'].includes(kind)
   ? shipmentPath(db, order.locale, order.id) : '';
 
+const orderIsLive = id => paymentAttempt(db, id)?.livemode === 1;
+const mailTarget = order => resend?.live
+  ? (orderIsLive(order.id) ? { ...resend.target, recipient: order.email } : null)
+  : resend?.target;
 const storeEmail = (order, kind) => {
   const path = emailShipmentPath(order, kind);
-  const { subject, body } = orderEmail(order, kind, path && (siteOrigin ? new URL(path, siteOrigin).href : path));
+  const { subject, body } = orderEmail(order, kind, path && (siteOrigin ? new URL(path, siteOrigin).href : path), siteOrigin, orderIsLive(order.id));
   db.prepare('INSERT INTO email_previews VALUES (?, ?, ?, ?)').run(order.id, kind, subject, body);
 };
-const notice = (id, kind) => {
+const notice = (id, kind, sellerProfile) => {
   db.prepare('INSERT INTO notices VALUES (?, ?)').run(id, kind);
   const order = orderById(id);
-  if (kind === 'paid' || kind === 'refunded') issueDocument(db, order, kind === 'paid' ? 'invoice' : 'credit');
+  if (kind === 'paid' || kind === 'refunded') issueDocument(db, order, kind === 'paid' ? 'invoice' : 'credit',
+    kind === 'paid' ? sellerProfile || billingProfile() : null, orderIsLive(id));
   storeEmail(order, kind);
-  queueEmail(db, id, kind, undefined, emailTest?.target);
-  queuePush(db, id, kind);
+  queueEmail(db, id, kind, undefined, mailTarget(order));
+  queuePush(db, id, kind, emailShipmentPath(order, kind));
   if (kind === 'paid' || kind === 'refunded') recordPayment(db, order, kind === 'paid' ? 'capture' : 'refund');
 };
 const applyCarrierEvent = event => transaction(() => applyTrackingEvent(db, event, id => notice(id, 'delivered')));
@@ -369,9 +468,10 @@ function send(res, status, body, withViewer = false, withPush = false, withLocal
   res.end(body);
 }
 
-function sendVideo(req, res, file = videoFile) {
+function sendVideo(req, res, file = videoFile, privateAsset = false) {
   const size = statSync(file).size;
   const headers = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff' };
+  if (privateAsset) headers['Cache-Control'] = 'private, no-store';
   let start = 0;
   let end = size - 1;
   if (req.headers.range) {
@@ -421,7 +521,7 @@ async function form(req, limit = 16384) {
 
 const orderLabels = { paid: 'Cobrado', shipped: 'Enviado', refunded: 'Reembolsado' };
 
-function adminOrderDetails(order, role, error) {
+function adminOrderDetails(order, role, error, params = new URLSearchParams()) {
   const serialAccess = can(role, 'serials');
   const shippingAccess = can(role, 'shipping');
   const addressAccess = can(role, 'address');
@@ -430,6 +530,7 @@ function adminOrderDetails(order, role, error) {
   const address = addressAccess ? db.prepare('SELECT * FROM delivery_addresses WHERE order_id=?').get(order.id) : null;
   const documents = financeAccess ? db.prepare('SELECT kind FROM billing_documents WHERE order_id = ? ORDER BY number').all(order.id) : [];
   const refund = stripeRefund(db, order.id);
+  const acceptedTerms = financeAccess && db.prepare('SELECT version,locale FROM order_terms WHERE order_id=?').get(order.id);
   const stripeOrder = financeAccess && paymentAttempt(db, order.id);
   const lines = order.lines;
   const serials = serialAccess ? shipmentSerials(db, order.id) : [];
@@ -443,6 +544,8 @@ function adminOrderDetails(order, role, error) {
     ${address ? adminHtml`<p>${escapeHtml(address.name)} · ${escapeHtml(address.street)} · ${escapeHtml(address.zip)} ${escapeHtml(address.city)} · Suiza</p>` : ''}
     ${(shippingAccess || supportAccess) && order.tracking ? adminHtml`<p>Seguimiento: ${escapeHtml(order.tracking)}</p>` : ''}
     ${(shippingAccess || supportAccess) ? trackingHistory(adminLocale(), trackingEvents(db, order.id)) : ''}
+    ${supportAccess && push ? adminHtml`<p><a href="/admin/push?order=${order.id}">Avisos push</a></p>` : ''}
+    ${acceptedTerms ? adminHtml`<p><a href="/${acceptedTerms.locale}/terms?version=${acceptedTerms.version}">Condiciones de venta · ${acceptedTerms.version}</a></p>` : ''}
     ${shippingAccess ? trackingForm(order) : ''}
     ${supportAccess ? adminHtml`<h3>Bandeja de correo simulada</h3><ul>${notices}</ul>` : ''}
     ${shippingAccess && order.status === 'paid' ? refundPending(refund)
@@ -455,54 +558,70 @@ function adminOrderDetails(order, role, error) {
       </form></details>` : ''}
     ${documents.length ? adminHtml`<p>${documents.map(({ kind }) =>
       `<a href="/admin/${order.id}/document/${kind}">${adminText(kind === 'invoice' ? 'Factura de prueba' : 'Abono de prueba')}</a>`).join(' · ')}</p>` : ''}
-    ${stripeOrder ? refundControls(order, refund, Boolean(stripe))
+    ${stripeOrder ? refundControls(order, refund, Boolean(stripe) && Boolean(stripeOrder.livemode) === stripe.live, stripeOrder.livemode)
       : financeAccess && order.status !== 'refunded' ? adminHtml`<form method="post" action="/admin/${order.id}/refund"><button>Reembolsar en la simulación</button></form>` : ''}
     ${shippingAccess ? returnControls({ ...order, lines }, orderReceipts(order.id), serials) : ''}
   </article>`;
-  return adminPage('Detalle del pedido', adminHtml`<p><a href="/admin/orders">Volver a pedidos</a></p>
+  return adminPage('Detalle del pedido', adminHtml`<p><a href="/admin/orders${orderListQuery(params)}">Volver a pedidos</a></p>
     <h1>Detalle del pedido</h1>${error ? adminHtml`<p class="form-error" role="alert">${adminText(error)}</p>` : ''}${card}`);
 }
 
+function orderListQuery(params, page = params.get('page')) {
+  const { from, to } = accountingFilters(params);
+  const query = new URLSearchParams();
+  const status = params.get('status');
+  const search = params.get('q')?.trim().slice(0, 80);
+  if (Object.hasOwn(orderLabels, status)) query.set('status', status);
+  if (search) query.set('q', search);
+  if (from) query.set('from', from);
+  if (to) query.set('to', to);
+  if (/^\d+$/.test(page || '') && Number(page) > 1) query.set('page', page);
+  return query.size ? '?' + escapeHtml(query.toString()) : '';
+}
+
 function adminOrdersPage(role, params) {
+  const dates = new URLSearchParams();
+  for (const key of ['from', 'to']) if (params.has(key)) dates.set(key, params.get(key));
+  const { from, to, invalid } = accountingFilters(dates);
   const status = Object.hasOwn(orderLabels, params.get('status')) ? params.get('status') : '';
   const search = (params.get('q') || '').trim().slice(0, 80);
   const trackingAccess = can(role, 'shipping') || can(role, 'support');
   const financeAccess = can(role, 'finance');
+  const source = `FROM orders LEFT JOIN payment_entries AS capture ON capture.order_id = orders.id AND capture.kind = 'capture'`;
   const where = `WHERE (? = '' OR status = ?) AND
-    (instr(lower(id), lower(?)) > 0 OR (? = 1 AND instr(lower(coalesce(tracking, '')), lower(?)) > 0))`;
-  const binding = [status, status, search, Number(trackingAccess), search];
-  const total = db.prepare('SELECT count(*) AS total FROM orders ' + where).get(...binding).total;
+    (instr(lower(id), lower(?)) > 0 OR (? = 1 AND instr(lower(coalesce(tracking, '')), lower(?)) > 0))
+    AND (? = '' OR capture.occurred_at >= ?) AND (? = '' OR capture.occurred_at < ? || 'T24')`;
+  const binding = [status, status, search, Number(trackingAccess), search, from, from, to, to];
+  const total = invalid ? 0 : db.prepare('SELECT count(*) AS total ' + source + ' ' + where).get(...binding).total;
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const rawPage = params.get('page') || '';
   const currentPage = /^\d+$/.test(rawPage) ? Math.max(1, Math.min(Number(rawPage), pageCount)) : 1;
-  const rows = db.prepare(`SELECT id, status, tracking, cents,
+  const rows = invalid ? [] : db.prepare(`SELECT orders.id, status, tracking, orders.cents, capture.occurred_at,
     COALESCE((SELECT name FROM order_lines WHERE order_id=orders.id ORDER BY rowid LIMIT 1),
-      (SELECT name FROM order_models WHERE order_id=orders.id), 'Movility One') AS product
-    FROM orders ${where}
-    ORDER BY rowid DESC LIMIT ? OFFSET ?`).all(...binding, pageSize, (currentPage - 1) * pageSize);
-  const pageLink = number => {
-    const query = new URLSearchParams();
-    if (status) query.set('status', status);
-    if (search) query.set('q', search);
-    if (number > 1) query.set('page', String(number));
-    return '/admin/orders' + (query.size ? '?' + escapeHtml(query.toString()) : '');
-  };
+      (SELECT name FROM order_models WHERE order_id=orders.id),
+      (SELECT name FROM core_order_names WHERE order_id=orders.id), 'Movility One') AS product
+    ${source} ${where}
+    ORDER BY orders.rowid DESC LIMIT ? OFFSET ?`).all(...binding, pageSize, (currentPage - 1) * pageSize);
+  const pageLink = number => '/admin/orders' + orderListQuery(params, number);
   return adminPage('Pedidos', adminHtml`<h1>Pedidos</h1>
     <form class="catalog-filters" method="get" action="/admin/orders">
       <label>${adminText(trackingAccess ? 'Referencia o número de seguimiento' : 'Referencia del pedido')}
         <input type="search" name="q" value="${escapeHtml(search)}" maxlength="80"></label>
       <label>Estado del pedido <select name="status"><option value="">Todos</option>
         ${Object.entries(orderLabels).map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${adminText(label)}</option>`).join('')}
-      </select></label><button>Buscar</button>
-      ${status || search ? adminFragment('<a href="/admin/orders">Limpiar búsqueda y filtros</a>') : ''}</form>
-    ${rows.length ? adminHtml`<ul class="admin-orders-list">${rows.map(row => adminHtml`<li>
-      <a href="/admin/orders/${row.id}"><strong>${escapeHtml(row.product)}</strong><small>${row.id}</small></a>
+      </select></label>
+      <label>Desde (UTC)<input type="date" name="from" value="${from}"></label>
+      <label>Hasta (UTC)<input type="date" name="to" value="${to}"></label><button>Buscar</button>
+      ${status || search || dates.size ? adminFragment('<a href="/admin/orders">Limpiar búsqueda y filtros</a>') : ''}</form>
+    ${invalid ? adminFragment('<p class="form-error" role="alert">Revisa el intervalo de fechas.</p>') : rows.length ? adminHtml`<ul class="admin-orders-list">${rows.map(row => adminHtml`<li>
+      <a href="/admin/orders/${row.id}${orderListQuery(params, currentPage)}"><strong>${escapeHtml(row.product)}</strong><small>${row.id}</small></a>
       <span>${adminText(orderLabels[row.status])}</span>
+      ${row.occurred_at ? adminHtml`<time datetime="${row.occurred_at}">${row.occurred_at.slice(0, 10)}</time>` : adminText('Sin fecha registrada')}
       ${trackingAccess && row.tracking ? `<span>${escapeHtml(row.tracking)}</span>` : ''}
       ${financeAccess ? `<span>${money(adminLocale(), row.cents)}</span>` : ''}</li>`).join('')}</ul>`
       : adminHtml`<p>${adminText(status ? 'No hay pedidos con este estado.' : search ?
-        'No hay pedidos que coincidan con la búsqueda.' : 'Todavía no hay pedidos.')}</p>`}
+        'No hay pedidos que coincidan con la búsqueda.' : from || to ? 'No hay pedidos en este intervalo.' : 'Todavía no hay pedidos.')}</p>`}
     ${pageCount > 1 ? adminHtml`<nav class="product-actions" aria-label="Páginas de pedidos">
       ${currentPage > 1 ? adminHtml`<a class="button secondary" href="${pageLink(currentPage - 1)}">Anterior</a>` : ''}
       <span>Página ${currentPage} de ${pageCount}</span>
@@ -510,15 +629,19 @@ function adminOrdersPage(role, params) {
     </nav>` : ''}`);
 }
 function adminView({ role, error, saved, draft }) {
-  const catalogAccess = can(role, 'catalog');
+  const catalogAccess = demoCatalog && can(role, 'catalog');
   const stockAccess = can(role, 'stock');
   const supportAccess = can(role, 'support');
   const financeAccess = can(role, 'finance');
   const model = catalog();
   const units = stock();
-  const pendingOrders = db.prepare("SELECT count(*) AS total FROM orders WHERE status='paid'").get().total;
-  const pendingContacts = supportAccess && db.prepare('SELECT count(*) AS total FROM contact_messages WHERE resolved=0').get().total;
-  const failedMail = supportAccess && db.prepare("SELECT count(*) AS total FROM mail_jobs WHERE status='failed'").get().total;
+  const counter = (path, label, sql) => {
+    let total;
+    try { total = db.prepare(sql).get().total; }
+    catch (error) { console.error('Could not load admin counter', path, error); }
+    return adminHtml`<a href="${path}"><strong>${total ?? '—'}</strong>${adminText(label)}
+      ${total == null ? adminFragment('<small>Error de carga</small>') : ''}</a>`;
+  };
   const totals = db.prepare(`SELECT COUNT(*) AS quantity, COALESCE(SUM(cents), 0) AS gross,
     COALESCE(SUM(CASE WHEN status = 'refunded' THEN cents ELSE 0 END), 0) AS refunds FROM orders`).get();
   const breakdown = db.prepare(`SELECT method, COUNT(*) AS quantity, SUM(cents) AS gross,
@@ -528,9 +651,10 @@ function adminView({ role, error, saved, draft }) {
     <p>Perfil: ${adminText(roleNames[role])}</p>
     <section aria-labelledby="admin-work"><h2 id="admin-work">Pendientes de atención</h2>
       <div class="admin-overview-links">
-        <a href="/admin/orders?status=paid"><strong>${pendingOrders}</strong>Pedidos por expedir</a>
-        ${supportAccess ? adminHtml`<a href="/admin/contact"><strong>${pendingContacts}</strong>Consultas sin resolver</a>
-          <a href="/admin/mail"><strong>${failedMail}</strong>Correos con errores</a>` : ''}
+        ${counter('/admin/orders?status=paid', 'Pedidos por expedir', "SELECT count(*) AS total FROM orders WHERE status='paid'")}
+        ${financeAccess ? counter('/admin/stripe?status=open', 'Reservas abiertas', "SELECT count(*) AS total FROM stripe_attempts WHERE state IN ('preparing','open')") : ''}
+        ${supportAccess ? counter('/admin/contact', 'Consultas sin resolver', 'SELECT count(*) AS total FROM contact_messages WHERE resolved=0') +
+          counter('/admin/mail?status=failed', 'Correos con errores', "SELECT count(*) AS total FROM mail_jobs WHERE status='failed'") : ''}
       </div></section>
     <p>${stockAccess ? adminHtml`Unidades disponibles: ${units} · ` : ''}Pedidos: ${totals.quantity}</p>
     ${financeAccess ? adminHtml`<dl class="admin-metrics"><div><dt>Cobros</dt><dd>${money('es', totals.gross)}</dd></div>
@@ -545,13 +669,15 @@ function adminView({ role, error, saved, draft }) {
     ${error ? adminHtml`<p class="form-error" role="alert">${adminText(error)}</p>` : ''}
     ${catalogAccess && saved ? adminFragment('<p class="form-success" role="status">Cambios guardados. Ya están visibles en la tienda.</p>') : ''}
     ${catalogAccess ? adminHtml`<form id="catalog-editor" class="admin-catalog" method="post" action="/admin/catalog">
-      <fieldset><legend>Catálogo · Movility One</legend>
+      <fieldset><legend>Catálogo · Mobility One</legend>
         <input type="hidden" name="expectedUnits" value="${units}">
         <input type="hidden" name="expectedPrice" value="${model.cents}">
         <div class="address-row"><label>Precio en CHF <input name="price" inputmode="decimal" required value="${escapeHtml(draft?.price ?? (model.cents / 100).toFixed(2))}"></label>
         <label>Unidades disponibles <input type="number" name="units" min="0" max="999" step="1" required value="${escapeHtml(draft?.units ?? String(units))}"></label></div>
         <label>Descripción en alemán<textarea name="descriptionDe" rows="3" maxlength="500" lang="de-CH">${escapeHtml(draft?.descriptionDe ?? (model.description_de || copy['de-CH'].description))}</textarea></label>
         <label>Descripción en francés<textarea name="descriptionFr" rows="3" maxlength="500" lang="fr-CH">${escapeHtml(draft?.descriptionFr ?? (model.description_fr || copy['fr-CH'].description))}</textarea></label>
+        <input type="hidden" name="publication" value="1">
+        <label><input type="checkbox" name="active" value="1" ${corePublished() ? 'checked' : ''}> Publicado en la tienda</label>
         <button>Guardar cambios en la tienda</button>
       </fieldset>
     </form>` : ''}
@@ -584,7 +710,7 @@ const server = createServer(async (req, res) => {
     if (!req.headers.host || ![...localHosts, codespaceHost, stripeHost, publicHost].includes(req.headers.host)) {
       return send(res, 403, 'Forbidden');
     }
-    const { pathname: path, searchParams } = new URL(req.url, 'http://localhost');
+    const { pathname: path, search, searchParams } = new URL(req.url, 'http://localhost');
     if (req.method === 'GET' && path === '/healthz') {
       try {
         if (db.prepare('SELECT id FROM stock WHERE id = 1').get()) return carrierResponse(res, 200, 'ok');
@@ -602,14 +728,14 @@ const server = createServer(async (req, res) => {
       if (['refund.created', 'refund.updated', 'refund.failed'].includes(event.type)) {
         return carrierResponse(res, 200, transaction(() => applyStripeRefundEvent(db, event, finishRefund)));
       }
-      const outcome = stripeOutcome(event);
+      const outcome = stripeOutcome(event, stripe.live);
       if (!outcome) return carrierResponse(res, 200, 'ignored');
       const result = transaction(() => applyStripeOutcome(db, outcome, {
         release: line => orderStock(line.sku, line.quantity, 'release', null),
         fulfill: (attempt, data) => {
-          createPaidOrder(attempt.id, attempt.method, data.locale, data.email, data.address, data.lines, data.billing);
-          saveOrderTerms(attempt.id, data.termsVersion, data.locale);
-          notice(attempt.id, 'paid');
+          createPaidOrder(attempt.id, attempt.method, data.locale, data.email, data.address, data.lines, data.billing, data.shipping);
+          saveOrderTerms(attempt.id, data.locale, data.terms);
+          notice(attempt.id, 'paid', data.sellerProfile);
         },
       }));
       return carrierResponse(res, 200, result);
@@ -628,17 +754,37 @@ const server = createServer(async (req, res) => {
       const outcome = applyCarrierEvent(event);
       return carrierResponse(res, { applied: 200, duplicate: 200, conflict: 409, unmatched: 422 }[outcome], outcome);
     }
-    const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(?:(side\.|rear\.)?jpg|glb|mp4|(de-CH|fr-CH)\.(?:vtt|txt))$/.exec(path);
-    if (modelAsset && ['GET', 'HEAD'].includes(req.method) && (modelAsset[1] === coreSKU || extraModel(modelAsset[1])?.active) && existsSync(mediaFile(path))) {
+    const privateAsset = path.startsWith('/admin/assets/models/');
+    const assetPath = privateAsset ? path.slice('/admin'.length) : path;
+    const videoAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.video-([1-9]\d{0,11})\.(mp4|(de-CH|fr-CH)\.(vtt|txt))$/.exec(assetPath);
+    if (videoAsset && ['GET', 'HEAD'].includes(req.method)) {
+      if (privateAsset && adminRole(req.headers.authorization) !== 'admin') return send(res, 403, 'Acceso restringido');
+      const [, sku, id, suffix, language, extension] = videoAsset;
+      const item = catalogVideo(db, sku, id);
+      const complete = item && (privateAsset
+        ? (language ? modelVideo(sku, language, id) : Object.keys(copy).some(locale => modelVideo(sku, locale, id)))
+        : item.published && Object.keys(copy).every(locale => modelVideo(sku, locale, id)));
+      if (!complete || (sku !== coreSKU && !(privateAsset ? extraModel(sku) : extraModel(sku)?.active))) {
+        return send(res, 404, 'Vídeo no disponible');
+      }
+      if (suffix === 'mp4') return sendVideo(req, res, mediaFile(assetPath), privateAsset);
+      const data = readFileSync(mediaFile(assetPath));
+      res.writeHead(200, { 'Content-Type': (extension === 'vtt' ? 'text/vtt' : 'text/plain') + '; charset=utf-8',
+        'Content-Length': data.length, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': privateAsset ? 'private, no-store' : 'no-cache' });
+      return res.end(req.method === 'HEAD' ? undefined : data);
+    }
+    const modelAsset = /^\/assets\/models\/([a-z0-9][a-z0-9-]{1,23})\.(?:(side\.|rear\.)?jpg|glb|mp4|(de-CH|fr-CH)\.(?:vtt|txt))$/.exec(assetPath);
+    if (modelAsset && privateAsset && adminRole(req.headers.authorization) !== 'admin') return send(res, 403, 'Acceso restringido');
+    if (modelAsset && ['GET', 'HEAD'].includes(req.method) && (modelAsset[1] === coreSKU || (privateAsset ? extraModel(modelAsset[1]) : extraModel(modelAsset[1])?.active)) && existsSync(mediaFile(assetPath))) {
       const [, sku, , trackLocale] = modelAsset;
       if (path.endsWith('.mp4')) {
-        if (Object.keys(copy).some(language => modelVideo(sku, language))) return sendVideo(req, res, mediaFile(path));
+        if (Object.keys(copy).some(language => modelVideo(sku, language))) return sendVideo(req, res, mediaFile(assetPath), privateAsset);
       } else if (!trackLocale || modelVideo(sku, trackLocale)) {
         const types = { jpg: 'image/jpeg', glb: 'model/gltf-binary', vtt: 'text/vtt; charset=utf-8', txt: 'text/plain; charset=utf-8' };
         const extension = path.split('.').at(-1);
-        const data = readFileSync(mediaFile(path));
+        const data = readFileSync(mediaFile(assetPath));
         res.writeHead(200, { 'Content-Type': types[extension], 'Content-Length': data.length,
-          'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
+          'X-Content-Type-Options': 'nosniff', 'Cache-Control': privateAsset ? 'private, no-store' : 'no-cache' });
         return res.end(req.method === 'HEAD' ? undefined : data);
       }
     }
@@ -646,9 +792,13 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end('User-agent: *\nDisallow: /admin\n');
     }
+    if (req.method === 'GET' && path === aboutImage && existsSync(editorialImageFile)) {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(readFileSync(editorialImageFile));
+    }
     if (req.method === 'GET' && path === '/sitemap.xml' && siteOrigin) {
       res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'X-Robots-Tag': 'noindex' });
-      return res.end(sitemap(siteOrigin));
+      return res.end(sitemap(siteOrigin, liveModels().map(model => '/models/' + model.sku), corePublished()));
     }
     if (['GET', 'HEAD'].includes(req.method) && path === videoPath && videoLocales.size) return sendVideo(req, res);
     if (req.method === 'GET' && assets.has(path)) {
@@ -664,21 +814,28 @@ const server = createServer(async (req, res) => {
       path === `/${locale}/shipment/${third}`;
     const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
+    if (['GET', 'HEAD'].includes(req.method) && ['/movility-one', '/movility-one/3d'].includes(suffix)) {
+      res.writeHead(308, { Location: '/' + locale + suffix.replace('/movility-one', '/mobility-one') + search,
+        'X-Robots-Tag': 'noindex, nofollow' });
+      return res.end();
+    }
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
     const languagePath = legalPaths.includes(suffix) || isPublicPage(suffix) || ['/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
       modelRoute || shipmentRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
-    const galleryView = ['side', 'rear'].includes(view) ? view : 'front';
+    const galleryView = ['front', 'side', 'rear'].includes(view) ? view : '';
     const selectedSKU = searchParams.get('model') || '';
-    const catalogueQuery = new URLSearchParams();
-    if (!suffix && searchParams.has('family')) catalogueQuery.set('family', searchParams.get('family'));
-    if (catalogueQuery.size && searchParams.has('compatible')) catalogueQuery.set('compatible', searchParams.get('compatible'));
-    const languageQuery = catalogueQuery.size ? `?${catalogueQuery}#catalogue`
-      : ['/cart', '/checkout'].includes(languagePath) && skuPattern.test(selectedSKU) ? `?model=${selectedSKU}`
-      : languagePath === '/compare' && searchParams.size ? `?${searchParams}`
-      : (languagePath === '/movility-one' || modelRoute && !modelRoute[2]) && galleryView !== 'front'
-        ? `?view=${galleryView}#gallery` : '';
+    const context = comparisonQuery(searchParams);
+    const productRoute = languagePath === '/mobility-one' || modelRoute && !modelRoute[2];
+    const alternate = !suffix || productRoute || languagePath === '/compare' ? comparisonQuery(context) : new URLSearchParams();
+    if (languagePath === '/terms' && /^[1-9]\d{0,8}$/.test(searchParams.get('version') || '')) alternate.set('version', searchParams.get('version'));
+    if (languagePath === '/compare' && searchParams.get('differences') === '1') alternate.set('differences', '1');
+    if (productRoute && galleryView) alternate.set('view', galleryView);
+    if (['/cart', '/checkout', '/contact'].includes(languagePath) && skuPattern.test(selectedSKU)) alternate.set('model', selectedSKU);
+    if (languagePath === '/contact' && searchParams.get('topic') === 'compatibility') alternate.set('topic', 'compatibility');
+    const languageQuery = alternate.size ? '?' + alternate.toString() +
+      (productRoute && galleryView ? '#gallery' : !suffix ? '#catalogue' : '') : '';
     const discoverable = first === locale && isPublicPage(suffix);
     const editorial = first === locale && suffix === '/' + second && Object.hasOwn(informationAdminTitles, second)
       ? informationSettings(db, second, process.env.MOVILITY_CONTACT_EMAIL) : null;
@@ -690,16 +847,17 @@ const server = createServer(async (req, res) => {
       try { recordFunnel(db, consent, locale, stage); }
       catch (error) { console.error('Could not record analytics stage', error); }
     };
-    const render = (body, status = 200, feature = '', title = t.title) => send(res, status,
-      page(locale, title, body, navigation(locale, languagePath, languageQuery, cartUnits),
-        discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin, editorial &&
-          [editorial['title_' + editorialLocale], editorial['intro_' + editorialLocale]]) : {}, {
+    const render = (body, status = 200, feature = '', metadata) => send(res, status,
+      page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits, context),
+        (discoverable || metadata) && status === 200 ? pageMetadata(locale, suffix, siteOrigin, metadata || (editorial &&
+          [editorial['title_' + editorialLocale], editorial['intro_' + editorialLocale]])) : {}, {
           feature,
           storefront: true,
+          commercial,
           footer: footerGroups(locale, analyticsLink(locale), accountsEnabled),
           prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute || legalPaths.includes(suffix))
             ? analyticsPrompt(locale, consent, path) : '',
-        }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute),
+        }), languagePath === '/mobility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute),
         path === `/${locale}`);
     const origin = req.headers.origin;
     const secureRequest = !localHosts.includes(req.headers.host);
@@ -726,11 +884,11 @@ const server = createServer(async (req, res) => {
         if (!sub) return carrierResponse(res, 400, 'invalid');
         active = transaction(() => {
           if (orderById(third).status === 'refunded' || trackingEvents(db, third).some(event => event.event_status === 'delivered')) return false;
-          addPushSubscription(db, third, sub, locale, push.mode);
+          addPushSubscription(db, third, sub, order.locale, push.mode);
           return true;
         });
       } else if (input?.action === 'unsubscribe' || input?.action === 'status') {
-        if (input.action === 'unsubscribe') removePushSubscription(db, third, input.endpoint);
+        if (input.action === 'unsubscribe') transaction(() => removePushSubscription(db, third, input.endpoint));
         active = pushState(db, third, input.endpoint, push.mode);
       } else return carrierResponse(res, 400, 'invalid');
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -739,7 +897,7 @@ const server = createServer(async (req, res) => {
     if (first === 'admin') return await adminLanguage(req, res, path, searchParams, async () => {
       const role = adminRole(req.headers.authorization);
       if (!role) {
-        res.setHeader('WWW-Authenticate', 'Basic realm="Movility local demo", charset="UTF-8"');
+        res.setHeader('WWW-Authenticate', 'Basic realm="Mobility local demo", charset="UTF-8"');
         return send(res, 401, 'Authentication required');
       }
       setAdminNavigation(role, accountsEnabled);
@@ -759,13 +917,64 @@ const server = createServer(async (req, res) => {
             result === 'invalid' ? { id, fields } : undefined));
         }
       }
+      if (role === 'admin') {
+        const previewLocale = path.startsWith(aboutPreview + '/') ? path.slice(aboutPreview.length + 1) : '';
+        if (req.method === 'GET' && ['de-CH', 'fr-CH'].includes(previewLocale)) {
+          const other = previewLocale === 'de-CH' ? 'fr-CH' : 'de-CH';
+          const body = informationPage(previewLocale, '/about', informationSettings(db, 'about'), undefined,
+            { ...aboutDraftSettings(db), image: editorialDraftSource() });
+          return send(res, 200, page(previewLocale, 'Mobility', body,
+            navigation(previewLocale, '/about', '', 0, undefined, aboutPreview + '/' + other), {}, { storefront: true }));
+        }
+        if (path === aboutDraftImage && req.method === 'GET' && existsSync(draftImageFile)) {
+          res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store',
+            'X-Robots-Tag': 'noindex, nofollow', 'X-Content-Type-Options': 'nosniff' });
+          return res.end(readFileSync(draftImageFile));
+        }
+        if (req.method === 'POST' && path === aboutDraftImage) {
+          const valid = await receiveMedia(req, uploadFolder, draftImageSku, 'front');
+          return redirect(res, '/admin/content/about?draft=' + (valid ? 'saved' : 'invalid') + '#about-draft-title');
+        }
+        if (req.method === 'POST' && path === '/admin/content/about/draft') {
+          const status = saveAboutDraft(db, await form(req, 60000));
+          return redirect(res, '/admin/content/about?draft=' + (status === 303 ? 'saved' : status === 409 ? 'conflict' : 'invalid') + '#about-draft-title');
+        }
+      }
+      if (role === 'admin' && path === '/admin/legal') return redirect(res, '/admin/legal/impressum');
+      const legalEditor = /^\/admin\/legal(\/(?:impressum|privacy|terms))(?:\/preview\/(de-CH|fr-CH))?$/.exec(path);
+      if (role === 'admin' && legalEditor) {
+        const [, legalPath, previewLocale] = legalEditor;
+        const seller = billingProfile().seller;
+        if (req.method === 'GET' && previewLocale) {
+          res.setHeader('Referrer-Policy', 'no-referrer');
+          return send(res, 200, page(previewLocale, legalTitle(previewLocale, legalPath),
+            legalPage(previewLocale, legalPath, legalDraft(db, legalPath), seller)));
+        }
+        if (req.method === 'GET') return send(res, 200, adminPage('Contenidos legales',
+          legalAdmin(db, legalPath, seller, searchParams.has('saved') ? 'saved' : '')));
+        if (req.method === 'POST' && !previewLocale) {
+          const fields = await form(req, 300000);
+          const result = transaction(() => saveLegal(db, legalPath, fields, billingProfile().seller));
+          return result === 'saved' ? redirect(res, path + '?saved=1') : send(res, result === 'invalid' ? 400 : 409,
+            adminPage('Contenidos legales', legalAdmin(db, legalPath, seller, result, fields)));
+        }
+      }
       const contentRouteMatch = /^\/admin\/content\/([a-z-]+)$/.exec(path);
       if (contentRouteMatch && Object.hasOwn(informationAdminTitles, contentRouteMatch[1]) && ['GET', 'POST'].includes(req.method)) {
         const key = contentRouteMatch[1];
-        const panel = result => adminPage(informationAdminTitles[key],
-          informationAdmin(key, informationSettings(db, key, process.env.MOVILITY_CONTACT_EMAIL), result));
+        const draftMessages = { saved: 'Borrador guardado.', invalid: 'Revisa los campos del borrador o el formato JPG.',
+          conflict: 'El borrador cambió mientras lo editabas.' };
+        const panel = (result, warning = '') => adminPage(informationAdminTitles[key],
+          warning + informationAdmin(key, informationSettings(db, key, process.env.MOVILITY_CONTACT_EMAIL), result) +
+          (key === 'about' ? aboutDraftEditor(aboutDraftSettings(db), editorialDraftSource(),
+            Object.hasOwn(draftMessages, searchParams.get('draft')) ? draftMessages[searchParams.get('draft')] : '') : ''));
         if (req.method === 'GET') return send(res, 200, panel(searchParams.has('saved') ? { status: 'saved' } : {}));
-        const result = saveInformation(db, key, await form(req, 100000));
+        const fields = await form(req, 100000);
+        if (commercial && key === 'contact' && !currentBilling().settings.email && !fields?.get('email')?.trim()) {
+          return send(res, 409, panel({},
+            adminFragment('<p role="alert">El emisor usa el correo público. Añade un correo propio en Emisor y fiscalidad antes de eliminarlo.</p>')));
+        }
+        const result = saveInformation(db, key, fields);
         return result.status === 'saved' ? redirect(res, path + '?saved=1') :
           send(res, result.status === 'conflict' ? 409 : 400, panel(result));
       }
@@ -778,25 +987,6 @@ const server = createServer(async (req, res) => {
             return send(res, 400, adminPage('Bandeja de contacto', adminFragment('<p role="alert">Consulta no disponible.</p>')));
           }
           return redirect(res, '/admin/contact');
-        }
-      }
-      if (role === 'admin' && path === '/admin/legal' && req.method === 'GET') return redirect(res, '/admin/legal/impressum');
-      const legalEditor = /^\/admin\/legal(\/(?:impressum|privacy|terms))(?:\/preview\/(de-CH|fr-CH))?$/.exec(path);
-      if (role === 'admin' && legalEditor) {
-        const [, legalPath, previewLocale] = legalEditor;
-        const seller = informationSettings(db, 'contact', process.env.MOVILITY_CONTACT_EMAIL);
-        if (req.method === 'GET' && previewLocale) {
-          res.setHeader('Referrer-Policy', 'no-referrer');
-          return send(res, 200, page(previewLocale, legalTitle(previewLocale, legalPath),
-            legalPage(previewLocale, legalPath, legalDraft(db, legalPath), seller)));
-        }
-        if (req.method === 'GET') return send(res, 200, adminPage('Contenidos legales',
-          legalAdmin(db, legalPath, searchParams.has('saved') ? 'saved' : '')));
-        if (req.method === 'POST' && !previewLocale) {
-          const fields = await form(req, 300000);
-          const result = transaction(() => saveLegal(db, legalPath, fields, seller));
-          return result === 'saved' ? redirect(res, path + '?saved=1') : send(res, result === 'invalid' ? 400 : 409,
-            adminPage('Contenidos legales', legalAdmin(db, legalPath, result, fields)));
         }
       }
       if (path === '/admin/security' && ['GET', 'POST'].includes(req.method)) {
@@ -828,17 +1018,46 @@ const server = createServer(async (req, res) => {
         if (!allowed || !(pilotPasswordChange ? transaction(updatePassword) : updatePassword())) return security(editor(adminFragment('<p class="form-error" role="alert">Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos campos.</p>')), 400);
         return security(adminFragment('<p class="form-success" role="status">Contraseña actualizada. Vuelve a entrar con la nueva clave.</p>'));
       }
+      if (role === 'admin' && path === '/admin/shipping') {
+        const panel = (result = '', status = 200) => send(res, status, adminPage('Tarifa de envío en Suiza',
+          shippingAdmin(shippingSettings(db), billingProfile().tax, result)));
+        if (req.method === 'GET') return panel(searchParams.has('saved') ? 'saved' : '');
+        if (req.method === 'POST') {
+          const fields = await form(req);
+          const result = transaction(() => saveShippingSettings(db, fields, billingProfile().tax));
+          return result === 'saved' ? redirect(res, '/admin/shipping?saved=1') : panel(result, result === 'invalid' ? 400 : 409);
+        }
+      }
+      if (role === 'admin' && path === '/admin/billing') {
+        const panel = (result = '', status = 200) => send(res, status,
+          adminPage('Emisor y fiscalidad', billingSettingsAdmin(currentBilling(), result)));
+        if (req.method === 'GET') return panel(searchParams.has('saved') ? 'saved' : '');
+        if (req.method === 'POST') {
+          const fields = await form(req);
+          const result = transaction(() => saveBillingSettings(db, fields, currentBilling(), commercial));
+          return result === 'saved' ? redirect(res, '/admin/billing?saved=1')
+            : panel(result, result === 'invalid' ? 400 : 409);
+        }
+      }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
       if (role === 'admin' && path === '/admin/catalog-order') {
         const orderPanel = message => adminPage('Orden del catálogo',
-          catalogOrderAdmin(catalogFamilies(db), adminCatalogProducts(), message));
+          catalogOrderAdmin(catalogFamilies(db), adminCatalogProducts(), message, activeChairs(), featuredChair()?.sku));
         if (req.method === 'POST') {
-          if (!saveCatalogPosition(db, await form(req))) return send(res, 400,
+          const fields = await form(req);
+          if (fields?.get('kind') === 'featured') {
+            const sku = fields.get('sku');
+            if (sku !== '' && !activeChairs().some(model => model.sku === sku)) return send(res, 400, orderPanel(
+              adminFragment('<p role="alert">Selecciona una silla publicada.</p>')));
+            db.prepare('UPDATE storefront_catalog SET featured=? WHERE id=1').run(sku);
+            return redirect(res, '/admin/catalog-order?saved=featured');
+          }
+          if (!saveCatalogPosition(db, fields)) return send(res, 400,
             orderPanel(adminFragment('<p role="alert">Introduce una posición válida para una familia o un artículo existente.</p>')));
           return redirect(res, '/admin/catalog-order?saved=1');
         }
         if (req.method === 'GET') return send(res, 200, orderPanel(searchParams.has('saved')
-          ? adminFragment('<p role="status">Posición guardada.</p>') : ''));
+          ? adminFragment(searchParams.get('saved') === 'featured' ? '<p role="status">Portada guardada.</p>' : '<p role="status">Posición guardada.</p>') : ''));
       }
       const familyRoute = /^\/admin\/families(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
       if (role === 'admin' && familyRoute) {
@@ -874,17 +1093,66 @@ const server = createServer(async (req, res) => {
         });
         return redirect(res, path + '?saved=1');
       }
-      const contentRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/content(\/upload)?$/.exec(path);
+      const previewRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/preview\/(de-CH|fr-CH)$/.exec(path);
+      if (role === 'admin' && req.method === 'GET' && previewRoute) {
+        const [, sku, language] = previewRoute;
+        const model = sku === coreSKU ? coreCatalogProduct() : extraModel(sku);
+        if (!model) return send(res, 404, 'Artículo no encontrado');
+        const media = modelMedia(sku, language, true);
+        const features = catalogFeatures(db, sku);
+        const compatibility = isWheelchair(model) ? relatedParts(language, sku, true) : isPart(model) ? partCompatibility(language, sku, true) : '';
+        const body = sku === coreSKU
+          ? productPage(language, model.cents, stock() > 0, model, { ...media, view: galleryView, previewPath: path,
+            video: media.video || videoLocales.has(language), features: renderFeatures(language, features), compatibility, details: oneDetails(db) })
+          : extraProduct(language, model, media, galleryView, features, compatibility, path, undefined, familyLabel(language, model.family));
+        return send(res, 200, page(language, 'Mobility · ' + language, previewLinks(sku) + body, '', {}, { storefront: true }));
+      }
+      const videosRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/content\/videos(?:\/([1-9]\d{0,11})(\/upload)?)?$/.exec(path);
+      if (role === 'admin' && req.method === 'POST' && videosRoute) {
+        const [, sku, id, upload] = videosRoute;
+        const model = sku === coreSKU ? coreCatalogProduct() : extraModel(sku);
+        if (!model || !isWheelchair(model) || id && !catalogVideo(db, sku, id)) return send(res, 404, 'Vídeo no disponible');
+        const back = '/admin/models/' + sku + '/content';
+        if (upload) {
+          const kind = await receiveMedia(req, uploadFolder, sku + '.video-' + id, videoFileKinds);
+          if (!kind) return redirect(res, back + '?video=invalid#model-videos');
+          if (kind === 'video') db.prepare('UPDATE catalog_videos SET published=0 WHERE sku=? AND id=?').run(sku, id);
+        } else {
+          const fields = await form(req, 8192);
+          if (!transaction(() => saveCatalogVideo(db, sku, id, fields, modelVideo))) {
+            return redirect(res, back + '?video=invalid#model-videos');
+          }
+        }
+        return redirect(res, back + '?saved=1#model-videos');
+      }
+      const contentRoute = /^\/admin\/models\/([a-z0-9][a-z0-9-]{1,23})\/content(\/(?:upload|gallery|fit))?$/.exec(path);
       if (role === 'admin' && contentRoute) {
         const [, sku, upload] = contentRoute;
         const model = sku === coreSKU ? coreCatalogProduct() : extraModel(sku);
         if (!model) return send(res, 404, 'Artículo no encontrado');
         const target = '/admin/models/' + sku + '/content';
-        if (req.method === 'GET' && !upload) return send(res, 200, adminPage('Contenido del artículo',
-          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'), isPart(model) || isWheelchair(model))));
-        if (req.method === 'POST' && upload) {
-          if (!await receiveMedia(req, uploadFolder, sku)) return send(res, 400, adminPage('Archivo no válido',
+        const contentPage = (invalid = false) => adminPage('Contenido del artículo',
+          contentAdmin(sku, model.name, catalogFeatures(db, sku), searchParams.has('saved'), isPart(model) || isWheelchair(model),
+            gallerySettings(db, sku), mediaAvailability(sku, path => existsSync(mediaFile(path)), locale => modelVideo(sku, locale)),
+            previewLinks(sku), sku === coreSKU ? oneDetailsEditor(oneDetails(db), invalid) : '',
+            isWheelchair(model) ? (searchParams.get('video') === 'invalid'
+              ? adminFragment('<p role="alert">Revisa los títulos, el uso y los archivos en ambos idiomas.</p>') : '') +
+              catalogVideosAdmin(sku, catalogVideos(db, sku), modelVideo) : ''));
+        if (req.method === 'GET' && !upload) return send(res, 200, contentPage());
+        if (req.method === 'POST' && upload === '/fit') {
+          if (sku !== coreSKU) return send(res, 404, 'Artículo no encontrado');
+          if (!saveOneDetails(db, await form(req, 16384))) return send(res, 400, contentPage(true));
+          return redirect(res, target + '?saved=1#one-fit');
+        }
+        if (req.method === 'POST' && upload === '/gallery') {
+          if (!saveGallery(db, sku, await form(req, 8192))) return send(res, 400, 'Orden o textos alternativos no válidos');
+          return redirect(res, target + '?saved=1');
+        }
+        if (req.method === 'POST' && upload === '/upload') {
+          const kind = await receiveMedia(req, uploadFolder, sku);
+          if (!kind) return send(res, 400, adminPage('Archivo no válido',
             adminFragment('<p role="alert">Comprueba el formato y el tamaño del archivo.</p><a href="') + target + '">Volver al artículo</a>'));
+          if (sku === coreSKU && kind === 'video') resetOneVideoPurpose(db);
           return redirect(res, target + '?saved=1');
         }
         if (req.method === 'POST') {
@@ -935,7 +1203,7 @@ const server = createServer(async (req, res) => {
         const doc = db.prepare('SELECT * FROM billing_documents WHERE order_id = ? AND kind = ?').get(docPath[1], docPath[2]);
         if (!doc) return send(res, 404, 'Documento no disponible');
         const { locale, title, html } = documentPage(doc);
-        return send(res, 200, page(locale, title, html));
+        return send(res, 200, page(locale, title, html, '', {}, { commercial: JSON.parse(doc.snapshot).test === false }));
       }
       const rolePanel = options => {
         const order = orderIdPattern.test(second) ? orderById(second) : null;
@@ -952,7 +1220,7 @@ const server = createServer(async (req, res) => {
       }
       if (req.method === 'GET' && second === 'orders' && orderIdPattern.test(third) && path === `/admin/orders/${third}`) {
         const order = orderById(third);
-        return order ? send(res, 200, adminOrderDetails(order, role)) :
+        return order ? send(res, 200, adminOrderDetails(order, role, null, searchParams)) :
           send(res, 404, adminPage('Pedidos', adminFragment('<p>Pedido desconocido</p><a href="/admin/orders">Volver a pedidos</a>')));
       }
       if (req.method === 'GET' && path === '/admin/models') {
@@ -963,17 +1231,23 @@ const server = createServer(async (req, res) => {
         return send(res, 200, adminPage('Historial por número de serie', serialLookup(db, searchParams.get('serial') || '')));
       }
       if (req.method === 'GET' && path === '/admin/analytics') {
-        return send(res, 200, adminPage('Embudo de compra', funnelReport(db, searchParams)));
+        return send(res, 200, adminPage('Estadísticas de la tienda', funnelReport(db, searchParams)));
       }
       if (req.method === 'GET' && path === '/admin/stripe') {
-        const attempts = db.prepare('SELECT * FROM stripe_attempts ORDER BY rowid DESC LIMIT 200').all();
-        return send(res, 200, adminPage('Pagos de prueba con Stripe', stripeAdmin(attempts)));
+        const openOnly = searchParams.get('status') === 'open';
+        const attempts = db.prepare(`SELECT * FROM stripe_attempts WHERE (? = 0 OR state IN ('preparing','open'))
+          ORDER BY rowid DESC LIMIT 200`).all(Number(openOnly));
+        return send(res, 200, adminPage(commercial ? 'Pagos con Stripe' : 'Pagos de prueba con Stripe', stripeAdmin(attempts, openOnly, commercial)));
       }
       if (req.method === 'GET' && path === '/admin/mail') {
         const state = searchParams.get('result');
         const message = state === 'processed' ? 'Procesamiento de la cola solicitado.'
           : state === 'retried' ? 'Correo programado para reintento.' : '';
-        return send(res, 200, adminPage('Cola de correos', mailQueuePage(db, role === 'admin', message, Boolean(emailTest))));
+        return send(res, 200, adminPage('Cola de correos', mailQueuePage(db, role === 'admin', message, externalMailMode, searchParams.get('status') === 'failed')));
+      }
+      if (req.method === 'GET' && path === '/admin/push') {
+        const id = searchParams.get('order') || '';
+        return send(res, 200, adminPage('Avisos push', pushAdmin(db, push, orderIdPattern.test(id) ? id : '')));
       }
       if (role === 'admin' && req.method === 'POST' && path === '/admin/mail/process') {
         await processMail();
@@ -981,8 +1255,46 @@ const server = createServer(async (req, res) => {
       }
       const retryRoute = /^\/admin\/mail\/([0-9a-f-]{36})\/retry$/.exec(path);
       if (role === 'admin' && req.method === 'POST' && retryRoute) {
-        if (!retryEmail(db, retryRoute[1])) return send(res, 409, 'El correo no está pendiente de revisión.');
+        if (!retryEmail(db, retryRoute[1], undefined, externalMailMode)) return send(res, 409, 'El correo no está pendiente de revisión.');
         return redirect(res, '/admin/mail?result=retried');
+      }
+      const inventoryPanel = (sku, message, status = 200) => {
+        const { reserved, review } = inventoryBalances(db);
+        const models = [...(demoCatalog ? [coreCatalogProduct()] : []),
+          ...db.prepare('SELECT sku, name, units, active, family FROM extra_models ORDER BY name, sku').all()]
+          .map(model => ({ ...model, onHand: model.units, units: model.active ? model.units : 0, tracked: isWheelchair(model),
+            reserved: reserved.get(model.sku) ?? 0, review: review.get(model.sku) ?? 0 }));
+        return send(res, status, adminPage('Movimientos de stock', inventoryPage(models, inventoryRows(sku, 200), sku, message, status >= 400)));
+      };
+      if (req.method === 'POST' && path === '/admin/inventory/receive') {
+        const fields = await form(req, 262144);
+        const sku = fields?.get('sku') || '';
+        const id = fields?.get('receipt') || '';
+        const quantity = fields?.get('quantity') || '';
+        const model = sku === coreSKU ? coreCatalogProduct() : skuPattern.test(sku) && extraModel(sku);
+        const serials = model && readSupplierSerials(fields.get('serials') || '', Number(quantity), isWheelchair(model));
+        if (!model || !orderIdPattern.test(id) || !/^[1-9]\d{0,2}$/.test(quantity) || !serials) {
+          return inventoryPanel(model ? sku : '', 'Revisa la cantidad y los números de serie de la entrada.', 400);
+        }
+        const receipt = transaction(() => {
+          const existing = db.prepare('SELECT sku, quantity FROM supplier_receipts WHERE id = ?').get(id);
+          if (existing) {
+            const recorded = db.prepare('SELECT serial FROM supplier_serials WHERE receipt_id = ? ORDER BY serial').all(id);
+            return existing.sku === sku && existing.quantity === Number(quantity) &&
+              JSON.stringify(recorded.map(row => row.serial)) === JSON.stringify(serials) ? 'saved' : 'conflict';
+          }
+          if (supplierSerialConflict(db, serials)) return 'duplicate';
+          const units = sku === coreSKU ? stock() : extraModel(sku).units;
+          if (units + Number(quantity) > 999 || !changeStock(sku, Number(quantity))) return 'conflict';
+          const movement = recordMovement(sku, Number(quantity), 'supplier');
+          db.prepare('INSERT INTO supplier_receipts (id, sku, quantity, movement_id) VALUES (?, ?, ?, ?)').run(id, sku, Number(quantity), movement);
+          const insert = db.prepare('INSERT INTO supplier_serials (serial, receipt_id) VALUES (?, ?)');
+          for (const serial of serials) insert.run(serial, id);
+          return 'saved';
+        });
+        if (receipt === 'saved') return redirect(res, '/admin/inventory?sku=' + sku + '&received=1#stock-history');
+        return inventoryPanel(sku, receipt === 'duplicate' ? 'Hay un número de serie duplicado o ya registrado.' :
+          'No se puede registrar la entrada con estos datos.', 409);
       }
       if (req.method === 'GET' && ['/admin/inventory', '/admin/inventory.csv'].includes(path)) {
         const requested = searchParams.get('sku') || '';
@@ -992,9 +1304,7 @@ const server = createServer(async (req, res) => {
             'Content-Disposition': 'attachment; filename="movility-stock.csv"', 'X-Content-Type-Options': 'nosniff' });
           return res.end(inventoryCsv(inventoryRows(sku, -1)));
         }
-        const models = [{ sku: coreSKU, name: 'Movility One', units: stock() },
-          ...db.prepare('SELECT sku, name, units FROM extra_models ORDER BY name, sku').all()];
-        return send(res, 200, adminPage('Movimientos de stock', inventoryPage(models, inventoryRows(sku, 200), sku)));
+        return inventoryPanel(sku, searchParams.get('received') === '1' ? 'Entrada de stock registrada.' : '');
       }
       if (req.method === 'GET' && ['/admin/accounting', '/admin/accounting.csv'].includes(path)) {
         const filters = accountingFilters(searchParams);
@@ -1006,22 +1316,66 @@ const server = createServer(async (req, res) => {
         return send(res, filters.invalid ? 400 : 200, adminPage('Conciliación de pedidos',
           accountingPage(accountingData(db, filters), filters)));
       }
+      if (role === 'admin' && path === importPath + '/template.csv' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'attachment; filename="movility-catalogo-proveedor.csv"' });
+        return res.end(catalogTemplate);
+      }
+      if (role === 'admin' && [importPath, importPath + '/confirm'].includes(path)) {
+        const renderImport = (status, input) => send(res, status, adminPage('Importar catálogo CSV', catalogImportPage(input)));
+        const planFor = csv => catalogImportPlan(db, csv, catalogFamilies(db));
+        if (req.method === 'GET' && path === importPath) return renderImport(200);
+        if (req.method === 'POST' && path === importPath) {
+          const fields = await receiveUpload(req, maxCsvBytes + 16384);
+          const file = fields?.get('file');
+          let csv;
+          if (file && typeof file.arrayBuffer === 'function' && file.size <= maxCsvBytes) {
+            try { csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
+            catch { /* Invalid encoding is handled by the planner. */ }
+          }
+          const plan = planFor(csv);
+          const invalid = plan.error || plan.invalid;
+          return renderImport(invalid ? 400 : 200, { plan, csv, confirmation: invalid ? null : importConfirmation(plan) });
+        }
+        if (req.method === 'POST' && path === importPath + '/confirm') {
+          const fields = await form(req, maxCsvBytes * 4 + 16384);
+          const csv = fields?.get('csv');
+          const outcome = transaction(() => {
+            const plan = planFor(csv);
+            if (plan.error || plan.invalid) return { plan, status: 400 };
+            const confirmation = importConfirmation(plan);
+            if (fields.get('confirmation') !== confirmation) return { plan, csv, confirmation, stale: true, status: 409 };
+            if (fields.get('update') !== 'yes' && plan.rows.some(row => row.revision !== null && (row.changes.length || row.additions.length))) {
+              return { plan, csv, confirmation, needsUpdate: true, status: 400 };
+            }
+            return { result: applyCatalogImport(db, plan, sku => recordMovement(sku, 0, 'opening')), status: 200 };
+          });
+          return renderImport(outcome.status, outcome);
+        }
+      }
       const modelEdit = /^\/admin\/models(?:\/([a-z0-9][a-z0-9-]{1,23}))?$/.exec(path);
       if (req.method === 'POST' && modelEdit) {
         const fields = await form(req);
         const sku = modelEdit[1] || fields?.get('sku')?.trim() || '';
         const input = modelInput(fields, sku, catalogFamilies(db));
-        if (!input) return send(res, 400, displayModelAdmin(adminFragment('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>'), searchParams));
+        if (!input) {
+          const current = modelEdit[1] ? extraModel(sku) : null;
+          const submitted = Object.fromEntries(fields || []);
+          const draft = { ...submitted, sku: current?.sku || '', skuInput: sku, name: submitted.name || '',
+            price: submitted.price || '', active: submitted.active === '1', fold: submitted.fold === '' || submitted.fold == null ? -1 : Number(submitted.fold) };
+          return send(res, 400, displayModelAdmin(adminFragment('<p class="form-error" role="alert">Revisa el SKU, el precio, las traducciones y las características.</p>'),
+            searchParams, { model: draft, editing: Boolean(current) }));
+        }
         const saved = transaction(() => {
           const current = extraModel(sku);
           if (modelEdit[1] ? !current || String(current.revision) !== fields.get('revision') : current) return false;
           if (current) {
             db.prepare(`UPDATE extra_models SET name = ?, cents = ?, units = ?, active = ?, description_de = ?,
-              description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, family = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
+              description_fr = ?, width = ?, weight = ?, range = ?, fold = ?, family = ?, length = ?, height = ?, max_load = ?, revision = revision + 1 WHERE sku = ?`).run(...input, sku);
+            if (!input[3] || input[10] !== 'wheelchair') clearFeatured(sku);
             if (input[2] !== current.units) recordMovement(sku, input[2] - current.units, 'adjustment');
           } else {
-            db.prepare(`INSERT INTO extra_models (name, cents, units, active, description_de, description_fr,
-              width, weight, range, fold, family, sku) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...input, sku);
+            insertModel(db, sku, input);
             recordMovement(sku, input[2], 'opening');
           }
           return true;
@@ -1043,6 +1397,7 @@ const server = createServer(async (req, res) => {
         return preview ? send(res, 200, emailView(orderById(id), preview)) : send(res, 404, 'Correo desconocido');
       }
       if (req.method === 'POST' && path === '/admin/catalog') {
+        if (!demoCatalog) return send(res, 404, 'Artículo no encontrado');
         const fields = await form(req);
         const rawPrice = fields?.get('price')?.trim().replace(',', '.') || '';
         const rawUnits = fields?.get('units') || '';
@@ -1058,6 +1413,11 @@ const server = createServer(async (req, res) => {
         const saved = transaction(() => {
           const current = catalog();
           if (fields.get('expectedUnits') !== String(stock()) || fields.get('expectedPrice') !== String(current.cents)) return false;
+          if (fields.has('publication')) {
+            const published = fields.get('active') === '1';
+            db.prepare('UPDATE storefront_catalog SET core_published=? WHERE id=1').run(Number(published));
+            if (!published) clearFeatured(coreSKU);
+          }
           db.prepare('UPDATE catalog SET cents = ?, description_de = ?, description_fr = ? WHERE id = 1')
             .run(Math.round(Number(rawPrice) * 100), descriptionDe, descriptionFr);
           db.prepare('UPDATE stock SET units = ? WHERE id = 1').run(Number(rawUnits));
@@ -1070,6 +1430,7 @@ const server = createServer(async (req, res) => {
         }));
       }
       if (req.method === 'POST' && path === '/admin/restock') {
+        if (!demoCatalog) return send(res, 404, 'Artículo no encontrado');
         transaction(() => {
           if (stock() === 0) orderStock(coreSKU, 1, 'adjustment', null);
         });
@@ -1119,11 +1480,11 @@ const server = createServer(async (req, res) => {
           : send(res, 409, rolePanel({ error: 'Revisa las unidades pendientes y que los números de serie correspondan a este modelo y pedido.' }));
       }
       if (req.method === 'POST' && third === 'stripe-refund' && orderIdPattern.test(second) && path === `/admin/${second}/stripe-refund`) {
-        if (!stripe) return send(res, 409, rolePanel({ error: 'Activa Stripe en modo de prueba para solicitar este reembolso.' }));
+        if (!stripe) return send(res, 409, rolePanel({ error: 'Activa Stripe en el modo del pedido para solicitar este reembolso.' }));
         const attempt = paymentAttempt(db, second);
         const refund = transaction(() => {
           const order = orderById(second);
-          if (!order || order.status === 'refunded' || attempt?.state !== 'paid') return null;
+          if (!order || order.status === 'refunded' || attempt?.state !== 'paid' || Boolean(attempt.livemode) !== stripe.live) return null;
           return requestStripeRefund(db, second);
         });
         if (!refund || !refundRetryable(refund)) return redirect(res, `/admin/orders/${second}`);
@@ -1241,7 +1602,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && legalPaths.includes(suffix)) {
       const version = suffix === '/terms' ? searchParams.get('version') : null;
       const content = version === null || /^[1-9]\d{0,8}$/.test(version) ? publishedLegal(db, suffix, version) : null;
-      return render(legalPage(locale, suffix, content), content ? 200 : 404, '', legalTitle(locale, suffix));
+      return render(legalPage(locale, suffix, content), content ? 200 : 404, '', [legalTitle(locale, suffix), legalTitle(locale, suffix)]);
     }
     if (req.method === 'GET' && settings) return render(analyticsPrompt(locale, consent, path, true));
     if (req.method === 'POST' && settings) {
@@ -1253,9 +1614,13 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && path === '/') return redirect(res, '/de-CH');
     if (first === locale && suffix === '/contact' && ['GET', 'POST'].includes(req.method)) {
-      const contactPage = state => informationPage(locale, suffix, editorial, state);
-      if (req.method === 'GET') return render(contactPage({ sent: searchParams.get('sent') === '1' }));
-      const submission = readContact(await form(req, 40000));
+      const models = publicModels();
+      const contactPage = state => informationPage(locale, suffix, editorial, { ...state, models });
+      if (req.method === 'GET') {
+        const model = models.find(item => item.sku === selectedSKU);
+        return render(contactPage({ sent: searchParams.get('sent') === '1', values: model ? { model: model.sku, topic: searchParams.get('topic') === 'compatibility' ? 'compatibility' : 'advice' } : {} }));
+      }
+      const submission = readContact(await form(req, 40000), models);
       if (submission.trap) return redirect(res, path + '?sent=1');
       if (submission.invalid.length) return render(contactPage(submission), 400);
       if (!transaction(() => saveContact(db, locale, submission.values))) {
@@ -1267,36 +1632,49 @@ const server = createServer(async (req, res) => {
       return render(informationPage(locale, suffix, editorial || {}));
     }
     if (req.method === 'GET' && path === `/${locale}`) {
-      const models = orderedProducts(db, [coreCatalogProduct(), ...liveModels()]);
-      const featured = modelPhotos(coreSKU);
-      const featuredPhoto = featured.front || productImage;
+      const models = orderedProducts(db, publicModels());
+      const chair = featuredChair();
+      const featured = chair ? modelMedia(chair.sku, locale) : null;
+      const featuredPhoto = featured?.photo;
       const families = catalogFamilies(db).filter(row => row.id === 'wheelchair' ||
         models.some(model => model.family === row.id));
-      const family = catalogFilter(searchParams, families);
+      const chairFilters = chairFilterValues(searchParams);
+      const family = catalogFilter(searchParams, families) || (chairFilters.size ? 'wheelchair' : '');
       const visible = family ? families.filter(row => row.id === family) : families;
       const partFamily = isPart({ family });
       const chairs = partFamily ? models.filter(isWheelchair) : [];
-      const selected = chairs.find(chair => chair.sku === searchParams.get('compatible'))?.sku;
-      const matches = selected ? compatibilityForChair(selected) : null;
-      const results = matches ? models.filter(model => model.family === family && matches.has(model.sku)) : models;
+      const selected = chairs.find(chair => chair.sku === searchParams.get('compatible'));
+      if (!selected) context.delete('compatible');
+      const matches = selected ? compatibilityForChair(selected.sku) : null;
+      const results = matches ? models.filter(model => model.family === family && matches.has(model.sku))
+        : family === 'wheelchair' ? models.filter(model => isWheelchair(model) && matchesChairFilters(model, chairFilters)) : models;
       const products = extraCatalog(locale, results, visible, sku => sku === coreSKU
-        ? featuredPhoto : Object.values(modelPhotos(sku)).find(Boolean));
+        ? modelMedia(coreSKU, locale).photo : Object.values(modelPhotos(sku)).find(Boolean), context);
       return render(homepage(locale, {
-        filters: storefrontFamilyFilters(locale, families, family) + (partFamily ? compatibilityFilter(locale, family, chairs, selected) : ''),
+        filters: storefrontFamilyFilters(locale, families, family, context) +
+          (partFamily ? compatibilityFilter(locale, family, chairs, selected?.sku, context) : '') +
+          (!family || family === 'wheelchair' ? chairFilterPanel(locale, context, chairFilters, results.filter(isWheelchair).length) : ''),
+        selection: comparisonSelection(locale, context, selectedModels(context, activeChairs()), false),
+        detail: chair?.sku === coreSKU && featured.demoPhotos && featured.photos.side !== featuredPhoto
+          ? homeModelDetail(locale, featured.photos.side, context) : '',
         faqs: shopFaqs(db, locale),
-        products: products || (locale === 'fr-CH' ? '<p>Aucun article compatible trouvé.</p>' : '<p>Keine passenden Artikel gefunden.</p>'),
-      }), 200, homeDiscovery(locale, featured.side || sideImage));
+        products: products || (selected ? noConfirmedParts(locale, selected, context) : family === 'wheelchair' ? noChairMatches(locale, context)
+          : locale === 'fr-CH' ? '<p>Aucun article à afficher.</p>' : '<p>Keine Artikel vorhanden.</p>'),
+      }), 200, homeHero(locale, chair, featuredPhoto,
+        featured?.alts?.[Object.keys(featured.photos).find(slot => featured.photos[slot] === featuredPhoto)],
+        featured?.demoPhotos, context));
     }
-    if (req.method === 'GET' && path === `/${locale}/movility-one`) {
-      const model = catalog();
+    if (corePublished() && req.method === 'GET' && path === `/${locale}/mobility-one`) {
+      const model = coreCatalogProduct();
       track('view');
       const media = modelMedia(coreSKU, locale);
       return render(productPage(locale, model.cents, stock() > 0, model, { view: galleryView,
-        photos: media.photo ? media.photos : undefined, video: media.video || videoLocales.has(locale),
-        features: renderFeatures(locale, catalogFeatures(db, coreSKU)) }) + relatedParts(locale, coreSKU));
+        photos: media.photos, demoPhotos: media.demoPhotos, alts: media.alts, video: media.video || videoLocales.has(locale), videos: media.videos,
+        features: renderFeatures(locale, catalogFeatures(db, coreSKU)), compatibility: relatedParts(locale, coreSKU), context, details: oneDetails(db) }),
+      200, '', ['Mobility One – ' + t.category, model['description_' + editorialLocale] || t.description]);
     }
     if (req.method === 'GET' && path === `/${locale}/compare`) {
-      return render(comparisonPage(locale, searchParams, catalog().cents, liveModels().filter(isWheelchair)));
+      return render(comparisonPage(locale, searchParams, activeChairs()));
     }
     if (req.method === 'GET' && modelRoute) {
       const model = extraModel(modelRoute[1]);
@@ -1306,64 +1684,70 @@ const server = createServer(async (req, res) => {
           track('view');
           let compatibility = '';
           if (isWheelchair(model)) compatibility = relatedParts(locale, model.sku);
-          if (isPart(model)) {
-            const entries = new Map(compatibilityForPart(model.sku).map(entry => [entry.chair, entry]));
-            compatibility = compatibilitySection(locale, activeChairs().filter(chair => entries.has(chair.sku))
-              .map(chair => ({ ...entries.get(chair.sku), ...chair })), true);
-          }
-          return render(extraProduct(locale, model, media, galleryView, catalogFeatures(db, model.sku), compatibility));
+          if (isPart(model)) compatibility = partCompatibility(locale, model.sku);
+          return render(extraProduct(locale, model, media, galleryView, catalogFeatures(db, model.sku), compatibility, '', context, familyLabel(locale, model.family)),
+            200, '', [model.name, model['description_' + editorialLocale]]);
         }
         if (media.model) return render(viewerPage(locale, media.photo,
           { name: model.name, url: media.model, productPath: '/models/' + model.sku }));
       }
     }
-    if (req.method === 'GET' && path === `/${locale}/movility-one/3d`) {
+    if (corePublished() && req.method === 'GET' && path === `/${locale}/mobility-one/3d`) {
       const media = modelMedia(coreSKU, locale);
       return render(viewerPage(locale, media.photo || productImage, { url: media.model || modelPath }));
     }
     if (req.method === 'GET' && path === `/${locale}/cart`) {
       if (selectedSKU) {
-        const model = extraModel(selectedSKU);
-        if (model?.active && model.units) track('cart');
-        return model?.active ? render(cartPage(locale, model.cents, model.units > 0, model)) : render(`<h1>${t.soldOut}</h1>`, 404);
+        const model = purchaseModel(selectedSKU);
+        if (model && model.units) track('cart');
+        return model ? render(cartPage(locale, model.cents, model.units > 0, model, commercial)) : render(`<h1>${t.soldOut}</h1>`, 404);
       }
       const lines = cartLines(readCart(req), purchaseModel);
       if (canCheckout(lines)) track('cart');
-      return render(basketPage(locale, lines));
+      return render(shopBasket(locale, lines, '', { added: searchParams.get('added') }));
     }
     if (req.method === 'POST' && path === `/${locale}/cart`) {
       const cart = readCart(req);
-      if (!changeCart(cart, await form(req), purchaseModel)) {
-        return render(basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable), 409);
+      const fields = await form(req);
+      const sku = fields?.get('sku') || '';
+      if (!changeCart(cart, fields, purchaseModel)) {
+        return render(shopBasket(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable,
+          { rejected: purchaseModel(sku)?.name || (skuPattern.test(sku) ? sku : '') }), 409);
       }
       if (canCheckout(cartLines(cart, purchaseModel))) track('cart');
       res.setHeader('Set-Cookie', cartCookie(cart, secureRequest));
-      return redirect(res, `/${locale}/cart`);
+      return redirect(res, `/${locale}/cart${fields.get('action') === 'add' ? '?added=' + sku : ''}`);
     }
+    const checkoutUnavailable = () => render(`<h1>${locale === 'de-CH'
+      ? 'Bestellungen sind vorübergehend nicht möglich.' : 'Les commandes sont temporairement indisponibles.'}</h1>`, 503);
+    const totalsFor = (lines, model) => checkoutTotals(lines || [{ quantity: 1, cents: model?.cents ?? catalog().cents }], shippingSettings(db));
+    const checkoutForm = (totals, id, values, message, model, lines, invalid, status = 200) => render(
+      checkoutPage(locale, totals, id, values, message, model, lines, stripeMethodsFor(stripe, totals.total), invalid, commercial, termsVersion()),
+      status);
+    const deliveryBlocked = shipping => commercial && (shippingBlock(shipping, billingProfile().tax) || !termsVersion());
+    const termsChanged = locale === 'de-CH' ? 'Bitte bestätige die aktuellen Verkaufsbedingungen.' : 'Veuillez accepter les conditions de vente en vigueur.';
     if (req.method === 'GET' && basketCheckout) {
       const lines = cartLines(readCart(req), purchaseModel);
-      if (!canCheckout(lines)) return render(basketPage(locale, lines, cartText(locale).unavailable), 409);
+      if (!canCheckout(lines)) return render(shopBasket(locale, lines, lines.length ? cartText(locale).unavailable : ''), 409);
+      const totals = totalsFor(lines);
+      if (deliveryBlocked(totals.shipping)) return checkoutUnavailable();
       track('checkout');
-      const amount = cartTotal(lines);
-      return render(checkoutPage(locale, amount, randomUUID(), {}, '', null, lines, stripeMethodsFor(stripe, amount)));
+      return checkoutForm(totals, randomUUID(), {}, '', null, lines);
     }
     if (req.method === 'GET' && path === `/${locale}/checkout`) {
-      if (selectedSKU) {
-        const model = extraModel(selectedSKU);
-        if (!model?.active || !model.units) return render(`<h1>${t.soldOut}</h1>`, 409);
-        track('checkout');
-        return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', model, undefined, stripeMethodsFor(stripe, model.cents)));
-      }
-      const model = catalog();
-      if (!stock()) return render(productPage(locale, model.cents, false, model), 409);
+      if (!searchParams.has('model')) return redirect(res, `/${locale}/checkout/cart`);
+      const model = purchaseModel(selectedSKU);
+      if (!model?.units) return render(`<h1>${t.soldOut}</h1><a href="/${locale}#catalogue">${locale === 'de-CH' ? 'Zum Katalog' : 'Voir le catalogue'}</a>`, 409);
+      const totals = totalsFor(null, model);
+      if (deliveryBlocked(totals.shipping)) return checkoutUnavailable();
       track('checkout');
-      return render(checkoutPage(locale, model.cents, randomUUID(), {}, '', null, undefined, stripeMethodsFor(stripe, model.cents)));
+      return checkoutForm(totals, randomUUID(), {}, '', { ...model, sku: selectedSKU });
     }
     if (stripe && first === locale && second === 'payment' && orderIdPattern.test(third) && path === `/${locale}/payment/${third}`) {
       res.setHeader('Referrer-Policy', 'strict-origin');
       if (!canViewOrder(third)) return render(orderAccessPage(locale, accountsEnabled, third), 403);
       const attempt = paymentAttempt(db, third);
-      if (!attempt || JSON.parse(attempt.payload).locale !== locale) return render('<h1>404</h1>', 404);
+      if (!attempt || Boolean(attempt.livemode) !== stripe.live || JSON.parse(attempt.payload).locale !== locale) return render('<h1>404</h1>', 404);
       if (attempt.state === 'paid' && ['GET', 'POST'].includes(req.method)) {
         track('purchase');
         const currentCart = readCart(req);
@@ -1383,15 +1767,22 @@ const server = createServer(async (req, res) => {
       const method = fields?.get('method');
       const result = fields?.get('result');
       const quotedPrice = fields?.get('quotedPrice');
-      const sku = basketCheckout ? '' : fields?.get('model') || '';
+      const requestedSKU = fields?.get('model') || '';
+      if (!basketCheckout && !requestedSKU) return render(shopBasket(locale, cartLines(readCart(req), purchaseModel)), 409);
+      const sku = basketCheckout || requestedSKU === coreSKU ? '' : requestedSKU;
+      if (!basketCheckout && !purchaseModel(requestedSKU) && !orderById(id) && !paymentAttempt(db, id)) {
+        return render(shopBasket(locale, []), 409);
+      }
       const cart = basketCheckout ? readCart(req) : null;
       const lines = cart ? cartLines(cart, purchaseModel) : null;
       const selected = sku ? extraModel(sku) : null;
-      const cents = lines ? cartTotal(lines) : selected?.cents ?? catalog().cents;
+      const totals = totalsFor(lines, selected);
+      const matchesShipping = shipping => (fields.get('shippingQuote') || shippingQuote(legacyShipping)) === shippingQuote(shipping);
       const address = Object.fromEntries(['name', 'street', 'zip', 'city'].map(key => [key, fields?.get(key)?.trim() || '']));
       const validId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id);
       const billing = billingInput(fields);
-      const values = { ...address, email, method, billing: billing.values };
+      const country = fields?.get('country');
+      const values = { ...address, country, email, method, billing: billing.values };
       let checkoutAccess;
       if (sku && !selected) return render(`<h1>${t.soldOut}</h1>`, 409);
       const invalid = [...billing.invalid];
@@ -1399,88 +1790,98 @@ const server = createServer(async (req, res) => {
       for (const key of ['name', 'street', 'city']) {
         if (!address[key] || address[key].length > (key === 'street' ? 160 : 100)) invalid.push(key);
       }
-      if (!/^\d{4}$/.test(address.zip)) invalid.push('zip');
-      const offered = stripeMethodsFor(stripe, cents) || methods;
-      if (offered.length && !(stripe?.methods || methods).includes(method)) invalid.push('method');
+      if (!Object.hasOwn(deliveryCountries, country)) invalid.push('country');
+      else if (!deliveryCountries[country].postalCode.test(address.zip)) invalid.push('zip');
+      const offered = stripeMethodsFor(stripe, totals.total) || methods;
+      if (offered.length && !offered.includes(method)) invalid.push('method');
       if (!validId || !offered.length || invalid.length || !(stripe ? ['stripe'] : ['paid', 'failed']).includes(result)) {
-        return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines,
-          stripeMethodsFor(stripe, cents), invalid), 400);
+        if (deliveryBlocked(totals.shipping)) return checkoutUnavailable();
+        return checkoutForm(totals, validId ? id : randomUUID(), values, t.invalid, selected, lines, invalid, 400);
       }
-      const termsVersion = currentTermsVersion();
-      if (termsVersion && (fields.get('termsVersion') !== String(termsVersion) || fields.get('acceptTerms') !== '1')) {
-        const message = locale === 'de-CH' ? 'Bitte bestätige die aktuellen Verkaufsbedingungen.' : 'Veuillez accepter les conditions de vente en vigueur.';
-        return render(checkoutPage(locale, cents, id, values, message, selected, lines, stripeMethodsFor(stripe, cents)), 409);
-      }
+      const acceptedTerms = version => version
+        ? fields.get('termsVersion') === String(version) && fields.get('acceptTerms') === '1'
+        : !commercial;
+      const matchesQuote = (items, quote) => matchesShipping(quote.shipping) && (basketCheckout
+        ? fields.get('cartQuote') === cartQuote(items) && (!quotedPrice || quotedPrice === String(quote.total))
+        : quotedPrice === String(quote.total));
       if (stripe) {
-        const matchesQuote = items => basketCheckout ? fields.get('cartQuote') === cartQuote(items)
-          : items.length === 1 && items[0].sku === (sku || coreSKU) && quotedPrice === String(items[0].cents);
         const reservation = transaction(() => {
           const existing = paymentAttempt(db, id);
           if (existing) {
-            if (!canViewOrder(id)) return 'conflict';
+            if (!canViewOrder(id) || Boolean(existing.livemode) !== stripe.live) return 'conflict';
             const previous = JSON.parse(existing.payload);
             return existing.method === method && previous.email === email && previous.locale === locale &&
               JSON.stringify(previous.address) === JSON.stringify(address) &&
-              JSON.stringify(previous.billing ?? null) === JSON.stringify(billing.address) && matchesQuote(previous.lines) ? existing : 'conflict';
+              JSON.stringify(previous.billing ?? null) === JSON.stringify(billing.address) && (basketCheckout || previous.lines.length === 1 && previous.lines[0].sku === requestedSKU) &&
+              matchesQuote(previous.lines, checkoutTotals(previous.lines, previous.shipping)) ? existing : 'conflict';
           }
           if (orderById(id)) return 'conflict';
+          const terms = termsVersion();
+          if (!acceptedTerms(terms)) return terms || !commercial ? 'terms' : 'billing';
           const items = cartLines(cart || new Map([[sku || coreSKU, 1]]), purchaseModel);
           if (!canCheckout(items)) return 'out';
-          if (!matchesQuote(items)) return 'price';
-          if (!stripeMethodsFor(stripe, cartTotal(items)).includes(method)) return 'method';
+          const quote = checkoutTotals(items, shippingSettings(db));
+          const sellerProfile = stripe.live ? billingProfile() : null;
+          if (stripe.live && (sellerProfile.missing.length || shippingBlock(quote.shipping, sellerProfile.tax))) return 'billing';
+          if (!matchesQuote(items, quote)) return 'price';
+          if (!stripeMethodsFor(stripe, quote.total).includes(method)) return 'method';
           const snapshot = items.map(({ sku, name, quantity, cents, requires_serial }) => ({ sku, name, quantity, cents, requires_serial }));
-          const attempt = reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot, termsVersion }, cartTotal(snapshot),
-            line => orderStock(line.sku, -line.quantity, 'reservation', null));
+          const attempt = reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot, sellerProfile, shipping: quote.shipping, terms }, quote.total,
+            line => orderStock(line.sku, -line.quantity, 'reservation', null), undefined, stripe.live);
           checkoutAccess = issueCheckoutAccess(db, id);
           return attempt;
         });
+        if (reservation === 'billing') return checkoutUnavailable();
+        if (reservation === 'terms') return checkoutForm(totals, id, values, termsChanged, selected, lines, [], 409);
         if (reservation === 'price' || reservation === 'method') {
-          const refreshed = basketCheckout ? cartLines(cart, purchaseModel) : null;
-          const selection = sku ? extraModel(sku) : null;
-          const amount = refreshed ? cartTotal(refreshed) : selection?.cents ?? catalog().cents;
-          return render(checkoutPage(locale, amount, id, values, reservation === 'price' ? t.priceChanged : t.invalid,
-            selection, refreshed, stripeMethodsFor(stripe, amount)), 409);
+          return checkoutForm(totalsFor(lines, selected), id, values, t.priceChanged, selected, lines, [], 409);
         }
         if (typeof reservation === 'string') {
           return render(basketCheckout && reservation === 'out'
-            ? basketPage(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable)
+            ? shopBasket(locale, cartLines(cart, purchaseModel), cartText(locale).unavailable)
             : `<h1>${reservation === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
         }
         if (checkoutAccess) res.appendHeader('Set-Cookie', checkoutAccessCookie(id, checkoutAccess, secureRequest));
         return stripeRedirect(res, reservation, locale, render);
       }
-      if (result === 'failed') return render(checkoutPage(locale, cents, id, values, t.failed, selected, lines));
+      if (result === 'failed') return checkoutForm(totals, id, values, t.failed, selected, lines);
       const outcome = transaction(() => {
         const existing = orderById(id);
         if (existing) {
           const sameItems = basketCheckout ? existing.lines.length && cartQuote(existing.lines) === fields.get('cartQuote')
-            : !existing.lines.length && (existing.model_sku || '') === sku;
+            : !existing.lines.length && (existing.model_sku || coreSKU) === requestedSKU;
           return existing.email === email && existing.method === method && existing.locale === locale && sameItems ? 'repeat' : 'conflict';
         }
+        const terms = termsVersion();
+        if (!acceptedTerms(terms)) return 'terms';
         if (basketCheckout) {
           const currentLines = cartLines(cart, purchaseModel);
           if (!canCheckout(currentLines)) return 'out';
-          if (fields.get('cartQuote') !== cartQuote(currentLines)) return 'price';
-          createPaidOrder(id, method, locale, email, address, currentLines, billing.address);
-          saveOrderTerms(id, termsVersion, locale);
+          const quote = totalsFor(currentLines);
+          if (!matchesQuote(currentLines, quote)) return 'price';
+          createPaidOrder(id, method, locale, email, address, currentLines, billing.address, quote.shipping);
           for (const line of currentLines) {
             orderStock(line.sku, -line.quantity, 'order', id);
           }
+          saveOrderTerms(id, locale, terms);
           notice(id, 'paid');
           checkoutAccess = issueCheckoutAccess(db, id);
           return 'ok';
         }
         const currentModel = sku ? extraModel(sku) : null;
-        if (sku && !currentModel?.active) return 'out';
-        const currentPrice = currentModel?.cents ?? catalog().cents;
-        if (quotedPrice !== String(currentPrice)) return 'price';
+        if (sku ? !currentModel?.active : !corePublished()) return 'out';
+        const quote = totalsFor(null, currentModel);
+        if (!matchesQuote(null, quote)) return 'price';
         if (!changeStock(sku || coreSKU, -1)) return 'out';
-        db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, currentPrice);
+        db.prepare("INSERT INTO orders VALUES (?, ?, ?, ?, ?, 'paid', NULL)").run(id, email, locale, method, quote.total);
+        saveOrderShipping(db, id, quote.shipping);
         recordMovement(sku || coreSKU, -1, 'order', id);
-        if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?, ?)').run(id, sku, currentModel.name, Number(isWheelchair(currentModel)));
+        if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?, ?)')
+          .run(id, requestedSKU, currentModel.name, Number(isWheelchair(currentModel)));
+        else db.prepare('INSERT INTO core_order_names VALUES (?, ?)').run(id, coreCatalogProduct().name);
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         saveBillingAddress(db, id, billing.address);
-        saveOrderTerms(id, termsVersion, locale);
+        saveOrderTerms(id, locale, terms);
         notice(id, 'paid');
         checkoutAccess = issueCheckoutAccess(db, id);
         return 'ok';
@@ -1493,15 +1894,16 @@ const server = createServer(async (req, res) => {
         if (checkoutAccess) res.appendHeader('Set-Cookie', checkoutAccessCookie(id, checkoutAccess, secureRequest));
         return redirect(res, `/${locale}/orders/${id}`);
       }
+      if (outcome === 'terms') return checkoutForm(totals, id, values, termsChanged, selected, lines, [], 409);
       if (basketCheckout && (outcome === 'out' || outcome === 'price')) {
         const currentLines = cartLines(cart, purchaseModel);
         return render(canCheckout(currentLines)
-          ? checkoutPage(locale, cartTotal(currentLines), id, values, cartText(locale).changed, null, currentLines)
-          : basketPage(locale, currentLines, cartText(locale).unavailable), 409);
+          ? checkoutPage(locale, totalsFor(currentLines), id, values, cartText(locale).changed, null, currentLines, undefined, [], false, termsVersion())
+          : shopBasket(locale, currentLines, cartText(locale).unavailable), 409);
       }
       if (outcome === 'price') {
         const current = sku ? extraModel(sku) : null;
-        return render(checkoutPage(locale, current?.cents ?? catalog().cents, id, values, t.priceChanged, current), 409);
+        return checkoutForm(totalsFor(null, current), id, values, t.priceChanged, current, undefined, [], 409);
       }
       return render(`<h1>${outcome === 'out' ? t.soldOut : t.invalid}</h1><a href="/${locale}">${t.catalog}</a>`, 409);
     }
@@ -1520,7 +1922,7 @@ const server = createServer(async (req, res) => {
         const { subject, body } = orderRecoveryEmail(access.locale, access.code, siteOrigin);
         db.prepare('INSERT INTO notices VALUES (?, ?)').run(third, kind);
         db.prepare('INSERT INTO email_previews VALUES (?, ?, ?, ?)').run(third, kind, subject, body);
-        queueEmail(db, third, kind, undefined, emailTest?.target, access.expires);
+        queueEmail(db, third, kind, undefined, mailTarget(orderById(third)), access.expires);
       });
       res.setHeader('Referrer-Policy', 'no-referrer');
       return redirect(res, `/${locale}/guest-access?requested=1`);
@@ -1533,10 +1935,12 @@ const server = createServer(async (req, res) => {
       if (order) {
         const events = trackingEvents(db, order.id);
         const maySubscribe = order.status !== 'refunded' && !events.some(event => event.event_status === 'delivered');
-        return render(orderPage(locale, order, events, pushControls(locale, order, push, maySubscribe)));
+        return render(orderPage(locale, order, events, pushControls(locale, order, push, maySubscribe),
+          order.tracking ? shipmentPath(db, locale, order.id) : '', orderIsLive(order.id)));
       }
     }
-    return render(`<h1>404</h1><a href="/${locale}">${t.catalog}</a>`, 404);
+    return render(`<section class="confirmation"><h1 class="page-title">${locale === 'de-CH' ? 'Seite nicht gefunden' : 'Page introuvable'}</h1>
+      <a class="button secondary" href="/${locale}#catalogue">${locale === 'de-CH' ? 'Zum Katalog' : 'Voir le catalogue'}</a></section>`, 404);
   } catch (error) {
     console.error(error);
     if (!res.headersSent) send(res, 500, 'Internal server error');
@@ -1545,7 +1949,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`Movility: http://127.0.0.1:${server.address().port}`);
+  console.log(`Mobility: http://127.0.0.1:${server.address().port}`);
   if (configuredAdmin) console.log('Administración (/admin): usuario admin, contraseña configurada.');
   else if (fixedLocalPassword) console.log('Administración local (/admin/security): usuario admin. Archivo de credencial: ' + fixedLocalPassword);
   else console.log('Administración temporal (/admin): admin / ' + admin);

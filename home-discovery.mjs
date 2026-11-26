@@ -5,19 +5,19 @@ const copy = {
   'de-CH': {
     heading: 'Elektrorollstühle und Zubehör', previous: 'Vorheriges Bild', next: 'Nächstes Bild',
     pause: 'Automatischen Bildwechsel anhalten', play: 'Automatischen Bildwechsel starten',
-    slides: ['Rollstühle vergleichen', 'Movility One in 3D ansehen', 'Passende Teile finden'],
+    slides: ['Rollstühle vergleichen', 'Mobility One in 3D ansehen', 'Passende Teile finden'],
   },
   'fr-CH': {
     heading: 'Fauteuils roulants électriques et accessoires', previous: 'Image précédente', next: 'Image suivante',
     pause: 'Mettre le défilement automatique en pause', play: 'Lancer le défilement automatique',
-    slides: ['Comparer les fauteuils', 'Voir le Movility One en 3D', 'Trouver des pièces compatibles'],
+    slides: ['Comparer les fauteuils', 'Voir le Mobility One en 3D', 'Trouver des pièces compatibles'],
   },
 };
 
 export function homeDiscovery(locale, detailImage) {
   const t = copy[locale];
   const images = [discoveryCompareImage, detailImage, discoveryAccessoriesImage];
-  const destinations = ['/compare', '/movility-one/3d', '?family=spare#catalogue'];
+  const destinations = ['/compare', '/mobility-one/3d', '?family=spare#catalogue'];
   return `<section class="discovery-section" aria-labelledby="home-discovery-heading" data-home-discovery>
     <h1 class="visually-hidden" id="home-discovery-heading">${t.heading}</h1>
     <div class="discovery-controls" data-discovery-controls hidden>

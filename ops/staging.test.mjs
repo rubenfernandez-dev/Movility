@@ -1,27 +1,51 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
-import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
+import { setTimeout as delay } from 'node:timers/promises';
+import { generateVAPIDKeys } from 'web-push';
+import { backupVolume, restoreVolume } from './database.mjs';
+import { stagingEnvironment } from './staging.mjs';
 import { shipmentFromToken, shipmentPath } from '../tracking.mjs';
 
-test('staging keeps a simulated order after restart and ignores external integration settings', { timeout: 15000 }, async () => {
+const stagingOrigin = 'https://staging.movility.example';
+
+test('staging configuration rejects live payments, live keys and an unconfigured test recipient', () => {
+  const base = { MOVILITY_STAGING_ORIGIN: stagingOrigin, MOVILITY_STAGING_ADMIN_PASSWORD: 'fixture-password' };
+  const build = overrides => stagingEnvironment(':memory:', 0, { ...base, ...overrides });
+  assert.throws(() => build({ MOVILITY_STAGING_ADMIN_PASSWORD: '' }), /MOVILITY_STAGING_ADMIN_PASSWORD/);
+  assert.throws(() => build({ MOVILITY_STAGING_PAYMENT_MODE: 'live' }), /Stripe mode requires/);
+  const stripe = { MOVILITY_STAGING_PAYMENT_MODE: 'stripe-test', MOVILITY_STAGING_STRIPE_WEBHOOK_SECRET: 'whsec_fixture' };
+  assert.throws(() => build({ ...stripe, MOVILITY_STAGING_STRIPE_SECRET_KEY: 'sk_live_fixture' }), /Stripe mode requires/);
+  assert.equal(build({ ...stripe, MOVILITY_STAGING_STRIPE_SECRET_KEY: 'sk_test_fixture' }).MOVILITY_PAYMENT_MODE, 'stripe-test');
+  const resend = { MOVILITY_STAGING_EMAIL_MODE: 'resend-test', MOVILITY_STAGING_EMAIL_FROM: 'from@example.com',
+    MOVILITY_STAGING_RESEND_API_KEY: 'fixture' };
+  assert.throws(() => build(resend), /one authorized recipient/);
+  const configured = build({ ...resend, MOVILITY_STAGING_EMAIL_TEST_TO: 'qa@example.com',
+    MOVILITY_EMAIL_TEST_TO: 'ignored@example.com', MOVILITY_DB: 'ignored.sqlite' });
+  assert.equal(configured.MOVILITY_EMAIL_TEST_TO, 'qa@example.com');
+  assert.equal(configured.MOVILITY_DB, ':memory:');
+  assert.equal(configured.MOVILITY_PUBLIC_ORIGIN, stagingOrigin);
+});
+
+test('staging simulates integrations and restores an independent volume with orders, serials, stock and media', { timeout: 20000 }, async () => {
   const folder = mkdtempSync(join(tmpdir(), 'movility-staging-'));
   const database = join(folder, 'staging.sqlite');
-  const origin = 'https://mobility.pilot.example';
-  const env = { ...process.env, MOVILITY_DB: ':memory:', MOVILITY_STAGING_DB: database,
-    MOVILITY_STAGING_ORIGIN: origin, MOVILITY_STAGING_PAYMENT_MODE: 'simulated',
-    MOVILITY_STAGING_EMAIL_MODE: 'simulated', MOVILITY_STAGING_PUSH_MODE: 'simulated',
+  const env = { ...process.env, MOVILITY_DB: ':memory:',
+    MOVILITY_STAGING_PAYMENT_MODE: 'simulated', MOVILITY_STAGING_EMAIL_MODE: 'simulated',
     MOVILITY_PAYMENT_MODE: 'stripe-test', MOVILITY_EMAIL_MODE: 'resend-test', MOVILITY_PUSH_MODE: 'web-push',
-    MOVILITY_CARRIER_SECRET: 'not-a-production-secret', MOVILITY_STAGING_ADMIN_PASSWORD: 'staging-fixture' };
+    MOVILITY_CARRIER_SECRET: 'not-a-production-secret', MOVILITY_STAGING_ADMIN_PASSWORD: 'staging-fixture', MOVILITY_STAGING_ORIGIN: stagingOrigin,
+    MOVILITY_STAGING_PUSH_MODE: 'simulated', MOVILITY_STAGING_PUSH_PUBLIC_KEY: '', MOVILITY_STAGING_PUSH_PRIVATE_KEY: '',
+    MOVILITY_STAGING_PUSH_SUBJECT: '' };
   let child;
-  async function start() {
+  async function start(db = database) {
     const socket = createServer().listen(0, '127.0.0.1');
     await once(socket, 'listening');
     const port = socket.address().port;
@@ -29,7 +53,8 @@ test('staging keeps a simulated order after restart and ignores external integra
     const launcher = fileURLToPath(new URL('./staging.mjs', import.meta.url));
     child = spawn(process.execPath, ['--permission', '--allow-fs-read=*',
       '--allow-fs-write=' + folder, '--allow-fs-write=' + join(folder, '*'), launcher], {
-      cwd: folder, env: { ...env, MOVILITY_STAGING_PORT: String(port) }, stdio: ['ignore', 'pipe', 'inherit'],
+      cwd: folder, env: { ...env, MOVILITY_STAGING_PORT: String(port), MOVILITY_STAGING_DB: db },
+      stdio: ['ignore', 'pipe', 'inherit'],
     });
     const lines = createInterface({ input: child.stdout });
     const [first] = await Promise.race([
@@ -47,21 +72,25 @@ test('staging keeps a simulated order after restart and ignores external integra
   }
   try {
     const base = await start();
+    const verification = execFileSync(process.execPath, ['ops/verify-staging.mjs', base], { encoding: 'utf8', timeout: 10000 });
+    assert.match(verification, /panel protegido sin credenciales/);
     const health = await fetch(base + '/healthz');
     assert.equal(health.status, 200);
     assert.equal(health.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await health.json(), { result: 'ok' });
-    assert.ok(existsSync(database));
-    const landing = await (await fetch(base + '/fr-CH')).text();
-    assert.ok(landing.includes('rel="canonical" href="' + origin + '/fr-CH"'));
-    const checkout = await fetch(base + '/fr-CH/checkout');
+    for (const language of ['de-CH', 'fr-CH']) {
+      const demo = await fetch(base + '/' + language + '/models/qa-chair');
+      assert.equal(demo.status, 200);
+      assert.match(await demo.text(), /Mobility QA Compact/);
+    }
+    const checkout = await fetch(base + '/fr-CH/checkout?model=one');
     assert.equal(checkout.headers.get('x-robots-tag'), 'noindex, nofollow');
     const body = await checkout.text();
     assert.match(body, /Données fictives uniquement/);
     for (const [locale, message] of [['fr-CH', 'code postal suisse à quatre chiffres'], ['de-CH', 'vierstellige Schweizer Postleitzahl']]) {
       const invalid = await fetch(base + '/' + locale + '/checkout', {
         method: 'POST', headers: { Origin: base },
-        body: new URLSearchParams({ email: 'bad', bill_name: 'Client Test', bill_zip: '123', result: 'paid' }),
+        body: new URLSearchParams({ model: 'one', email: 'bad', bill_name: 'Client Test', bill_zip: '123', result: 'paid' }),
       });
       assert.equal(invalid.status, 400);
       const errors = await invalid.text();
@@ -78,9 +107,9 @@ test('staging keeps a simulated order after restart and ignores external integra
       method: 'POST', redirect: 'manual', headers: { Origin: base },
       body: new URLSearchParams({
         id: body.match(/name="id" value="([^"]+)"/)[1],
-        quotedPrice: body.match(/name="quotedPrice" value="([^"]+)"/)[1],
+        model: 'one', quotedPrice: body.match(/name="quotedPrice" value="([^"]+)"/)[1],
         email: 'staging@example.com', name: 'Client Test', street: 'Rue Exemple 1',
-        zip: '1201', city: 'Genève', method: 'Visa', result: 'paid',
+        country: 'CH', zip: '1201', city: 'Genève', method: 'Visa', result: 'paid',
         bill_name: 'Facturation Test', bill_street: 'Rue Facture 2', bill_zip: '1003', bill_city: 'Lausanne',
       }),
     });
@@ -211,9 +240,9 @@ test('staging keeps a simulated order after restart and ignores external integra
     const csv = await (await fetch(restarted + '/admin/accounting.csv', { headers: { Authorization: auth } })).text();
     assert.match(csv, /"Cobro","Visa","CHF","2499.00"/);
     assert.equal(csv.match(/"Reembolso","Visa","CHF","-2499.00"/g)?.length, 1);
-    const initialArticles = await (await fetch(restarted + '/admin/models?q=movility&family=wheelchair&status=published',
+    const initialArticles = await (await fetch(restarted + '/admin/models?q=mobility&family=wheelchair&status=published',
       { headers: { Authorization: auth } })).text();
-    assert.match(initialArticles, /<h3>Movility One<\/h3>/);
+    assert.match(initialArticles, /<h3>Mobility One<\/h3>/);
     assert.match(initialArticles, /href="\/admin\/models\/one\/content">Características, fotos y vídeo/);
     const localizedAdmin = await fetch(restarted + '/admin/models?family=wheelchair&lang=fr-CH',
       { headers: { Authorization: auth } });
@@ -236,17 +265,17 @@ test('staging keeps a simulated order after restart and ignores external integra
     const compatibilityPath = restarted + '/admin/models/travel-bag/compatibility';
     const compatHeaders = { Authorization: auth };
     assert.match(await (await fetch(restarted + '/fr-CH/models/travel-bag')).text(), /Compatibilité à confirmer/);
-    assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /Movility One/);
+    assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /Mobility One/);
     assert.equal((await submit(compatibilityPath, { chair: 'one', 'de-one': 'Nur Version 2' }, compatHeaders)).status, 400);
     assert.equal((await submit(compatibilityPath, { chair: 'one', 'de-one': 'Nur Version 2', 'fr-one': 'Version 2 uniquement' },
       compatHeaders)).status, 303);
     const filteredParts = await (await fetch(restarted + '/fr-CH?family=accessory&compatible=one')).text();
     assert.match(filteredParts, /name="compatible"/);
     assert.match(filteredParts, /Travel Bag/);
-    assert.match(await (await fetch(restarted + '/fr-CH/movility-one')).text(), /Accessoires et pièces compatibles[\s\S]*Travel Bag<\/a> · Version 2 uniquement/);
-    assert.match(await (await fetch(restarted + '/de-CH/models/travel-bag')).text(), /Kompatible Rollstühle[\s\S]*Movility One<\/a> · Nur Version 2/);
+    assert.match(await (await fetch(restarted + '/fr-CH/mobility-one')).text(), /Accessoires et pièces compatibles[\s\S]*Travel Bag<\/a> · Version 2 uniquement/);
+    assert.match(await (await fetch(restarted + '/de-CH/models/travel-bag')).text(), /Kompatible Rollstühle[\s\S]*Mobility One<\/a> · Nur Version 2/);
     assert.equal((await submit(compatibilityPath, {}, compatHeaders)).status, 303);
-    assert.match(await (await fetch(restarted + '/fr-CH?family=accessory&compatible=one')).text(), /Aucun article compatible trouvé/);
+    assert.match(await (await fetch(restarted + '/fr-CH?family=accessory&compatible=one')).text(), /Nous ne pouvons pas encore vérifier quelles pièces conviennent au fauteuil Mobility One/);
     const chairEditor = restarted + '/admin/models/one/compatibility';
     assert.equal((await submit(restarted + '/admin/models', {
       ...accessory, sku: 'test-chair', name: 'Test Chair', family: 'wheelchair', width: '60', weight: '40', range: '20',
@@ -270,16 +299,16 @@ test('staging keeps a simulated order after restart and ignores external integra
         ['fr-test-wheel', 'Dès la version 2']]),
     });
     assert.equal(addBoth.status, 303);
-    assert.match(await (await fetch(restarted + '/fr-CH/movility-one')).text(), /Travel Bag[\s\S]*Test Wheel<\/a> · Dès la version 2/);
+    assert.match(await (await fetch(restarted + '/fr-CH/mobility-one')).text(), /Travel Bag[\s\S]*Test Wheel<\/a> · Dès la version 2/);
     assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /name="chair" value="one" checked/);
     assert.equal((await submit(chairEditor, {}, compatHeaders)).status, 303);
     assert.match(await (await fetch(compatibilityPath, { headers: compatHeaders })).text(), /name="chair" value="test-chair" checked/);
-    assert.doesNotMatch(await (await fetch(restarted + '/fr-CH/movility-one')).text(), /Test Wheel/);
+    assert.doesNotMatch(await (await fetch(restarted + '/fr-CH/mobility-one')).text(), /Test Wheel/);
     const accessoryCheckout = await (await fetch(restarted + '/fr-CH/checkout?model=travel-bag')).text();
     const accessoryOrder = await submit(restarted + '/fr-CH/checkout', {
       id: accessoryCheckout.match(/name="id" value="([^"]+)"/)[1], quotedPrice: '4900', model: 'travel-bag',
       email: 'staging@example.com', name: 'Client Test', street: 'Rue Exemple 1',
-      zip: '1201', city: 'Genève', method: 'Visa', result: 'paid',
+      country: 'CH', zip: '1201', city: 'Genève', method: 'Visa', result: 'paid',
     });
     assert.equal(accessoryOrder.status, 303);
     const accessoryId = accessoryOrder.headers.get('location').split('/').at(-1);
@@ -287,8 +316,45 @@ test('staging keeps a simulated order after restart and ignores external integra
       { Authorization: auth })).status, 303);
     assert.equal((await submit(restarted + '/admin/' + accessoryId + '/tracking', { eventId: crypto.randomUUID(), status: 'delivered' },
       { Authorization: auth })).status, 303);
+    const germanCheckout = await (await fetch(restarted + '/de-CH/checkout?model=qa-chair')).text();
+    const germanOrder = await submit(restarted + '/de-CH/checkout', {
+      id: germanCheckout.match(/name="id" value="([^"]+)"/)[1], quotedPrice: '189000', model: 'qa-chair',
+      email: 'staging@example.com', name: 'Kunde Test', street: 'Teststrasse 1',
+      country: 'CH', zip: '8001', city: 'Zürich', method: 'Visa', result: 'paid',
+    });
+    assert.equal(germanOrder.status, 303);
+    const germanId = germanOrder.headers.get('location').split('/').at(-1);
+    const orderUrl = restarted + '/de-CH/orders/' + germanId;
+    const buyer = { Cookie: germanOrder.headers.getSetCookie()[0].split(';')[0] };
+    assert.match(await (await fetch(orderUrl, { headers: buyer })).text(), /data-subscribe/);
+    const subscription = await fetch(orderUrl + '/push', { method: 'POST',
+      headers: { ...buyer, Origin: restarted, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'subscribe', subscription: {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/staging-qa',
+        keys: { p256dh: generateVAPIDKeys().publicKey,
+          auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url') },
+      } }) });
+    assert.deepEqual(await subscription.json(), { active: true });
+    assert.equal((await submit(restarted + '/admin/' + germanId + '/ship',
+      { tracking: 'STAGING-DE', 'serial_qa-chair': 'QA-CHAIR-1' }, { Authorization: auth })).status, 303);
+    let acceptedPush;
+    for (let attempt = 0; attempt < 30 && !acceptedPush; attempt++) {
+      const pushPanel = await fetch(restarted + '/admin/push?order=' + germanId, { headers: { Authorization: auth } });
+      acceptedPush = (await pushPanel.text()).includes('Aceptado en simulación');
+      if (!acceptedPush) await delay(200);
+    }
+    assert.equal(acceptedPush, true);
     const shipmentDb = new DatabaseSync(database, { readOnly: true });
     try {
+      for (const [language, orderId] of [['fr-CH', accessoryId], ['de-CH', germanId]]) {
+        const mail = kind => shipmentDb.prepare('SELECT body FROM email_previews WHERE order_id=? AND kind=?').get(orderId, kind).body;
+        const orderLink = '/' + language + '/orders/' + orderId;
+        assert.ok(mail('paid').includes(stagingOrigin + orderLink));
+        const shipmentLink = shipmentPath(shipmentDb, language, orderId);
+        assert.ok(mail('shipped').includes(stagingOrigin + shipmentLink));
+        assert.equal((await fetch(restarted + shipmentLink)).status, 200);
+        assert.equal((await fetch(restarted + orderLink)).status, 403);
+      }
       const token = shipmentPath(shipmentDb, 'fr-CH', accessoryId).split('/').at(-1);
       const { occurred_at } = shipmentDb.prepare("SELECT occurred_at FROM tracking_events WHERE order_id=? AND event_status='delivered'").get(accessoryId);
       const week = 7 * 24 * 60 * 60 * 1000;
@@ -313,7 +379,7 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.match(secondPage, /Página 2 de 2/);
     assert.match(await (await fetch(restarted + '/fr-CH')).text(), /Maison[\s\S]*Home 11/);
     const catalogOrderPath = restarted + '/admin/catalog-order';
-    assert.match(await (await fetch(catalogOrderPath, { headers: admin })).text(), /Movility One/);
+    assert.match(await (await fetch(catalogOrderPath, { headers: admin })).text(), /Mobility One/);
     assert.equal((await submit(catalogOrderPath, { kind: 'family', id: 'home', position: '10' }, admin)).status, 303);
     assert.equal((await submit(catalogOrderPath, { kind: 'product', id: 'home-11', position: '10' }, admin)).status, 303);
     assert.equal((await submit(catalogOrderPath, { kind: 'product', id: 'home-1', position: '0' }, admin)).status, 400);
@@ -323,7 +389,7 @@ test('staging keeps a simulated order after restart and ignores external integra
       assert.match(ordered, /\/models\/home-11"[\s\S]*\/models\/home-1"/);
     }
     assert.equal((await submit(catalogOrderPath, { kind: 'product', id: 'home-11', position: '' }, admin)).status, 303);
-    assert.match(await (await fetch(restarted + '/fr-CH?family=home')).text(), /\/models\/home-1"[\s\S]*\/models\/home-11"/);
+    assert.match(await (await fetch(restarted + '/fr-CH?family=home')).text(), /\/models\/home-1\?family=home"[\s\S]*\/models\/home-11\?family=home"/);
     const archived = await submit(restarted + '/admin/models?q=HOME-DRA&family=home&status=archived', {
       ...accessory, sku: 'home-draft', family: 'home', name: 'Étagère test', active: '0',
     }, admin);
@@ -338,10 +404,10 @@ test('staging keeps a simulated order after restart and ignores external integra
     const frenchCatalogue = await (await fetch(restarted + '/fr-CH?family=home')).text();
     assert.match(frenchCatalogue, /family=home#catalogue" aria-current="true">Maison/);
     assert.match(frenchCatalogue, /Home 11/);
-    assert.doesNotMatch(frenchCatalogue, /Étagère test|Travel Bag|<h4><a href="\/fr-CH\/movility-one"/);
+    assert.doesNotMatch(frenchCatalogue, /Étagère test|Travel Bag|<h4><a href="\/fr-CH\/mobility-one"/);
     const germanCatalogue = await (await fetch(restarted + '/de-CH?family=wheelchair')).text();
     assert.match(germanCatalogue, /family=wheelchair#catalogue" aria-current="true">Elektrorollstühle/);
-    assert.match(germanCatalogue, /<div class="model-grid">\s*<article class="catalog-product">[\s\S]*?<h4><a href="\/de-CH\/movility-one">\s*<img[^>]+>\s*Movility One/);
+    assert.match(germanCatalogue, /<div class="model-grid">\s*<article class="catalog-product">[\s\S]*?<h4><a href="\/de-CH\/mobility-one\?family=wheelchair">\s*<img[^>]+>\s*Mobility One/);
     assert.doesNotMatch(germanCatalogue, /Home 11/);
     assert.equal((await submit(restarted + '/admin/models/home-11/content', {
       de: 'Material: Holz', fr: 'Matière : bois',
@@ -353,73 +419,110 @@ test('staging keeps a simulated order after restart and ignores external integra
       method: 'POST', body: media, redirect: 'manual', headers: { Origin: restarted, Authorization: auth },
     });
     assert.equal(upload.status, 303);
+    const editorialAsset = await fetch(restarted + '/admin/content/about/image', {
+      method: 'POST', body: media, redirect: 'manual', headers: { Origin: restarted, Authorization: auth },
+    });
+    assert.equal(editorialAsset.status, 303);
+    assert.equal((await fetch(restarted + '/admin/content/about/image')).status, 401);
+    const privatePhoto = await fetch(restarted + '/admin/content/about/image', { headers: admin });
+    assert.equal(privatePhoto.headers.get('cache-control'), 'private, no-store');
+    const privateAbout = await (await fetch(restarted + '/admin/content/about/preview/de-CH', { headers: admin })).text();
+    assert.ok(privateAbout.includes('src="/admin/content/about/image"'));
+    const publicAbout = await (await fetch(restarted + '/de-CH/about')).text();
+    assert.ok(publicAbout.includes('src="/assets/about-editorial.jpg"'));
+    assert.doesNotMatch(publicAbout, /about-story|src="\/admin\/content\/about\/image"/);
     const item = await (await fetch(restarted + '/fr-CH/models/home-11')).text();
     assert.match(item, /Matière : bois/);
     assert.match(item, /\/assets\/models\/home-11.jpg/);
     assert.equal((await fetch(restarted + '/assets/models/home-11.jpg')).headers.get('content-type'), 'image/jpeg');
-    for (const locale of ['de-CH', 'fr-CH']) {
-      const home = await (await fetch(restarted + '/' + locale)).text();
-      assert.match(home, /storefront-footer/);
-      assert.ok(home.includes('/' + locale + '/delivery-returns-warranty#returns'));
-      assert.match(home, /cookie-banner[\s\S]*value="accept"[\s\S]*value="decline"/);
-      const placeholder = await fetch(restarted + '/' + locale + '/privacy');
-      assert.equal(placeholder.status, 404);
-      assert.match(await placeholder.text(), /noch nicht|pas encore/);
-      const previewPath = restarted + '/admin/legal/privacy/preview/' + locale;
-      assert.equal((await fetch(previewPath)).status, 401);
-      const preview = await fetch(previewPath, { headers: admin });
-      assert.equal(preview.status, 200);
-      assert.match(await preview.text(), /Entwurfsvorschau|brouillon/);
+    const videosPath = restarted + '/admin/models/qa-chair/content/videos';
+    const folding = { title_de: 'Falten Prüfstuhl', title_fr: 'Pliage essai', purpose: 'folding', position: '20' };
+    const joystick = { title_de: 'Joystick Prüfstuhl', title_fr: 'Joystick essai', purpose: 'joystick', position: '10' };
+    for (const fields of [folding, joystick]) {
+      const result = await submit(videosPath, fields, admin);
+      assert.match(result.headers.get('location'), /saved=1#model-videos$/);
     }
-    const termsEditor = restarted + '/admin/legal/terms';
-    assert.equal((await submit(termsEditor, { revision: '0', de: 'DE fixture', fr: 'FR fixture', action: 'draft' }, admin)).status, 303);
-    assert.equal((await fetch(restarted + '/fr-CH/terms')).status, 404);
-    assert.equal((await submit(termsEditor, { revision: '1', de: 'DE fixture', fr: 'FR fixture', action: 'publish' }, admin)).status, 400);
-    assert.equal((await submit(termsEditor, { revision: '1', de: 'DE fixture', fr: 'FR fixture', action: 'publish', confirmed: '1' }, admin)).status, 303);
-    const version = await fetch(restarted + '/fr-CH/terms?version=1');
-    assert.equal(version.status, 200);
-    assert.match(await version.text(), /FR fixture/);
-    const checkoutWithTerms = await (await fetch(restarted + '/fr-CH/checkout?model=home-11')).text();
-    assert.match(checkoutWithTerms, /terms[?]version=1[\s\S]*value="paid"/);
-
-    const orderWithTerms = {
-      id: checkoutWithTerms.match(/name="id" value="([^"]+)"/)[1],
-      quotedPrice: checkoutWithTerms.match(/name="quotedPrice" value="([^"]+)"/)[1],
-      model: 'home-11', email: 'terms@example.com', name: 'Client Test', street: 'Rue Exemple 1',
-      zip: '1201', city: 'Geneve', method: 'Visa', result: 'paid', termsVersion: '1',
-    };
-    const purchasePath = restarted + '/fr-CH/checkout';
-    assert.equal((await submit(purchasePath, orderWithTerms)).status, 409);
-    assert.equal((await submit(purchasePath, { ...orderWithTerms, acceptTerms: '1' })).status, 303);
-    const termsDb = new DatabaseSync(database, { readOnly: true });
-    try {
-      const accepted = termsDb.prepare('SELECT version, locale FROM order_terms WHERE order_id=?').get(orderWithTerms.id);
-      assert.equal(accepted.version, 1);
-      assert.equal(accepted.locale, 'fr-CH');
-    } finally { termsDb.close(); }
-
-    const securityPath = restarted + '/admin/security';
+    const videoEditor = await (await fetch(restarted + '/admin/models/qa-chair/content', { headers: admin })).text();
+    const [joystickId, foldingId] = [...videoEditor.matchAll(/content\/videos\/(\d+)\/upload/g)].map(match => match[1]);
+    const incomplete = await submit(videosPath + '/' + foldingId, { ...folding, published: '1' }, admin);
+    assert.match(incomplete.headers.get('location'), /video=invalid/);
+    for (const [fields, id] of [[folding, foldingId], [joystick, joystickId]]) {
+      const files = {
+        video: '0000ftyp' + fields.purpose,
+        deCaptions: 'WEBVTT\n\n00:00.000 --> 00:01.000\n' + fields.title_de,
+        frCaptions: 'WEBVTT\n\n00:00.000 --> 00:01.000\n' + fields.title_fr,
+        deTranscript: fields.title_de,
+        frTranscript: fields.title_fr,
+      };
+      for (const [kind, contents] of Object.entries(files)) {
+        const body = new FormData();
+        body.set('kind', kind);
+        body.set('file', new Blob([contents]), 'fixture');
+        const result = await fetch(videosPath + '/' + id + '/upload', {
+          method: 'POST', body, redirect: 'manual', headers: { ...admin, Origin: restarted },
+        });
+        assert.match(result.headers.get('location'), /saved=1#model-videos$/);
+      }
+      const asset = restarted + '/assets/models/qa-chair.video-' + id + '.mp4';
+      assert.equal((await fetch(asset)).status, 404);
+      const result = await submit(videosPath + '/' + id, { ...fields, published: '1' }, admin);
+      assert.match(result.headers.get('location'), /saved=1#model-videos$/);
+      assert.equal(await (await fetch(asset)).text(), files.video);
+    }
+    for (const locale of ['de-CH', 'fr-CH']) {
+      const key = 'title_' + locale.slice(0, 2);
+      const chair = await (await fetch(restarted + '/' + locale + '/models/qa-chair')).text();
+      assert.equal((chair.match(/<video controls playsinline preload="none">/g) || []).length, 2);
+      assert.ok(chair.indexOf('>' + joystick[key] + '</a>') < chair.indexOf('>' + folding[key] + '</a>'));
+      const transport = chair.match(/<section class="one-fit">([\s\S]*?)<\/section>/)[1];
+      assert.ok(transport.includes('#model-video-' + foldingId));
+      assert.ok(!transport.includes('#model-video-' + joystickId));
+      for (const [fields, id] of [[folding, foldingId], [joystick, joystickId]]) {
+        const asset = '/assets/models/qa-chair.video-' + id + '.' + locale;
+        assert.ok(chair.includes('<h3>' + fields[key] + '</h3>'));
+        assert.ok(chair.includes('src="' + asset + '.vtt"'));
+        assert.ok(chair.includes('href="' + asset + '.txt"'));
+        assert.ok((await (await fetch(restarted + asset + '.vtt')).text()).includes(fields[key]));
+        assert.equal(await (await fetch(restarted + asset + '.txt')).text(), fields[key]);
+      }
+      const otherChair = await (await fetch(restarted + '/' + locale + '/mobility-one')).text();
+      assert.doesNotMatch(otherChair, /gallery-videos-title|<video|qa-chair\.video-/);
+    }
+    assert.equal((await fetch(restarted + '/assets/models/one.video-' + foldingId + '.mp4')).status, 404);
+    const reordered = await submit(videosPath + '/' + foldingId, { ...folding, position: '0', published: '1' }, admin);
+    assert.match(reordered.headers.get('location'), /saved=1#model-videos$/);
+    const reorderedChair = await (await fetch(restarted + '/de-CH/models/qa-chair')).text();
+    assert.ok(reorderedChair.indexOf('>' + folding.title_de + '</a>') < reorderedChair.indexOf('>' + joystick.title_de + '</a>'));
+    await stop();
+    const backup = backupVolume(database, join(folder, 'backups'));
+    const copy = join(folder, 'recovered', 'staging.sqlite');
+    assert.equal(restoreVolume(backup, copy), copy);
+    assert.throws(() => restoreVolume(backup, copy), /medios de destino ya existe/);
+    const afterSale = await start(copy);
+    const restoredOrder = await fetch(afterSale + '/admin/orders/' + germanId, { headers: admin });
+    assert.equal(restoredOrder.status, 200);
+    assert.match(await restoredOrder.text(), /STAGING-DE[\s\S]*QA-CHAIR-1/);
+    assert.equal((await fetch(afterSale + '/de-CH/checkout?model=qa-chair')).status, 409);
+    const restoredImage = await fetch(afterSale + '/assets/models/home-11.jpg');
+    assert.equal(restoredImage.status, 200);
+    assert.deepEqual(Buffer.from(await restoredImage.arrayBuffer()), readFileSync(join(database + '.media', 'home-11.jpg')));
+    const securityPath = '/admin/security';
     const freshPassword = 'new-fixture-admin-password';
     const newAdmin = { Authorization: 'Basic ' + Buffer.from('admin:' + freshPassword).toString('base64') };
-    assert.equal((await fetch(securityPath)).status, 401);
-    const security = await fetch(securityPath, { headers: admin });
+    assert.equal((await fetch(afterSale + securityPath)).status, 401);
+    const security = await fetch(afterSale + securityPath, { headers: admin });
     assert.equal(security.status, 200);
     assert.match(await security.text(), /autocomplete="current-password"/);
     const fields = { password: freshPassword, confirm: freshPassword };
-    assert.equal((await submit(securityPath, { ...fields, current: 'incorrect' }, admin)).status, 400);
-    assert.equal((await submit(securityPath, { ...fields, current: 'staging-fixture' }, admin)).status, 200);
-    assert.equal((await fetch(restarted + '/admin', { headers: admin })).status, 401);
-    assert.equal((await fetch(restarted + '/admin', { headers: newAdmin })).status, 200);
+    assert.equal((await submit(afterSale + securityPath, { ...fields, current: 'incorrect' }, { ...admin, Origin: afterSale })).status, 400);
+    assert.equal((await submit(afterSale + securityPath, { ...fields, current: 'staging-fixture' }, { ...admin, Origin: afterSale })).status, 200);
+    assert.equal((await fetch(afterSale + '/admin', { headers: admin })).status, 401);
+    assert.equal((await fetch(afterSale + '/admin', { headers: newAdmin })).status, 200);
     await stop();
-    const rotated = await start();
-    assert.equal((await fetch(rotated + '/admin', { headers: admin })).status, 401);
-    assert.equal((await fetch(rotated + '/admin', { headers: newAdmin })).status, 200);
-    assert.equal((await fetch(rotated + '/admin/orders/' + id, { headers: newAdmin })).status, 200);
-    const restoredItem = await (await fetch(rotated + '/fr-CH/models/home-11')).text();
-    assert.match(restoredItem, /bois/);
-    const restoredPhoto = await fetch(rotated + '/assets/models/home-11.jpg');
-    assert.equal(restoredPhoto.status, 200);
-    assert.deepEqual(Buffer.from(await restoredPhoto.arrayBuffer()), readFileSync(join(database + '.media', 'home-11.jpg')));
+    const afterPasswordChange = await start(copy);
+    assert.equal((await fetch(afterPasswordChange + '/admin', { headers: admin })).status, 401);
+    assert.equal((await fetch(afterPasswordChange + '/admin', { headers: newAdmin })).status, 200);
+
   } finally {
     await stop();
     rmSync(folder, { recursive: true, force: true });

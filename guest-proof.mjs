@@ -81,7 +81,7 @@ export function requestOrderRecovery(db, id, email, now = seconds()) {
 
 export function orderRecoveryEmail(locale, code, origin) {
   const de = locale === 'de-CH';
-  const subject = de ? 'Movility · Code für deinen Bestellzugriff' : 'Movility · Code d’accès à votre commande';
+  const subject = de ? 'Mobility · Code für deinen Bestellzugriff' : 'Mobility · Code d’accès à votre commande';
   const path = `/${locale}/guest-access`;
   const body = [
     de ? 'Dein einmaliger Code für den Bestellzugriff:' : 'Votre code à usage unique pour accéder à la commande :',

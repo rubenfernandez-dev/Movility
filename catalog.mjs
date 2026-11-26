@@ -1,7 +1,11 @@
+import { productSpecs, productOffer } from './product-specs.mjs';
 import { adminFragment, adminHtml, adminLocale, adminText } from './admin-language.mjs';
-import { escapeHtml, money, copy } from './views.mjs';
-import { productAvailability, productDetails, productGallery, productVideo } from './storefront.mjs';
-import { addToCart, coreSKU, skuPattern } from './cart.mjs';
+import { escapeHtml, money } from './views.mjs';
+import { oneVideoLabel } from './movility-one-details.mjs';
+import { missingProductPhoto, productAvailability, productDetails, productGallery, productOverview, galleryVideos } from './storefront.mjs';
+import { coreSKU, skuPattern } from './cart.mjs';
+import { compareLabel, comparisonLink, comparisonQuery, withQuery } from './discovery.mjs';
+import { chairFilterKeys } from './chair-filters.mjs';
 import { isPart } from './compatibility.mjs';
 
 const initialFamilies = {
@@ -11,10 +15,6 @@ const initialFamilies = {
 };
 export const isWheelchair = model => !model.family || model.family === 'wheelchair';
 
-const language = {
-  'de-CH': { models: 'Weitere Modelle', price: 'Preis', width: 'Breite', weight: 'Gewicht', range: 'Reichweite', fold: 'Faltbar', yes: 'Ja', no: 'Nein', cart: 'Zum Warenkorb', compare: 'Vergleichen' },
-  'fr-CH': { models: 'Autres modèles', price: 'Prix', width: 'Largeur', weight: 'Poids', range: 'Autonomie', fold: 'Pliable', yes: 'Oui', no: 'Non', cart: 'Voir le panier', compare: 'Comparer' },
-};
 const view3dLabel = { 'de-CH': '3D-Ansicht öffnen', 'fr-CH': 'Ouvrir la vue 3D' };
 
 export function setupModels(db) {
@@ -37,6 +37,9 @@ export function setupModels(db) {
     );
   `);
   for (const [table, column, type] of [
+    ['extra_models', 'length', 'INTEGER'],
+    ['extra_models', 'height', 'INTEGER'],
+    ['extra_models', 'max_load', 'INTEGER'],
     ['extra_models', 'family', "TEXT NOT NULL DEFAULT 'wheelchair'"],
     ['order_models', 'requires_serial', 'INTEGER NOT NULL DEFAULT 1'],
     ['order_lines', 'requires_serial', 'INTEGER NOT NULL DEFAULT 1'],
@@ -47,6 +50,7 @@ export function setupModels(db) {
   }
   db.exec(`CREATE TABLE IF NOT EXISTS catalog_families (id TEXT PRIMARY KEY, es TEXT NOT NULL,
     "de-CH" TEXT NOT NULL, "fr-CH" TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS catalog_gallery (sku TEXT PRIMARY KEY, settings TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS catalog_features (sku TEXT PRIMARY KEY, de TEXT NOT NULL, fr TEXT NOT NULL);`);
   db.exec('CREATE TABLE IF NOT EXISTS catalog_positions (kind TEXT NOT NULL, id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position > 0), PRIMARY KEY (kind, id))');
   const seed = db.prepare('INSERT OR IGNORE INTO catalog_families VALUES (?, ?, ?, ?)');
@@ -82,14 +86,21 @@ export function saveCatalogPosition(db, fields) {
 
 const familyLabel = family => family[adminLocale()] || family.es;
 
-export function catalogOrderAdmin(families, products, message) {
+export function catalogOrderAdmin(families, products, message, chairs = [], featured = '') {
   const row = (kind, id, name, position) => adminHtml`<form class="catalog-filters" method="post" action="/admin/catalog-order">
     <input type="hidden" name="kind" value="${kind}"><input type="hidden" name="id" value="${escapeHtml(id)}">
     <label>${escapeHtml(name)} <input type="number" name="position" min="1" max="999999999" step="1" value="${position ?? ''}"></label>
     <button>Guardar posición</button></form>`;
   return adminHtml`<p><a href="/admin/models">Volver a artículos</a></p><h1>Orden del catálogo</h1>
     <p>El número más bajo aparece primero. Deja el campo vacío para usar el orden automático al final.</p>
-    ${message}<h2>Familias</h2>
+    ${message}
+    <h2>Portada de la tienda</h2>
+    <form class="catalog-filters" method="post" action="/admin/catalog-order">
+      <input type="hidden" name="kind" value="featured">
+      <label>Silla destacada<select name="sku"><option value="">Portada de marca</option>
+        ${chairs.map(chair => `<option value="${chair.sku}"${chair.sku === featured ? ' selected' : ''}>${escapeHtml(chair.name)}</option>`).join('')}
+      </select></label><button>Guardar portada</button>
+    </form><h2>Familias</h2>
     ${families.map(family => row('family', family.id, familyLabel(family), family.position)).join('')}
     <h2>Productos por familia</h2>
     ${families.map(family => adminHtml`<section><h3>${escapeHtml(familyLabel(family))}</h3>
@@ -120,7 +131,11 @@ export function catalogFilter(params, families) {
   return families.some(row => row.id === family) ? family : '';
 }
 
-export function modelAdmin(models, families, message = '', params = new URLSearchParams()) {
+export function previewLinks(sku) {
+  return adminHtml`<p>Vista previa · <a href="/admin/models/${sku}/preview/de-CH">de-CH</a> · <a href="/admin/models/${sku}/preview/fr-CH">fr-CH</a></p>`;
+}
+
+export function modelAdmin(models, families, message = '', params = new URLSearchParams(), attempted = null) {
   const family = catalogFilter(params, families);
   const status = ['published', 'archived'].includes(params.get('status')) ? params.get('status') : '';
   const search = (params.get('q') || '').trim().slice(0, 80);
@@ -147,27 +162,44 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
   };
   if (currentPage > 1) filters.set('page', String(currentPage));
   const query = filters.size ? '?' + escapeHtml(filters.toString()) : '';
-  const form = (model) => {
-    const editing = Boolean(model);
+  const editSku = params.get('edit');
+  const form = (model, editing = Boolean(model)) => {
+    const prefix = editing ? model.sku : 'new';
+    const missing = ['de', 'fr'].filter(code => !model?.['description_' + code]?.trim());
+    const feedback = missing.length ? adminHtml`<ul>${missing.map(code => adminHtml`<li><a href="#${prefix}-description-${code}">Falta la descripción · ${code === 'de' ? 'de-CH' : 'fr-CH'}</a></li>`).join('')}</ul>` : '';
+    const preview = editing ? previewLinks(model.sku) : '';
+    const missingSpecs = editing && isWheelchair(model) &&
+      [...technicalFields, 'fold'].some(key => model[key] == null || model[key] < 0);
     const field = (key, label, value, attributes = '') => adminHtml`<label>${adminText(label)}<input name="${key}" value="${escapeHtml(String(value))}" ${attributes}></label>`;
-    const description = (code, name) => adminHtml`<label>Descripción en ${adminText(name)}<textarea name="description_${code}" maxlength="500" required rows="2">${escapeHtml(model?.['description_' + code] ?? '')}</textarea></label>`;
+    const description = (code, name) => adminHtml`<label>Descripción en ${adminText(name)} · ${code === 'de' ? 'de-CH' : 'fr-CH'} · Obligatoria para publicar<textarea id="${prefix}-description-${code}" name="description_${code}" maxlength="500" rows="2">${escapeHtml(model?.['description_' + code] ?? '')}</textarea></label>`;
     return adminHtml`<form class="admin-catalog" method="post" action="/admin/models${editing ? '/' + model.sku : ''}${query}">
-      ${editing ? adminHtml`<input type="hidden" name="revision" value="${model.revision}">` : ''}
+      ${editing ? adminHtml`<input type="hidden" name="revision" value="${escapeHtml(String(model.revision ?? ''))}">` : ''}
       <div class="address-row">
         <label>Familia<select name="family">${families.map(familyRow => {
           const { id } = familyRow;
           return `<option value="${id}" ${(model?.family || 'wheelchair') === id ? 'selected' : ''}>${escapeHtml(familyLabel(familyRow))}</option>`;
         }).join('')}</select></label>
-        ${editing ? adminHtml`<p>SKU <strong>${model.sku}</strong></p>` : field('sku', 'SKU', '', 'required maxlength="24" pattern="[a-z0-9][a-z0-9\\-]{1,23}"')}
+        ${editing ? adminHtml`<p>SKU <strong>${model.sku}</strong></p>` : field('sku', 'SKU', model?.skuInput || '', 'required maxlength="24" pattern="[a-z0-9][a-z0-9\\-]{1,23}"')}
         ${field('name', 'Nombre comercial', model?.name ?? '', 'required maxlength="80"')}
-        ${field('price', 'Precio en CHF', model ? (model.cents / 100).toFixed(2) : '', 'required inputmode="decimal"')}
+        ${field('price', 'Precio en CHF', model?.price ?? (model ? (model.cents / 100).toFixed(2) : ''), 'required inputmode="decimal"')}
         ${field('units', 'Unidades disponibles', model?.units ?? 0, 'type="number" min="0" max="999" required')}
-        ${field('width', 'Anchura en cm (sillas)', model?.width || '', 'type="number" min="1" max="999"')}
-        ${field('weight', 'Peso en kg (sillas)', model?.weight || '', 'type="number" min="1" max="999"')}
-        ${field('range', 'Autonomía en km (sillas)', model?.range || '', 'type="number" min="1" max="999"')}
+        ${field('width', 'Anchura en cm (sillas)', model?.width >= 0 ? model.width : '', 'type="number" min="0" max="999"')}
+        ${field('weight', 'Peso en kg (sillas)', model?.weight >= 0 ? model.weight : '', 'type="number" min="0" max="999"')}
+        ${field('range', 'Autonomía en km (sillas)', model?.range >= 0 ? model.range : '', 'type="number" min="0" max="999"')}
+        ${field('length', 'Longitud en cm (sillas)', model?.length ?? '', 'type="number" min="0" max="999"')}
+        ${field('height', 'Altura en cm (sillas)', model?.height ?? '', 'type="number" min="0" max="999"')}
+        ${field('max_load', 'Carga máxima en kg (sillas)', model?.max_load ?? '', 'type="number" min="0" max="999"')}
       </div>
+      <h4>Requisitos de publicación</h4>${missing.length ? feedback : adminHtml`<p>Descripciones bilingües completas.</p>`}
       ${description('de', 'alemán')}${description('fr', 'francés')}
-      <label><input type="checkbox" name="fold" value="1" ${model?.fold ? 'checked' : ''}> Plegable</label>
+      <h4>Avisos opcionales</h4>
+      <p>Las medidas, características adicionales y medios son opcionales.</p>
+      ${missingSpecs ? adminHtml`<p>Hay datos técnicos pendientes.</p>` : ''}
+      ${editing ? adminHtml`<p><a href="/admin/models/${model.sku}/content#media-upload">Revisar fotos, vídeo y medios pendientes</a></p>` : ''}
+      ${preview}
+      <label>Plegable <select name="fold"><option value="">Sin dato</option>
+        <option value="1" ${model?.fold === 1 ? 'selected' : ''}>Sí</option>
+        <option value="0" ${model?.fold === 0 ? 'selected' : ''}>No</option></select></label>
       <label><input type="checkbox" name="active" value="1" ${model?.active ? 'checked' : ''}> Publicado en la tienda</label>
       <button>${editing ? adminText('Guardar cambios') : adminText('Crear artículo')}</button>
     </form>`;
@@ -175,10 +207,11 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
   return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Artículos del catálogo</h1>
     <div class="product-actions admin-catalog-links">
       <a class="button secondary" href="/admin/families">Gestionar familias</a>
-      <a class="button secondary" href="/admin/catalog-order">Ordenar catálogo</a>
+      <a class="button secondary" href="/admin/catalog-import">Importar CSV</a>
+      <a class="button secondary" href="/admin/catalog-order">Portada y orden del catálogo</a>
     </div>
     ${message}
-    <details class="model-editor admin-create-item"><summary>Crear artículo</summary>${form()}</details>
+    <details class="model-editor admin-create-item" ${attempted && !attempted.editing ? 'open' : ''}><summary>Crear artículo</summary>${form(attempted && !attempted.editing ? attempted.model : null, false)}</details>
     <form class="catalog-filters" action="/admin/models" method="get">
       <label>Nombre o SKU <input type="search" name="q" maxlength="80" value="${escapeHtml(search)}"></label>
       <label>Familia <select name="family"><option value="">Todas las familias</option>
@@ -195,7 +228,7 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
       const { id } = familyRow;
       const items = pageItems.filter(model => model.family === id);
       return items.length ? adminHtml`<section><h2>${escapeHtml(familyLabel(familyRow))}</h2><div class="admin-item-grid">
-        ${items.map(model => adminHtml`<article class="model-editor">
+        ${items.map(model => adminHtml`<article class="model-editor" id="item-${model.sku}">
           <h3>${escapeHtml(model.name)}</h3><p>SKU ${model.sku} · ${model.active ? adminText('Publicado') : adminText('Archivado')} · ${model.units} ud.</p>
           <div class="admin-item-actions">
           <a class="button secondary" href="/admin/models/${model.sku}/content">Características, fotos y vídeo</a>
@@ -203,7 +236,7 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
           ${model.sku === coreSKU ? adminFragment('<a class="button secondary" href="/admin#catalog-editor">Editar datos del artículo</a>') : ''}
           </div>
           ${model.sku === coreSKU ? '' :
-            adminHtml`<details><summary>Editar artículo</summary>${form(model)}</details>`}
+            adminHtml`<details ${editSku === model.sku || attempted?.editing && attempted.model.sku === model.sku ? 'open' : ''}><summary>Editar artículo</summary>${form(attempted?.editing && attempted.model.sku === model.sku ? attempted.model : model)}</details>`}
           </article>`).join('')}</div></section>` : '';
     }).join('') : adminFragment('<p>No hay artículos que coincidan con estos filtros.</p>')}
     ${pageCount > 1 ? adminHtml`<nav class="product-actions" aria-label="Páginas del catálogo">
@@ -213,70 +246,101 @@ export function modelAdmin(models, families, message = '', params = new URLSearc
     </nav>` : ''}</div>`;
 }
 
-export function storefrontFamilyFilters(locale, families, activeFamily) {
+export function storefrontFamilyFilters(locale, families, activeFamily, context = new URLSearchParams()) {
   const french = locale === 'fr-CH';
-  const link = (id, label) => `<li><a href="/${locale}${id ? '?family=' + id : ''}#catalogue"${id === activeFamily ? ' aria-current="true"' : ''}>${escapeHtml(label)}</a></li>`;
+  const link = (id, label) => {
+    const query = comparisonQuery(context);
+    query.delete('family');
+    if (id) query.set('family', id);
+    if (!isPart({ family: id }) || !isPart({ family: activeFamily })) query.delete('compatible');
+    if (id && id !== 'wheelchair') for (const key of chairFilterKeys) query.delete(key);
+    return `<li><a href="${escapeHtml(withQuery('/' + locale, query))}#catalogue"${id === activeFamily ? ' aria-current="true"' : ''}>${escapeHtml(label)}</a></li>`;
+  };
   return `<nav aria-label="${french ? 'Familles de produits' : 'Produktkategorien'}">
     <ul class="family-filters">${link('', french ? 'Tous les produits' : 'Alle Produkte')}
     ${families.map(row => link(row.id, row[locale])).join('')}</ul></nav>`;
 }
 
-export function modelInput(fields, sku, families) {
-  const read = (key) => fields?.get(key)?.trim() ?? '';
+export const technicalFields = ['width', 'weight', 'range', 'length', 'height', 'max_load'];
+
+export function modelValidation(fields, sku, families) {
+  const read = key => fields?.get(key)?.trim() ?? '';
   const name = read('name');
   const price = read('price').replace(',', '.');
   const descriptions = ['description_de', 'description_fr'].map(read);
+  const active = read('active') === '1';
   const family = read('family') || 'wheelchair';
   const chair = family === 'wheelchair';
-  const quantities = chair ? ['units', 'width', 'weight', 'range'].map(read) : [read('units'), '0', '0', '0'];
-  if (!skuPattern.test(sku) || ['one', 'compact', 'tour', 'movility-one'].includes(sku) || !name || name.length > 80 ||
-      !/^\d{1,6}(?:\.\d{1,2})?$/.test(price) || Number(price) <= 0 ||
-      descriptions.some(value => !value || value.length > 500) ||
-      !families.some(row => row.id === family) || quantities.some(value => !/^\d{1,3}$/.test(value)) ||
-      (chair && quantities.slice(1).some(value => Number(value) < 1))) return null;
-  const [units, width, weight, range] = quantities.map(Number);
-  return [name, Math.round(Number(price) * 100), units, Number(read('active') === '1'),
-    ...descriptions, width, weight, range, Number(chair && read('fold') === '1'), family];
+  const unitsInput = read('units');
+  const specs = technicalFields.map(key => chair ? read(key) : '');
+  const fold = chair ? read('fold') : '';
+  const errors = [];
+  if (!skuPattern.test(sku) || ['one', 'compact', 'tour', 'movility-one'].includes(sku)) errors.push('sku');
+  if (!name || name.length > 80) errors.push('name');
+  if (!/^\d{1,6}(?:\.\d{1,2})?$/.test(price) || Number(price) <= 0) errors.push('price');
+  for (const [index, key] of ['description_de', 'description_fr'].entries()) {
+    if (descriptions[index].length > 500 || (active && !descriptions[index])) errors.push(key);
+  }
+  if (!families.some(row => row.id === family)) errors.push('family');
+  if (!/^\d{1,3}$/.test(unitsInput)) errors.push('units');
+  specs.forEach((value, index) => {
+    if (value && !/^\d{1,3}$/.test(value)) errors.push(technicalFields[index]);
+  });
+  if (!['', '0', '1'].includes(fold)) errors.push('fold');
+  const [width, weight, range, length, height, maxLoad] = specs.map(value => value ? Number(value) : null);
+  return { errors, values: [name, Math.round(Number(price) * 100), Number(unitsInput), Number(active),
+    ...descriptions, width ?? -1, weight ?? -1, range ?? -1, fold === '' ? -1 : Number(fold), family, length, height, maxLoad] };
 }
 
-export function extraCatalog(locale, models, families, photoFor) {
-  const l = language[locale];
+export function modelInput(fields, sku, families) {
+  const { errors, values } = modelValidation(fields, sku, families);
+  return errors.length ? null : values;
+}
+
+export function insertModel(db, sku, values) {
+  db.prepare(`INSERT INTO extra_models (name, cents, units, active, description_de, description_fr,
+    width, weight, range, fold, family, length, height, max_load, sku) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(...values, sku);
+}
+
+export function extraCatalog(locale, models, families, photoFor, context = new URLSearchParams()) {
   return families.map(({ id, [locale]: label }) => {
     const items = models.filter(model => model.family === id);
     return items.length ? `<section class="catalog-family"><h3>${escapeHtml(label)}</h3><div class="model-grid">
       ${items.map(model => {
         const photo = photoFor(model.sku);
-        const url = '/' + locale + (model.sku === coreSKU ? '/movility-one' : '/models/' + model.sku);
-        const specs = [[l.width, model.width, 'cm'], [l.weight, model.weight, 'kg'], [l.range, model.range, 'km']];
+        const url = escapeHtml(withQuery('/' + locale + (model.sku === coreSKU ? '/mobility-one' : '/models/' + model.sku), context));
+        const wheelchair = isWheelchair(model);
+        const specs = wheelchair ? productSpecs(locale, model, false, ['width', 'weight', 'range']) : [];
         return `<article class="catalog-product">
           <h4><a href="${url}">
-            ${photo ? `<img class="model-thumb" src="${photo}" alt="" loading="lazy">` : ''}
+            ${photo ? `<img class="model-thumb" src="${photo}" alt="" loading="lazy" width="400" height="300">` : missingProductPhoto(locale)}
             ${escapeHtml(model.name)}</a></h4>
-          ${isWheelchair(model) && model.width ? `<dl class="catalog-product-specs">${specs.map(([label, value, unit]) =>
-            `<div><dt>${label}</dt><dd>${value} ${unit}</dd></div>`).join('')}</dl>` : ''}
-          <p class="price">${money(locale, model.cents)}</p>
-          ${model.units ? '' : `<p class="catalog-product-status">${copy[locale].soldOut}</p>`}</article>`;
+          <div class="catalog-price-row"><p class="price">${money(locale, model.cents)}</p>
+            ${productAvailability(locale, model.units > 0)}</div>
+          ${specs.length ? `<dl class="catalog-product-specs">${specs.map(([label, value]) =>
+            `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>` : ''}
+          ${wheelchair ? `<p class="catalog-compare"><a href="${escapeHtml(comparisonLink(locale, context, model.sku))}">${compareLabel(locale)}</a></p>` : ''}</article>`;
       }).join('')}</div></section>` : '';
   }).join('');
 }
 
-export function extraProduct(locale, model, media, view, features, compatibility = '') {
-  const l = language[locale];
-  const specs = [[l.width, model.width + ' cm'], [l.weight, model.weight + ' kg'],
-    [l.range, model.range + ' km'], [l.fold, model.fold ? l.yes : l.no]];
-  const name = escapeHtml(model.name);
-  const gallery = productGallery(locale, model.name, '/models/' + model.sku, media.photos, view);
+export function extraProduct(locale, model, media, view, features, compatibility = '', previewPath = '', context = new URLSearchParams(), familyLabel = '') {
   const wheelchair = isWheelchair(model);
-  return `<section class="${gallery ? 'product' : 'product product-no-gallery'}">${gallery}
-    <div class="product-overview"><p class="eyebrow">${model.sku}</p><h1>${name}</h1>
-    <p class="lead">${escapeHtml(locale === 'de-CH' ? model.description_de : model.description_fr)}</p>
-    ${isPart(model) ? compatibility : ''}
-    <div class="product-purchase">${productAvailability(locale, model.units)}<p class="price">${money(locale, model.cents)}</p>
-    <div class="product-actions">${model.units ? addToCart(locale, model.sku) : ''}
-    ${media.model ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">${view3dLabel[locale]}</a>` : ''}
-    ${wheelchair ? `<a class="button secondary" href="/${locale}/compare?first=${model.sku}&amp;second=one">${l.compare}</a>` : ''}</div></div></div></section>
-    ${productDetails(locale, wheelchair ? specs : [], renderFeatures(locale, features))}
-    ${productVideo(locale, media.video)}${wheelchair ? compatibility : ''}`;
+  const specs = wheelchair ? productSpecs(locale, model) : [];
+  const videos = galleryVideos(locale, media.videos, media.video);
+  const transport = videos.folding ? `<section class="one-fit"><h2>${locale === 'de-CH' ? 'Masse und Transport' : 'Dimensions et transport'}</h2>
+    <p><a href="#${videos.folding}">${oneVideoLabel(locale)}</a></p></section>` : '';
+  const gallery = productGallery(locale, model.name, '/models/' + model.sku, media.photos, view, false, media.alts, previewPath, context);
+  const viewer = media.model && !previewPath
+    ? `<a class="button secondary" href="/${locale}/models/${model.sku}/3d">${view3dLabel[locale]}</a>` : '';
+  const back = !previewPath && isPart({ family: context.get('family') }) && context.has('compatible')
+    ? `<p class="page-back"><a href="${escapeHtml(withQuery('/' + locale, context))}#catalogue">${locale === 'fr-CH' ? 'Retour aux résultats' : 'Zurück zu den Ergebnissen'}</a></p>` : '';
+  return `${back}${productOverview(locale, { name: model.name, category: familyLabel, description: locale === 'de-CH' ? model.description_de : model.description_fr,
+      sku: model.sku, cents: model.cents, available: model.units > 0, chair: wheelchair,
+      specifications: Boolean(specs.length), compatibility: Boolean(compatibility), part: typeof compatibility === 'object' ? compatibility : null, preview: Boolean(previewPath), context,
+      afterPurchase: transport, gallery, mediaActions: viewer + videos.links })}
+    ${productDetails(locale, specs, renderFeatures(locale, features))}${typeof compatibility === 'string' ? compatibility : ''}${videos.players}`;
 }
 
 export function renderFeatures(locale, features) {

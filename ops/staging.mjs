@@ -1,7 +1,7 @@
-import { mkdirSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { stripeMode } from '../stripe-payments.mjs';
-import { emailTestConfig } from '../resend-mail.mjs';
+import { resendConfig } from '../resend-mail.mjs';
 import { pushConfig } from '../order-push.mjs';
 import { publicOrigin } from '../seo.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -34,7 +34,9 @@ export function stagingEnvironment(database, port, inherited = process.env) {
     ...inherited,
     PORT: String(port),
     MOVILITY_STAGE: 'staging',
+    MOVILITY_CATALOG_PROFILE: 'demo',
     MOVILITY_DB: database,
+    MOVILITY_STAGING_SEED: '1',
     MOVILITY_PAYMENT_MODE: inherited.MOVILITY_STAGING_PAYMENT_MODE || 'simulated',
     MOVILITY_STRIPE_SECRET_KEY: inherited.MOVILITY_STAGING_STRIPE_SECRET_KEY || '',
     MOVILITY_STRIPE_WEBHOOK_SECRET: inherited.MOVILITY_STAGING_STRIPE_WEBHOOK_SECRET || '',
@@ -60,7 +62,7 @@ export function stagingEnvironment(database, port, inherited = process.env) {
     CODESPACES: 'false',
   };
   stripeMode(env, origin);
-  emailTestConfig(env, origin);
+  resendConfig(env, origin);
   if (env.MOVILITY_PUSH_MODE === 'web-push' && !origin) throw new Error('Web Push externo requiere el origen HTTPS de pruebas.');
   pushConfig(env);
   return env;
@@ -77,6 +79,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     try {
       database = stagingDatabase();
       env = stagingEnvironment(database, port);
+      if (existsSync(database)) env.MOVILITY_STAGING_SEED = '0';
     }
     catch (error) { console.error(error.message); process.exitCode = 1; }
     if (!env) process.exit(1);

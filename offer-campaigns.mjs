@@ -65,7 +65,7 @@ export function campaignPage(db, result) {
     SUM(d.state='excluded') AS excluded FROM offer_campaigns c JOIN offer_deliveries d ON d.campaign_id=c.id
     GROUP BY c.id ORDER BY c.id DESC LIMIT 30`).all();
   const date = time => new Date(time * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-  return adminHtml`<h1>Campañas de ofertas</h1><p>Preproducción · Entrega simulada. Remitente de prueba: Movility.</p>
+  return adminHtml`<h1>Campañas de ofertas</h1><p>Preproducción · Entrega simulada. Remitente de prueba: Mobility.</p>
     ${result === 'queued' ? adminFragment('<p role="status">Campaña programada.</p>') : ''}
     ${result === 'invalid' ? adminFragment('<p class="form-error" role="alert">Completa ambos idiomas y elige una audiencia confirmada y una fecha válida.</p>') : ''}
     <form class="admin-catalog" method="post" action="/admin/campaigns">

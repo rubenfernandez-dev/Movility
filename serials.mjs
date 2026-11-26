@@ -22,6 +22,18 @@ export function setupSerials(db) {
 const format = /^[A-Z0-9][A-Z0-9 ._/:+-]{0,63}$/;
 const normalize = value => value.trim().toUpperCase();
 
+export function readSupplierSerials(raw, quantity, tracked) {
+  const serials = [...raw.split(/\r?\n/).map(normalize).filter(Boolean)].sort();
+  if (serials.length !== (tracked ? quantity : 0) || serials.some(serial => !format.test(serial))) return null;
+  return serials;
+}
+
+export function supplierSerialConflict(db, serials) {
+  const exists = db.prepare(`SELECT 1 FROM supplier_serials WHERE serial = ?
+    UNION ALL SELECT 1 FROM serial_registry WHERE serial = ?`);
+  return new Set(serials).size !== serials.length || serials.some(serial => exists.get(serial, serial));
+}
+
 export function shipmentSerials(db, orderId) {
   return db.prepare(`SELECT shipped.serial, shipped.sku, shipped.receipt_id, receipt.restocked
     FROM shipment_serials AS shipped LEFT JOIN return_receipts AS receipt ON receipt.id = shipped.receipt_id
@@ -49,8 +61,12 @@ export function sameShipmentSerials(a, b) {
 
 export function assignShipmentSerials(db, orderId, entries) {
   const get = db.prepare('SELECT sku, state FROM serial_registry WHERE serial = ?');
+  const received = db.prepare(`SELECT sku FROM supplier_serials JOIN supplier_receipts
+    ON supplier_receipts.id = supplier_serials.receipt_id WHERE serial = ?`);
   for (const entry of entries) {
     const previous = get.get(entry.serial);
+    const receipt = received.get(entry.serial);
+    if (receipt && receipt.sku !== entry.sku) return false;
     if (previous && (previous.sku !== entry.sku || previous.state !== 'restocked')) return false;
   }
   const assign = db.prepare(`INSERT INTO serial_registry (serial, sku, state, latest_order_id) VALUES (?, ?, 'shipped', ?)
@@ -108,6 +124,9 @@ export function serialSummary(records) {
 export function serialLookup(db, raw) {
   const serial = normalize(raw);
   const valid = format.test(serial);
+  const received = valid && db.prepare(`SELECT supplier_receipts.sku, stock_movements.occurred_at
+    FROM supplier_serials JOIN supplier_receipts ON supplier_receipts.id = receipt_id
+    JOIN stock_movements ON stock_movements.id = movement_id WHERE serial = ?`).get(serial);
   const history = valid ? db.prepare(`SELECT shipments.order_id, shipments.sku, shipments.receipt_id,
     orders.tracking, receipts.restocked, receipts.received_at
     FROM shipment_serials AS shipments JOIN orders ON orders.id = shipments.order_id
@@ -118,9 +137,11 @@ export function serialLookup(db, raw) {
       <label>Número de serie<input name="serial" maxlength="64" required value="${escapeHtml(serial.slice(0, 64))}"></label>
       <button>Buscar</button>
     </form>
+    ${received ? adminHtml`<p>Recepción de proveedor · <a href="/admin/inventory?sku=${received.sku}#stock-history">SKU ${received.sku}</a> ·
+      <time datetime="${received.occurred_at}">${received.occurred_at.slice(0, 16).replace('T', ' ')} UTC</time></p>` : ''}
     ${history.length ? adminHtml`<ul class="serial-history">${history.map(row => adminHtml`<li>
       <a href="/admin/orders/${row.order_id}">Pedido ${row.order_id.slice(0, 8)}</a> · SKU ${row.sku} · ${escapeHtml(row.tracking || '')}
       <br>${row.receipt_id ? (row.restocked ? 'Devuelto y repuesto' : 'Devuelto y en revisión') + ' · ' +
         adminHtml`<time datetime="${row.received_at}">${row.received_at.slice(0, 16).replace('T', ' ')} UTC</time>` : 'Enviado'}</li>`).join('')}</ul>`
-      : raw ? adminFragment('<p>No se encontraron envíos con ese número de serie.</p>') : ''}`;
+      : raw && !received ? adminFragment('<p>No se encontraron envíos con ese número de serie.</p>') : ''}`;
 }

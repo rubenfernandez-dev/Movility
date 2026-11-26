@@ -5,20 +5,20 @@ const locales = Object.keys(copy);
 const routes = {
   ...information,
   '': {
-    'de-CH': ['Elektrorollstühle für die Schweiz', 'Entdecke den Movility One und vergleiche elektrische Rollstühle auf Deutsch.'],
-    'fr-CH': ['Fauteuils roulants électriques en Suisse', 'Découvrez le Movility One et comparez les fauteuils roulants électriques en français.'],
+    'de-CH': ['Elektrorollstühle für die Schweiz', 'Entdecke und vergleiche elektrische Rollstühle auf Deutsch.'],
+    'fr-CH': ['Fauteuils roulants électriques en Suisse', 'Découvrez et comparez les fauteuils roulants électriques en français.'],
   },
-  '/movility-one': {
-    'de-CH': ['Movility One – Elektrorollstuhl', 'Sieh dir Bilder, Details und das interaktive 3D-Modell des Movility One an.'],
-    'fr-CH': ['Movility One – Fauteuil roulant électrique', 'Explorez les photos, la fiche et le modèle 3D interactif du Movility One.'],
+  '/mobility-one': {
+    'de-CH': ['Mobility One – Elektrorollstuhl', 'Sieh dir Bilder, Details und das interaktive 3D-Modell des Mobility One an.'],
+    'fr-CH': ['Mobility One – Fauteuil roulant électrique', 'Explorez les photos, la fiche et le modèle 3D interactif du Mobility One.'],
   },
   '/compare': {
-    'de-CH': ['Elektrorollstühle vergleichen', 'Vergleiche Breite, Gewicht, Reichweite und Faltbarkeit.'],
-    'fr-CH': ['Comparer les fauteuils roulants électriques', 'Comparez la largeur, le poids, l’autonomie et le pliage.'],
+    'de-CH': ['Elektrorollstühle vergleichen', 'Vergleiche Preis, Masse, Gewicht, Reichweite und maximale Belastung der Modelle.'],
+    'fr-CH': ['Comparer les fauteuils roulants électriques', 'Comparez le prix, les dimensions, le poids, l’autonomie et la charge maximale des modèles.'],
   },
-  '/movility-one/3d': {
-    'de-CH': ['Movility One in 3D', 'Drehe das Modell, um Rahmen, Räder und Bedienelemente zu erkunden.'],
-    'fr-CH': ['Movility One en 3D', 'Faites tourner le modèle pour observer le châssis, les roues et les commandes.'],
+  '/mobility-one/3d': {
+    'de-CH': ['Mobility One in 3D', 'Drehe das Modell, um Rahmen, Räder und Bedienelemente zu erkunden.'],
+    'fr-CH': ['Mobility One en 3D', 'Faites tourner le modèle pour observer le châssis, les roues et les commandes.'],
   },
 };
 
@@ -38,16 +38,16 @@ function alternates(suffix, origin) {
 }
 
 export function pageMetadata(locale, suffix, origin, text) {
-  if (!isPublicPage(suffix)) return {};
+  if (!text && !isPublicPage(suffix)) return {};
   const [title, description] = text || routes[suffix][locale];
   const path = `/${locale}${suffix}`;
   const canonical = origin ? `<link rel="canonical" href="${escapeHtml(origin + path)}">` : '';
-  return { title: `${title} | Movility`, description, links: canonical + alternates(suffix, origin)
+  return { title: `${title} | Mobility`, description, links: canonical + alternates(suffix, origin)
     .map(([language, url]) => `<link rel="alternate" hreflang="${language}" href="${escapeHtml(url)}">`).join('') };
 }
 
-export function sitemap(origin) {
-  const entries = Object.keys(routes).flatMap(suffix => locales.map(locale => {
+export function sitemap(origin, modelPaths = [], includeCore = true) {
+  const entries = [...Object.keys(routes).filter(path => includeCore || !path.startsWith('/mobility-one')), ...modelPaths].flatMap(suffix => locales.map(locale => {
     const links = alternates(suffix, origin).map(([code, url]) =>
       `<xhtml:link rel="alternate" hreflang="${code}" href="${escapeHtml(url)}"/>`).join('');
     return `<url><loc>${escapeHtml(`${origin}/${locale}${suffix}`)}</loc>${links}</url>`;

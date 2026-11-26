@@ -12,7 +12,7 @@ export function setupInformation(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS information_settings (
     page TEXT PRIMARY KEY, content TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0
   );
-  INSERT OR IGNORE INTO information_settings (page,content) VALUES ('about','{}'),('contact','{}'),('delivery-returns-warranty','{}');`);
+  INSERT OR IGNORE INTO information_settings (page,content) VALUES ('about','{}'),('about-draft','{}'),('contact','{}'),('delivery-returns-warranty','{}');`);
 }
 
 export function informationSettings(db, page, configuredEmail) {

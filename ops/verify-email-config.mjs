@@ -1,4 +1,4 @@
-import { emailTestConfig } from '../resend-mail.mjs';
+import { resendConfig } from '../resend-mail.mjs';
 import { publicOrigin } from '../seo.mjs';
 
 const required = ['MOVILITY_RESEND_API_KEY', 'MOVILITY_EMAIL_FROM', 'MOVILITY_EMAIL_TEST_TO', 'MOVILITY_PUBLIC_ORIGIN'];
@@ -13,7 +13,7 @@ if (missing.length) {
   process.exitCode = 1;
 } else {
   try {
-    emailTestConfig(process.env, publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN));
+    resendConfig(process.env, publicOrigin(process.env.MOVILITY_PUBLIC_ORIGIN));
     console.log('Configuración válida para Resend de prueba. No se ha enviado ningún correo.');
   } catch (error) {
     console.error(error.message);

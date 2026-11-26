@@ -3,9 +3,9 @@ export const methods = ['TWINT', 'PayPal', 'Visa', 'Mastercard'];
 export const copy = {
   'de-CH': {
     priceChanged: 'Der Preis hat sich geändert. Bitte prüfe den neuen Gesamtbetrag und bestätige erneut.',
-    title: 'Movility Schweiz', demo: 'Testshop · Keine echten Zahlungen', catalog: 'Zum Modell',
+    title: 'Mobility Schweiz', demo: 'Testshop · Keine echten Zahlungen', catalog: 'Zum Modell',
     category: 'Elektrorollstuhl · Demomodell', description: 'Ein fiktives Modell zum Testen des Einkaufs und der Lieferung innerhalb der Schweiz.',
-    checkout: 'Zur Testkasse', email: 'E-Mail für die Simulation', method: 'Zahlungsart',
+    checkout: 'Zur Testkasse', commercialCheckout: 'Zur Kasse', email: 'E-Mail für die Simulation', method: 'Zahlungsart',
     pay: 'Zahlung simulieren', fail: 'Fehler simulieren', failed: 'Die Testzahlung ist fehlgeschlagen.',
     retry: 'Zurück zur Kasse', invalid: 'Bitte überprüfe deine Angaben.', soldOut: 'Keine Einheit verfügbar.',
     paid: 'Testzahlung bestätigt', shipped: 'Bestellung versendet', refunded: 'Testzahlung erstattet', tracking: 'Sendungsnummer:',
@@ -13,9 +13,9 @@ export const copy = {
   },
   'fr-CH': {
     priceChanged: 'Le prix a changé. Vérifiez le nouveau total et confirmez à nouveau.',
-    title: 'Movility Suisse', demo: 'Boutique de test · Aucun paiement réel', catalog: 'Voir le modèle',
+    title: 'Mobility Suisse', demo: 'Boutique de test · Aucun paiement réel', catalog: 'Voir le modèle',
     category: 'Fauteuil roulant électrique · Modèle de démonstration', description: 'Un modèle fictif pour tester la commande et la livraison en Suisse.',
-    checkout: 'Passer à la caisse de test', email: 'E-mail pour la simulation', method: 'Mode de paiement',
+    checkout: 'Passer à la caisse de test', commercialCheckout: 'Passer à la caisse', email: 'E-mail pour la simulation', method: 'Mode de paiement',
     pay: 'Simuler le paiement', fail: 'Simuler un échec', failed: 'Le paiement de test a échoué.',
     retry: 'Retour à la caisse', invalid: 'Veuillez vérifier vos informations.', soldOut: 'Aucune unité disponible.',
     paid: 'Paiement de test confirmé', shipped: 'Commande expédiée', refunded: 'Paiement de test remboursé', tracking: 'Numéro de suivi :',
@@ -32,8 +32,8 @@ export function escapeHtml(text) {
   return text.replace(/[&<>"']/g, (character) => entities[character]);
 }
 
-const pageFooter = { 'de-CH': 'Schweiz · CHF', 'fr-CH': 'Suisse · CHF', es: 'Movility · Entorno de prueba' };
-const adminFooter = { 'de-CH': 'Movility · Testumgebung', 'fr-CH': 'Movility · Environnement de test', es: pageFooter.es };
+const pageFooter = { 'de-CH': 'Schweiz · CHF', 'fr-CH': 'Suisse · CHF', es: 'Mobility · Entorno de prueba' };
+const adminFooter = { 'de-CH': 'Mobility · Testumgebung', 'fr-CH': 'Mobility · Environnement de test', es: pageFooter.es };
 const stagingNotice = {
   'de-CH': 'Vorproduktion · Nur fiktive Daten',
   'fr-CH': 'Préproduction · Données fictives uniquement',
@@ -45,12 +45,14 @@ export function page(locale, title, content, header = '', metadata = {}, extras 
   return `<!doctype html>
 <html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body${extras.storefront ? ' class="storefront-page"' : ''}>
-${header || '<header class="top"><div class="top-inner"><a class="brand" href="/de-CH">Movility</a></div></header>'}
+${header || '<header class="top"><div class="top-inner"><a class="brand" href="/de-CH">Mobility</a></div></header>'}
 ${extras.sidebar ? `<div class="admin-layout">${extras.sidebar}` : ''}
 <main id="content" tabindex="-1"${extras.feature ? ' class="main-with-feature"' : ''}>
 ${extras.feature ? extras.feature + '<div class="home-content">' : ''}
-${process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
-  : t && !extras.admin ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}${extras.feature ? '</div>' : ''}</main>
+${extras.feature || extras.commercial ? '' : process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
+  : t && !extras.admin ? `<p class="demo">${t.demo}</p>` : ''}${content}${extras.prompt || ''}${extras.feature ? '</div>' : ''}</main>
 ${extras.sidebar ? '</div>' : ''}
-<footer>${extras.storefront && extras.footer ? `<div class="storefront-footer"><p><a href="/${locale}">Movility</a></p><div class="storefront-footer-links">${extras.footer}</div></div>` : (extras.admin ? adminFooter : pageFooter)[locale]}${!extras.storefront && extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
+<footer>${extras.storefront ? `<div class="storefront-footer"><p><a href="/${locale}">Mobility</a> <span>${pageFooter[locale]}</span>` : (extras.admin ? adminFooter : pageFooter)[locale]}${extras.feature && process.env.MOVILITY_STAGE === 'staging'
+  ? ` · ${stagingNotice[locale]}` : ''}${extras.storefront ? `</p><div class="storefront-footer-links">${extras.footer || ''}</div></div>`
+    : extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
 }

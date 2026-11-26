@@ -1,6 +1,7 @@
 import { ECDH, randomUUID } from 'node:crypto';
 import { generateVAPIDKeys, setVapidDetails, sendNotification } from 'web-push';
 import { escapeHtml } from './views.mjs';
+import { adminHtml, adminText } from './admin-language.mjs';
 
 const hosts = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com', 'wns2-par02p.notify.windows.com']);
 const days = 30 * 86400;
@@ -38,6 +39,12 @@ export function setupPush(db) {
     );
     CREATE INDEX IF NOT EXISTS push_jobs_due ON push_jobs(status, next_at);
   `);
+  if (!db.prepare('PRAGMA table_info(push_subscriptions)').all().some(column => column.name === 'disabled_at')) {
+    db.exec('ALTER TABLE push_subscriptions ADD COLUMN disabled_at INTEGER');
+  }
+  if (!db.prepare('PRAGMA table_info(push_jobs)').all().some(column => column.name === 'path')) {
+    db.exec('ALTER TABLE push_jobs ADD COLUMN path TEXT');
+  }
 }
 
 function endpointUrl(value) {
@@ -81,23 +88,33 @@ export function addPushSubscription(db, id, subscription, locale, mode, now = se
 }
 
 export function purgePush(db, now = seconds()) {
-  db.prepare('DELETE FROM push_subscriptions WHERE expires_at <= ?').run(now);
+  const due = db.prepare('SELECT id FROM push_subscriptions WHERE disabled_at IS NULL AND expires_at <= ?').all(now);
+  for (const { id } of due) deactivate(db, id, now);
+  db.prepare('DELETE FROM push_subscriptions WHERE disabled_at <= ?').run(now - days);
 }
 
-export function removePushSubscription(db, id, endpoint) {
+function deactivate(db, id, now) {
+  db.prepare(`UPDATE push_jobs SET status = 'canceled', lease = NULL, lease_until = NULL
+    WHERE subscription_id = ? AND status IN ('queued', 'sending')`).run(id);
+  db.prepare(`UPDATE push_subscriptions SET endpoint = ?, public_key = '', auth = '', disabled_at = ?, expires_at = ?
+    WHERE id = ? AND disabled_at IS NULL`).run('inactive:' + randomUUID(), now, now, id);
+}
+
+export function removePushSubscription(db, id, endpoint, now = seconds()) {
   const valid = endpointUrl(endpoint);
-  if (valid) db.prepare('DELETE FROM push_subscriptions WHERE order_id = ? AND endpoint = ?').run(id, valid);
+  const subscription = valid && db.prepare('SELECT id FROM push_subscriptions WHERE order_id = ? AND endpoint = ?').get(id, valid);
+  if (subscription) deactivate(db, subscription.id, now);
 }
 
-export function queuePush(db, orderId, kind, now = seconds()) {
+export function queuePush(db, orderId, kind, path, now = seconds()) {
   if (!allowedKind.has(kind)) return;
-  db.prepare(`INSERT OR IGNORE INTO push_jobs (subscription_id, kind, next_at)
-    SELECT id, ?, ? FROM push_subscriptions WHERE order_id = ? AND expires_at > ?`).run(kind, now, orderId, now);
+  db.prepare(`INSERT OR IGNORE INTO push_jobs (subscription_id, kind, next_at, path)
+    SELECT id, ?, ?, ? FROM push_subscriptions WHERE order_id = ? AND disabled_at IS NULL AND expires_at > ?`).run(kind, now, path || null, orderId, now);
 }
 
 const copy = {
   'de-CH': {
-    title: 'Versandbenachrichtigungen', description: 'Erhalte einen kurzen Hinweis, wenn die Bestellung versendet oder zugestellt wird.',
+    title: 'Hinweise zum Versand', description: 'Erhalte einen kurzen Hinweis, wenn die Bestellung versendet oder zugestellt wird.',
     on: 'Hinweise aktivieren', off: 'Hinweise deaktivieren', enabled: 'Hinweise für diese Bestellung sind aktiviert.',
     disabled: 'Hinweise für diese Bestellung sind deaktiviert.', blocked: 'Der Browser erlaubt keine Benachrichtigungen.',
     unavailable: 'Dieser Browser unterstützt hier keine Push-Benachrichtigungen.', failed: 'Die Änderung konnte nicht gespeichert werden.',
@@ -115,7 +132,7 @@ const copy = {
 };
 
 export function pushPayload(job) {
-  return { title: 'Movility', body: copy[job.locale][job.kind], path: `/${job.locale}/orders/${job.order_id}`,
+  return { title: 'Mobility', body: copy[job.locale][job.kind], path: job.path,
     tag: 'movility-' + job.order_id + '-' + job.kind };
 }
 
@@ -135,6 +152,9 @@ export function makePushSender(config) {
   if (config.mode === 'simulated') return async () => {};
   return async job => {
     if (!endpointUrl(job.endpoint)) throw Object.assign(new Error('Unsupported push endpoint'), { statusCode: 410 });
+    if (!/^\/(?:de-CH|fr-CH)\/shipment\/[A-Za-z0-9_-]{43}$/.test(job.path || '')) {
+      throw Object.assign(new Error('Missing tracking path'), { statusCode: 400 });
+    }
     await sendNotification({ endpoint: job.endpoint, keys: { p256dh: job.public_key, auth: job.auth } },
       JSON.stringify(pushPayload(job)), { TTL: 3600, timeout: 12000, urgency: 'normal' });
   };
@@ -149,7 +169,7 @@ export async function deliverPush(db, transaction, config, sender = makePushSend
         lease = NULL, lease_until = NULL WHERE status = 'sending' AND lease_until <= ?`).run(now);
       const next = db.prepare(`SELECT jobs.*, sub.order_id, sub.locale, sub.endpoint, sub.public_key, sub.auth, sub.mode
         FROM push_jobs AS jobs JOIN push_subscriptions AS sub ON jobs.subscription_id = sub.id
-        WHERE jobs.status = 'queued' AND jobs.next_at <= ? AND sub.mode = ? ORDER BY jobs.id LIMIT 1`).get(now, config.mode);
+        WHERE jobs.status = 'queued' AND jobs.next_at <= ? AND sub.disabled_at IS NULL AND sub.mode = ? ORDER BY jobs.id LIMIT 1`).get(now, config.mode);
       if (!next) return null;
       const lease = randomUUID();
       db.prepare("UPDATE push_jobs SET status = 'sending', lease = ?, lease_until = ?, attempts = attempts + 1 WHERE id = ?")
@@ -168,11 +188,32 @@ export async function deliverPush(db, transaction, config, sender = makePushSend
       const active = db.prepare("SELECT 1 FROM push_jobs WHERE id = ? AND lease = ? AND status = 'sending'").get(job.id, job.lease);
       if (!active) return;
       if (outcome === 'expired') {
-        db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND mode = ?').run(job.endpoint, job.mode);
+        db.prepare("UPDATE push_jobs SET status = 'failed', lease = NULL, lease_until = NULL WHERE id = ?").run(job.id);
+        const matches = db.prepare('SELECT id FROM push_subscriptions WHERE endpoint = ? AND mode = ?').all(job.endpoint, job.mode);
+        for (const { id } of matches) deactivate(db, id, clock());
       } else {
         db.prepare('UPDATE push_jobs SET status = ?, next_at = ?, lease = NULL, lease_until = NULL WHERE id = ?')
           .run(outcome, clock() + 60, job.id);
       }
     });
   }
+}
+
+export function pushAdmin(db, config, filterId) {
+  const jobs = db.prepare(`SELECT jobs.kind, jobs.status, jobs.attempts, sub.order_id, sub.mode
+    FROM push_jobs AS jobs JOIN push_subscriptions AS sub ON sub.id = jobs.subscription_id
+    WHERE (? = '' OR sub.order_id = ?) ORDER BY jobs.id DESC LIMIT 100`).all(filterId, filterId);
+  const labels = { queued: 'Pendiente', sending: 'Procesando', sent: 'Aceptado por el servicio',
+    failed: 'Fallido', canceled: 'Cancelado' };
+  return adminHtml`<a href="/admin">Volver a administración</a><h1 class="page-title">Avisos push</h1>
+    ${!config ? adminHtml`<p>Los avisos push están desactivados.</p>` : ''}
+    ${filterId ? adminHtml`<p><a href="/admin/push">Ver todos los avisos push</a></p>` : ''}
+    <p>La aceptación del servicio no confirma que el aviso se haya mostrado en el dispositivo.</p>
+    ${jobs.length ? adminHtml`<div class="inventory-table"><table><thead><tr><th scope="col">Pedido</th>
+      <th scope="col">Evento</th><th scope="col">Estado</th><th scope="col">Intentos</th></tr></thead>
+      <tbody>${jobs.map(job => adminHtml`<tr><th scope="row"><a href="/admin/orders/${job.order_id}">${job.order_id}</a></th>
+        <td>${adminText(job.kind === 'shipped' ? 'Expedición' : 'Entrega')}</td>
+        <td>${adminText(job.status === 'sent' && job.mode === 'simulated' ? 'Aceptado en simulación' : labels[job.status])}</td>
+        <td>${job.attempts}</td></tr>`).join('')}</tbody></table></div>`
+      : adminHtml`<p>No hay avisos push para mostrar.</p>`}`;
 }

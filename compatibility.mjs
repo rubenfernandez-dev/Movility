@@ -10,7 +10,7 @@ export function setupCompatibility(db) {
 }
 
 export const isPart = model => ['accessory', 'spare'].includes(model?.family);
-const chairPath = sku => sku === coreSKU ? '/movility-one' : '/models/' + sku;
+const chairPath = sku => sku === coreSKU ? '/mobility-one' : '/models/' + sku;
 
 export function compatibilityAdmin(model, candidates, entries, message = '') {
   const field = isPart(model) ? 'chair' : 'part';
@@ -53,17 +53,33 @@ export function compatibilityInput(fields, candidates, field) {
     Boolean(de) === Boolean(fr)) ? entries : null;
 }
 
-export function compatibilityFilter(locale, family, chairs, selected) {
+export function compatibilityFilter(locale, family, chairs, selected, context = new URLSearchParams()) {
   const french = locale === 'fr-CH';
   return `<form class="catalog-filters" method="get" action="/${locale}#catalogue">
     <input type="hidden" name="family" value="${family}">
-    <label>${french ? 'Compatible avec votre fauteuil' : 'Passend zu deinem Rollstuhl'}
-    <select name="compatible"><option value="">${french ? 'Tous les modèles' : 'Alle Modelle'}</option>
+    ${['first','second'].filter(key => context.has(key)).map(key =>
+      `<input type="hidden" name="${key}" value="${escapeHtml(context.get(key))}">`).join('')}
+    <label>${french ? 'J’ai ce fauteuil' : 'Ich habe diesen Rollstuhl'}
+    <select name="compatible"><option value="">${french ? 'Toutes les pièces' : 'Alle Artikel'}</option>
       ${chairs.map(chair => `<option value="${chair.sku}" ${selected === chair.sku ? 'selected' : ''}>${escapeHtml(chair.name)}</option>`).join('')}
     </select></label><button>${french ? 'Filtrer' : 'Filtern'}</button></form>`;
 }
 
-export function compatibilitySection(locale, entries, partPage = false) {
+export function noConfirmedParts(locale, chair, context) {
+  const french = locale === 'fr-CH';
+  const query = new URLSearchParams(context);
+  query.delete('compatible');
+  const catalogue = escapeHtml('/' + locale + '?' + query.toString());
+  return `<div class="chair-no-results"><p>${french
+    ? `Nous ne pouvons pas encore vérifier quelles pièces conviennent au fauteuil ${escapeHtml(chair.name)}.`
+    : `Wir können noch nicht bestätigen, welche Artikel zum Rollstuhl ${escapeHtml(chair.name)} passen.`}</p>
+    <div class="product-actions">
+      <a class="button secondary" href="${catalogue}#catalogue">${french ? 'Voir tous les articles' : 'Alle Artikel ansehen'}</a>
+      <a class="button" href="/${locale}/contact?model=${chair.sku}&amp;topic=compatibility">${french ? 'Vérifier la compatibilité' : 'Kompatibilität anfragen'}</a>
+    </div></div>`;
+}
+
+export function compatibilitySection(locale, entries, partPage = false, preview = false) {
   const french = locale === 'fr-CH';
   const heading = partPage ? (french ? 'Fauteuils compatibles' : 'Kompatible Rollstühle')
     : (french ? 'Accessoires et pièces compatibles' : 'Passendes Zubehör und Ersatzteile');
@@ -71,16 +87,16 @@ export function compatibilitySection(locale, entries, partPage = false) {
   const item = entry => {
     const note = french ? entry.note_fr : entry.note_de;
     const path = partPage ? chairPath(entry.sku) : '/models/' + entry.sku;
-    return `<li><a href="/${locale}${path}">${escapeHtml(entry.name)}</a>${note ? ' · ' + escapeHtml(note) : ''}</li>`;
+    const href = preview ? `/admin/models/${entry.sku}/preview/${locale}` : `/${locale}${path}`;
+    return `<li><a href="${href}">${escapeHtml(entry.name)}</a>${note ? ' · ' + escapeHtml(note) : ''}</li>`;
   };
   const content = partPage ? (entries.length ? `<ul>${entries.map(item).join('')}</ul>`
     : `<p>${french ? 'Compatibilité à confirmer. Contactez-nous avant de commander.' :
-      'Kompatibilität noch offen. Kontaktiere uns vor der Bestellung.'}
-      <a href="/${locale}/contact">${french ? 'Contact' : 'Kontakt'}</a></p>`)
+      'Kompatibilität noch offen. Kontaktiere uns vor der Bestellung.'}</p>`)
     : [['accessory', french ? 'Accessoires' : 'Zubehör'], ['spare', french ? 'Pièces détachées' : 'Ersatzteile']]
       .map(([family, label]) => {
         const items = entries.filter(entry => entry.family === family);
         return items.length ? `<h3>${label}</h3><ul>${items.map(item).join('')}</ul>` : '';
       }).join('');
-  return `<section class="section"><h2>${heading}</h2>${content}</section>`;
+  return `<section class="section product-compatibility" id="product-compatibility" tabindex="-1"><h2>${heading}</h2>${content}</section>`;
 }

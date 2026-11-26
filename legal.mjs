@@ -55,6 +55,7 @@ export function publishedLegal(db, path, version) {
     ? db.prepare('SELECT * FROM legal_versions WHERE path=? ORDER BY version DESC LIMIT 1').get(path)
     : db.prepare('SELECT * FROM legal_versions WHERE path=? AND version=?').get(path, version);
 }
+const completeSeller = seller => ['name','street','zip','city','country','email'].every(key => seller?.[key]);
 export function saveLegal(db, path, fields, seller) {
   const current = legalDraft(db, path);
   const de = fields?.get('de')?.trim() || '';
@@ -62,23 +63,24 @@ export function saveLegal(db, path, fields, seller) {
   const publish = fields?.get('action') === 'publish';
   if (de.length > 24000 || fr.length > 24000) return 'invalid';
   if (String(current.revision) !== fields?.get('revision')) return 'conflict';
-  if (publish && (!de || !fr || fields.get('confirmed') !== '1')) return 'invalid';
+  if (publish && (!de || !fr || fields.get('confirmed') !== '1' ||
+    (path !== '/terms' && !completeSeller(seller)))) return 'invalid';
   db.prepare('UPDATE legal_drafts SET de=?,fr=?,revision=revision+1 WHERE path=?').run(de, fr, path);
   if (publish) {
     const version = (publishedLegal(db, path)?.version || 0) + 1;
-    db.prepare('INSERT INTO legal_versions VALUES (?,?,?,?,?)').run(path, version, de, fr, JSON.stringify(path === '/terms' ? null : { address: seller.address, email: seller.email }));
+    db.prepare('INSERT INTO legal_versions VALUES (?,?,?,?,?)').run(path, version, de, fr, JSON.stringify(seller));
   }
   return 'saved';
 }
 
-export function legalAdmin(db, path, result = '', submitted) {
+export function legalAdmin(db, path, seller, result = '', submitted) {
   const draft = legalDraft(db, path);
   const current = publishedLegal(db, path);
   const editor = '/admin/legal' + path;
   return adminHtml`<h1>Contenidos legales</h1>
     <nav aria-label="Páginas legales">${legalPaths.map(item => `<a href="/admin/legal${item}">${escapeHtml(legalTitle('de-CH',item))} / ${escapeHtml(legalTitle('fr-CH',item))}</a>`).join('')}</nav>
     <p>${escapeHtml(adminText(notes[path]))}</p>
-    ${path !== '/terms' ? adminHtml`<p>Revisa la dirección y el correo en <a href="/admin/content/contact">Datos públicos de contacto</a>.</p>` : ''}
+    ${path !== '/terms' && !completeSeller(seller) ? adminHtml`<p>Completa los datos del vendedor en <a href="/admin/billing">Emisor y fiscalidad</a>.</p>` : ''}
     <p><a href="${editor}/preview/de-CH">Vista previa DE</a> · <a href="${editor}/preview/fr-CH">Vista previa FR</a></p>
     ${result === 'conflict' ? adminHtml`<p role="alert">El borrador cambió. Vuelve a cargar el editor.</p>` : ''}
     ${result === 'invalid' ? adminHtml`<p role="alert">Revisa ambos textos y confirma la revisión antes de publicar.</p>` : ''}
@@ -101,7 +103,7 @@ export function legalPage(locale, path, row, previewSeller) {
     ${preview ? `<p>${french ? 'Aperçu du brouillon privé' : 'Private Entwurfsvorschau'}</p>` : ''}
     ${row?.version ? `<p>Version ${row.version}</p>` : ''}
     ${!row ? `<p>${french ? 'Cette page n’est pas encore publiée.' : 'Diese Seite ist noch nicht veröffentlicht.'}</p>` : ''}
-    ${(seller?.address || seller?.email) ? `<p class="information-text">${[seller.address, seller.email].filter(Boolean).map(escapeHtml).join('\n')}</p>` : ''}
+    ${seller?.name ? `<p class="information-text">${[seller.name,seller.street,[seller.zip,seller.city].filter(Boolean).join(' '),seller.country,seller.email].filter(Boolean).map(escapeHtml).join('\n')}</p>` : ''}
     ${row ? `<p class="information-text">${escapeHtml(row[french ? 'fr' : 'de'])}</p>` : ''}
     <p><a href="/${locale}/contact">${french ? 'Contact' : 'Kontakt'}</a></p>
   </section>`;
@@ -110,7 +112,7 @@ export function legalPage(locale, path, row, previewSeller) {
 export function footerGroups(locale, cookieLink, accounts = false) {
   const french = locale === 'fr-CH';
   const prefix = '/' + locale;
-  const support = [['/about','Über uns','Qui sommes-nous ?'], ['/contact','Kontakt','Contact'], ['/delivery-returns-warranty#delivery','Lieferung','Livraison'],
+  const support = [['/contact','Kontakt','Contact'], ['/delivery-returns-warranty#delivery','Lieferung','Livraison'],
     ['/delivery-returns-warranty#returns','Rückgabe','Retours'], ['/delivery-returns-warranty#warranty','Garantie','Garantie']];
   const group = (name, links) => `<nav aria-label="${name}"><strong>${name}</strong><ul>${links}</ul></nav>`;
   const item = (path,label) => `<li><a href="${prefix + path}">${label}</a></li>`;

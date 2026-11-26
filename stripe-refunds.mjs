@@ -17,10 +17,11 @@ export function requestStripeRefund(db, id, now = Math.floor(Date.now() / 1000))
 }
 
 export function sendStripeRefund(config, attempt) {
+  if (Boolean(attempt.livemode) !== Boolean(config.live)) throw new Error('Stripe refund belongs to a different mode.');
   return config.client.refunds.create({
     payment_intent: attempt.payment_intent, amount: attempt.cents,
     metadata: { movility_refund: attempt.id },
-  }, { idempotencyKey: 'movility-test-refund/' + attempt.id });
+  }, { idempotencyKey: (config.live ? 'movility-live-refund/' : 'movility-test-refund/') + attempt.id });
 }
 
 function matches(result, attempt) {
@@ -42,7 +43,7 @@ export function applyStripeRefundEvent(db, event, finish) {
   if (typeof id !== 'string') return 'ignored';
   const attempt = db.prepare("SELECT * FROM stripe_attempts WHERE id = ? AND state = 'paid'").get(id);
   const refund = stripeRefund(db, id);
-  if (!attempt || !refund || !matches(result, attempt) || (refund.refund_id && refund.refund_id !== result.id)) return 'ignored';
+  if (!attempt || event.livemode !== Boolean(attempt.livemode) || !refund || !matches(result, attempt) || (refund.refund_id && refund.refund_id !== result.id)) return 'ignored';
   if (refund.state === 'succeeded') return 'duplicate';
   if (result.status === 'succeeded') {
     finish(id);
@@ -56,11 +57,11 @@ export function applyStripeRefundEvent(db, event, finish) {
   return state;
 }
 
-export function refundControls(order, refund, stripeEnabled) {
+export function refundControls(order, refund, stripeEnabled, live = false) {
   const labels = { requested: 'Solicitud pendiente de enviar o verificar', pending: 'A la espera de Stripe',
     succeeded: 'Confirmado por Stripe', failed: 'Fallido o cancelado en Stripe' };
   return `${refund ? adminHtml`<p>Reembolso Stripe · ${adminText(labels[refund.state])}</p>` : ''}
     ${stripeEnabled && order.status !== 'refunded' && (!refund || refundRetryable(refund))
       ? adminHtml`<form method="post" action="/admin/${order.id}/stripe-refund"><button>${refund
-        ? adminText('Reintentar solicitud Stripe') : adminText('Solicitar reembolso total en Stripe (prueba)')}</button></form>` : ''}`;
+        ? adminText('Reintentar solicitud Stripe') : adminText(live ? 'Solicitar reembolso total en Stripe' : 'Solicitar reembolso total en Stripe (prueba)')}</button></form>` : ''}`;
 }

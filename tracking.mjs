@@ -58,11 +58,11 @@ export function shipmentFromToken(db, token, now = Date.now()) {
 export function shipmentPage(locale, shipment, events) {
   const french = locale === 'fr-CH';
   const title = french ? 'Suivi de l’expédition' : 'Sendungsverfolgung';
-  if (!shipment) return `<h1 class="page-title">${title}</h1>
+  if (!shipment) return `<section class="confirmation"><h1 class="page-title">${title}</h1>
     <p>${french ? 'Ce lien de suivi est indisponible ou a expiré.' : 'Dieser Trackinglink ist nicht verfügbar oder abgelaufen.'}</p>
-    <a href="/${locale}/contact">${french ? 'Contacter le service client' : 'Kundendienst kontaktieren'}</a>`;
+    <a class="button secondary" href="/${locale}/contact">${french ? 'Contacter le service client' : 'Kundendienst kontaktieren'}</a></section>`;
   return `<section class="confirmation"><h1 class="page-title">${title}</h1>
-    <p>${french ? 'Numéro de suivi' : 'Sendungsnummer'} <strong>${escapeHtml(shipment.tracking)}</strong></p>
+    <p class="shipment-number"><span>${french ? 'Numéro de suivi' : 'Sendungsnummer'}</span> <strong>${escapeHtml(shipment.tracking)}</strong></p>
     ${events.length ? trackingHistory(locale, events) :
       `<p>${french ? 'Expédié. En attente du premier événement du transporteur.' : 'Versendet. Das erste Ereignis des Transportdienstes steht noch aus.'}</p>`}
     </section>`;

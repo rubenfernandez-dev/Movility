@@ -1,24 +1,24 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emailTestConfig, resendTestProvider } from './resend-mail.mjs';
+import { resendConfig, resendProvider } from './resend-mail.mjs';
 import { orderRecoveryEmail } from './guest-proof.mjs';
 
 const env = {
   MOVILITY_EMAIL_MODE: 'resend-test', MOVILITY_RESEND_API_KEY: 'fixture-key',
   MOVILITY_EMAIL_FROM: 'demo@example.com', MOVILITY_EMAIL_TEST_TO: 'test@example.net',
 };
-const config = emailTestConfig(env, 'https://movility.example');
+const config = resendConfig(env, 'https://movility.example');
 const message = { key: 'one', subject: 'Commande confirmée', body: 'Corps en français',
   locale: 'fr-CH', orderId: 'test-order', email: 'customer@example.org', testTarget: config.target };
 
 test('external test mail targets only the configured address and uses a stable request key', async () => {
   const calls = [];
-  const send = resendTestProvider(config, (url, options) => {
+  const send = resendProvider(config, (url, options) => {
     calls.push({ url, options });
     return new Response(JSON.stringify({ id: 'provider-fixture' }), { status: 200 });
   });
-  assert.equal(emailTestConfig({}, 'https://movility.example'), null);
-  assert.throws(() => emailTestConfig({ ...env, MOVILITY_EMAIL_TEST_TO: 'one@test.net,two@test.net' }, 'https://movility.example'));
+  assert.equal(resendConfig({}, 'https://movility.example'), null);
+  assert.throws(() => resendConfig({ ...env, MOVILITY_EMAIL_TEST_TO: 'one@test.net,two@test.net' }, 'https://movility.example'));
   assert.equal((await send({ ...message, testTarget: { ...config.target, to: 'other@example.net' } })).status, 'permanent');
   assert.equal(calls.length, 0);
   assert.deepEqual(await send(message), { status: 'accepted', reference: 'provider-fixture' });
@@ -39,16 +39,16 @@ test('Resend adapter distinguishes retryable errors from rejected requests', asy
     [429, '', 'temporary'], [500, '', 'temporary'], [401, '', 'permanent'],
     [409, 'concurrent_idempotent_requests', 'temporary'], [409, 'invalid_idempotent_request', 'permanent'],
   ]) {
-    const send = resendTestProvider(config, () => new Response(JSON.stringify({ name }), { status: code }));
+    const send = resendProvider(config, () => new Response(JSON.stringify({ name }), { status: code }));
     assert.equal((await send(message)).status, expected);
   }
-  const broken = resendTestProvider(config, () => { throw new Error('test network error'); });
+  const broken = resendProvider(config, () => { throw new Error('test network error'); });
   assert.equal((await broken(message)).status, 'temporary');
 });
 
 test('recovery emails use a single test inbox and the HTTPS verification link in the order language', async () => {
   const calls = [];
-  const send = resendTestProvider(config, (_url, options) => {
+  const send = resendProvider(config, (_url, options) => {
     calls.push(JSON.parse(options.body));
     return new Response(JSON.stringify({ id: 'recovery-fixture' }), { status: 200 });
   });

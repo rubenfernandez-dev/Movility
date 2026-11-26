@@ -25,12 +25,17 @@ async function initialize() {
     if (enable) enable.disabled = active || Notification.permission === 'denied';
     disable.disabled = !active;
   };
-  tell(active ? 'enabled' : Notification.permission === 'denied' ? 'blocked' : 'disabled');
+  tell(Notification.permission === 'denied' ? 'blocked' : active ? 'enabled' : 'disabled');
   controls();
 
   enable?.addEventListener('click', async () => {
     enable.disabled = true;
     try {
+      const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+      if (permission !== 'granted') {
+        tell(permission === 'denied' ? 'blocked' : 'disabled');
+        return;
+      }
       subscription ||= await registration.pushManager.subscribe({
         userVisibleOnly: true, applicationServerKey: panel.dataset.key,
       });

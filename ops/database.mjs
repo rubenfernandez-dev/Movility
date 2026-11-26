@@ -1,4 +1,4 @@
-import { closeSync, mkdirSync, mkdtempSync, openSync, readdirSync, rmdirSync, rmSync } from 'node:fs';
+import { closeSync, constants, copyFileSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, rmdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -18,7 +18,7 @@ export function verifyDatabase(path) {
     if (integrity.length !== 1 || integrity[0].integrity_check !== 'ok') throw new Error('La integridad de SQLite no es válida.');
     if (db.prepare('PRAGMA foreign_key_check').get()) throw new Error('Hay referencias sin registro asociado.');
     const tables = new Set(db.prepare("SELECT name FROM sqlite_schema WHERE type = 'table'").all().map(row => row.name));
-    if (requiredTables.some(name => !tables.has(name))) throw new Error('Faltan tablas de Movility.');
+    if (requiredTables.some(name => !tables.has(name))) throw new Error('Faltan tablas de Mobility.');
   } finally {
     db.close();
   }
@@ -61,18 +61,67 @@ export function restoreDatabase(backup, destination) {
   return destination;
 }
 
+function copyManagedMedia(sourceDb, destinationDb) {
+  const source = sourceDb + '.media';
+  const destination = destinationDb + '.media';
+  const stat = lstatSync(source, { throwIfNoEntry: false });
+  if (!stat) return;
+  if (!stat.isDirectory()) throw new Error('El directorio de medios debe ser un directorio regular.');
+  const entries = readdirSync(source, { withFileTypes: true });
+  if (entries.some(entry => !entry.isFile())) throw new Error('Los medios administrados deben ser archivos regulares.');
+  mkdirSync(destination, { mode: 0o700 });
+  const copied = [];
+  try {
+    for (const entry of entries) {
+      const target = join(destination, entry.name);
+      copyFileSync(join(source, entry.name), target, constants.COPYFILE_EXCL);
+      copied.push(target);
+    }
+  } catch (error) {
+    for (const target of copied) rmSync(target, { force: true });
+    rmdirSync(destination);
+    throw error;
+  }
+}
+
+export function backupVolume(source, directory) {
+  const backup = backupDatabase(source, directory);
+  try { copyManagedMedia(source, backup); }
+  catch (error) {
+    rmSync(backup, { force: true });
+    rmdirSync(dirname(backup));
+    throw error;
+  }
+  return backup;
+}
+
+export function restoreVolume(backup, destination) {
+  if (lstatSync(destination + '.media', { throwIfNoEntry: false })) {
+    throw Error('El directorio de medios de destino ya existe.');
+  }
+  restoreDatabase(backup, destination);
+  try { copyManagedMedia(backup, destination); }
+  catch (error) {
+    rmSync(destination, { force: true });
+    throw error;
+  }
+  return destination;
+}
+
 function main([action, source, destination]) {
-  if (action === 'backup' && !destination) {
+  if (['backup', 'backup-volume'].includes(action) && !destination) {
     const active = process.env.MOVILITY_DB || 'data/demo.sqlite';
     if (active === ':memory:') throw new Error('La base en memoria no se puede copiar desde otro proceso.');
-    console.log('Copia verificada: ' + backupDatabase(resolve(active), resolve(source || 'data/backups')));
+    const backup = action === 'backup-volume' ? backupVolume : backupDatabase;
+    console.log('Copia verificada: ' + backup(resolve(active), resolve(source || 'data/backups')));
   } else if (action === 'verify' && source && !destination) {
     verifyDatabase(resolve(source));
     console.log('Copia verificada.');
-  } else if (action === 'restore' && source && destination) {
-    console.log('Base recuperada y verificada: ' + restoreDatabase(resolve(source), resolve(destination)));
+  } else if (['restore', 'restore-volume'].includes(action) && source && destination) {
+    const restore = action === 'restore-volume' ? restoreVolume : restoreDatabase;
+    console.log('Base recuperada y verificada: ' + restore(resolve(source), resolve(destination)));
   } else {
-    throw new Error('Uso: backup [carpeta], verify <copia>, restore <copia> <archivo-nuevo>');
+    throw new Error('Uso: backup|backup-volume [carpeta], verify <copia>, restore|restore-volume <copia> <archivo-nuevo>');
   }
 }
 

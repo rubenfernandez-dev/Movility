@@ -90,11 +90,12 @@ export function adminRouteAllowed(role, method, path) {
     if (path === '/admin/serials') return can(role, 'serials');
     if (path === '/admin/inventory' || path === '/admin/inventory.csv') return can(role, 'stock');
     if (['/admin/accounting', '/admin/accounting.csv', '/admin/analytics', '/admin/stripe'].includes(path)) return can(role, 'finance');
-    if (path === '/admin/mail') return can(role, 'support');
+    if (path === '/admin/mail' || path === '/admin/push') return can(role, 'support');
     if (orderEmail.test(path)) return can(role, 'support');
     if (/^\/admin\/[0-9a-f-]{36}\/document\/(invoice|credit)$/.test(path)) return can(role, 'finance');
   }
   if (method === 'POST') {
+    if (path === '/admin/inventory/receive') return can(role, 'stock');
     const action = orderAction.exec(path)?.[1];
     if (action) return can(role, ['refund', 'stripe-refund'].includes(action) ? 'finance' : 'shipping');
   }
