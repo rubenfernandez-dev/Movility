@@ -112,10 +112,12 @@ export function legalPage(locale, path, row, previewSeller) {
 export function footerGroups(locale, cookieLink, accounts = false) {
   const french = locale === 'fr-CH';
   const prefix = '/' + locale;
-  const support = [['/contact','Kontakt','Contact'], ['/delivery-returns-warranty#delivery','Lieferung','Livraison'],
-    ['/delivery-returns-warranty#returns','Rückgabe','Retours'], ['/delivery-returns-warranty#warranty','Garantie','Garantie']];
   const group = (name, links) => `<nav aria-label="${name}"><strong>${name}</strong><ul>${links}</ul></nav>`;
-  const item = (path,label) => `<li><a href="${prefix + path}">${label}</a></li>`;
-  return group(french ? 'Aide' : 'Hilfe', support.map(([path,de,fr])=>item(path,french?fr:de)).join('') + (accounts ? item('/account',french?'Mon compte':'Mein Konto') + item('/offers',french?'Offres':'Angebote') : '')) +
-    group(french ? 'Informations légales' : 'Rechtliches', legalPaths.map(path=>item(path,legalTitle(locale,path))).join('') + '<li>'+cookieLink+'</li>');
+  const item = (path, label) => `<li><a href="${prefix + path}">${label}</a></li>`;
+  const support = item('/contact', french ? 'Contact' : 'Kontakt') +
+    item('/delivery-returns-warranty', french ? 'Livraison, retours et garantie' : 'Lieferung, Rückgabe und Garantie') +
+    (accounts ? item('/account', french ? 'Mon compte' : 'Mein Konto') : '');
+  return group(french ? 'Service client' : 'Kundenservice', support) +
+    group(french ? 'Légal' : 'Rechtliches',
+      legalPaths.map(path => item(path, legalTitle(locale, path))).join('') + `<li>${cookieLink}</li>`);
 }

@@ -224,9 +224,10 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
       assert.equal(response.status, 200);
       const html = await response.text();
       const footer = html.slice(html.indexOf('<footer>'));
+      assert.equal(footer.split('href="/' + locale + '/delivery-returns-warranty').length - 1, 1);
+      assert.ok(!footer.includes('href="/' + locale + '/offers"'));
       assert.ok(html.includes('href="/' + other + page + '" lang="' + other + '"'));
-      for (const link of ['/contact', '/delivery-returns-warranty#delivery', '/delivery-returns-warranty#returns',
-        '/delivery-returns-warranty#warranty', '/impressum', '/privacy', '/terms', '/analytics']) {
+      for (const link of ['/contact', '/delivery-returns-warranty', '/impressum', '/privacy', '/terms', '/analytics']) {
         assert.ok(footer.includes('href="/' + locale + link + '"'));
       }
     }

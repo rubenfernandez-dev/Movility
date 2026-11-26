@@ -42,6 +42,13 @@ const stagingNotice = {
 
 export function page(locale, title, content, header = '', metadata = {}, extras = {}) {
   const t = copy[locale];
+  const footer = extras.storefront
+    ? `<div class="storefront-footer">
+        <p class="storefront-footer-brand"><a href="/${locale}">Mobility</a></p>
+        <div class="storefront-footer-links">${extras.footer || ''}</div>
+        ${process.env.MOVILITY_STAGE === 'staging' ? `<p class="storefront-footer-notice">${stagingNotice[locale]}</p>` : ''}
+      </div>`
+    : (extras.admin ? adminFooter : pageFooter)[locale] + (extras.footer ? ` · ${extras.footer}` : '');
   return `<!doctype html>
 <html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="${escapeHtml(metadata.description || t?.description || title)}"><title>${escapeHtml(metadata.title || title)}</title>${metadata.links || ''}<link rel="stylesheet" href="/site.css"></head><body${extras.storefront ? ' class="storefront-page"' : ''}>
@@ -52,7 +59,5 @@ ${extras.feature ? extras.feature + '<div class="home-content">' : ''}
 ${extras.feature || extras.commercial ? '' : process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
   : t && !extras.admin ? `<p class="demo">${t.demo}</p>` : ''}${content}${extras.prompt || ''}${extras.feature ? '</div>' : ''}</main>
 ${extras.sidebar ? '</div>' : ''}
-<footer>${extras.storefront ? `<div class="storefront-footer"><p><a href="/${locale}">Mobility</a> <span>${pageFooter[locale]}</span>` : (extras.admin ? adminFooter : pageFooter)[locale]}${extras.feature && process.env.MOVILITY_STAGE === 'staging'
-  ? ` · ${stagingNotice[locale]}` : ''}${extras.storefront ? `</p><div class="storefront-footer-links">${extras.footer || ''}</div></div>`
-    : extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
+<footer>${footer}</footer></body></html>`;
 }
