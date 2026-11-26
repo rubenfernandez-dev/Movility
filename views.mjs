@@ -40,11 +40,23 @@ const stagingNotice = {
   es: 'Preproducción · Solo datos ficticios',
 };
 
+export const storefrontBrand = locale => `<a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Mobility</a>`;
+
+const footerHelp = {
+  'de-CH': ['Brauchen Sie Hilfe bei der Auswahl?', 'Kontakt'],
+  'fr-CH': ['Besoin d’aide pour choisir ?', 'Contact'],
+};
+
 export function page(locale, title, content, header = '', metadata = {}, extras = {}) {
   const t = copy[locale];
+  const help = footerHelp[locale];
   const footer = extras.storefront
     ? `<div class="storefront-footer">
-        <p class="storefront-footer-brand"><a href="/${locale}">Mobility</a></p>
+        <div class="storefront-footer-help">
+          ${storefrontBrand(locale)}
+          <p>${help[0]}</p>
+          <a class="storefront-footer-contact" href="/${locale}/contact">${help[1]} <span aria-hidden="true">&rarr;</span></a>
+        </div>
         <div class="storefront-footer-links">${extras.footer || ''}</div>
         ${process.env.MOVILITY_STAGE === 'staging' ? `<p class="storefront-footer-notice">${stagingNotice[locale]}</p>` : ''}
       </div>`

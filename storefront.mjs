@@ -1,6 +1,6 @@
 import { productOffer, productSpecs } from './product-specs.mjs';
 import { deliveryCountries } from './delivery-countries.mjs';
-import { copy, methods, money, escapeHtml } from './views.mjs';
+import { copy, methods, money, escapeHtml, storefrontBrand } from './views.mjs';
 import { compareLabel, comparisonLink, comparisonQuery, viewerLink, withQuery } from './discovery.mjs';
 import { addToCart, cartQuote, coreSKU } from './cart.mjs';
 import { shippingPrice, shippingQuote, shippingText } from './shipping.mjs';
@@ -114,7 +114,7 @@ export function navigation(locale, suffix, query = '', units = 0, context = new 
     <a href="/${locale}#faq">${l.help}</a><a href="/${locale}/about"${suffix === '/about' ? ' aria-current="page"' : ''}>${information['/about'][locale][0]}</a>
     <a href="/${locale}/contact"${suffix === '/contact' ? ' aria-current="page"' : ''}>${information['/contact'][locale][0]}</a>`;
   return `<a class="skip" href="#content">${l.skip}</a>
-    <header class="top"><div class="top-inner storefront-header"><a class="brand" href="/${locale}"><span aria-hidden="true">M</span> Mobility</a>
+    <header class="top"><div class="top-inner storefront-header">${storefrontBrand(locale)}
     <nav class="storefront-nav" aria-label="${l.navigation}">${links}</nav>
     <div class="top-actions">
       <details class="storefront-menu">

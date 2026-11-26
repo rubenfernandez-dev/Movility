@@ -114,8 +114,7 @@ export function footerGroups(locale, cookieLink, accounts = false) {
   const prefix = '/' + locale;
   const group = (name, links) => `<nav aria-label="${name}"><strong>${name}</strong><ul>${links}</ul></nav>`;
   const item = (path, label) => `<li><a href="${prefix + path}">${label}</a></li>`;
-  const support = item('/contact', french ? 'Contact' : 'Kontakt') +
-    item('/delivery-returns-warranty', french ? 'Livraison, retours et garantie' : 'Lieferung, Rückgabe und Garantie') +
+  const support = item('/delivery-returns-warranty', french ? 'Livraison, retours et garantie' : 'Lieferung, Rückgabe und Garantie') +
     (accounts ? item('/account', french ? 'Mon compte' : 'Mein Konto') : '');
   return group(french ? 'Service client' : 'Kundenservice', support) +
     group(french ? 'Légal' : 'Rechtliches',
