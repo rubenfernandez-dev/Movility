@@ -119,4 +119,3 @@ export function footerGroups(locale, cookieLink, accounts = false) {
   return group(french ? 'Aide' : 'Hilfe', support.map(([path,de,fr])=>item(path,french?fr:de)).join('') + (accounts ? item('/account',french?'Mon compte':'Mein Konto') + item('/offers',french?'Offres':'Angebote') : '')) +
     group(french ? 'Informations légales' : 'Rechtliches', legalPaths.map(path=>item(path,legalTitle(locale,path))).join('') + '<li>'+cookieLink+'</li>');
 }
-export const cookieDetails = locale => `<div class="cookie-details">${cookieInfo[locale].map(item=>`<p>${escapeHtml(item)}</p>`).join('')}</div>`;

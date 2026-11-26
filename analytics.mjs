@@ -1,4 +1,4 @@
-import { cookieDetails } from './legal.mjs';
+import { legalTitle } from './legal.mjs';
 import { adminHtml, adminText, adminLocale } from './admin-language.mjs';
 import { statisticsPeriod, salesStatistics, salesStatisticsSection } from './sales-statistics.mjs';
 import { randomUUID } from 'node:crypto';
@@ -63,18 +63,16 @@ export function recordFunnel(db, choice, locale, stage) {
 
 const labels = {
   'de-CH': {
-    settings: 'Cookie-Einstellungen', heading: 'Optionale Besuchsstatistik',
-    description: 'Mit deiner Zustimmung zählen wir die Schritte vom Produkt bis zur Bestellung. Die Statistik speichert keine Kontaktdaten. Die Einstellung kannst du jederzeit ändern.',
-    summary: 'Mit deiner Zustimmung messen wir die Schritte bis zur Bestellung.',
-    accept: 'Statistik akzeptieren', decline: 'Nur notwendige', withdraw: 'Zustimmung widerrufen',
+    settings: 'Cookie-Einstellungen', heading: 'Cookies und Datenschutz',
+    summary: 'Der Shop verwendet notwendige Cookies, damit Warenkorb und Bestellung funktionieren. Die Besuchsstatistik ist optional und bleibt ohne deine Zustimmung ausgeschaltet.',
+    accept: 'Besuchsstatistik erlauben', decline: 'Nur notwendige Cookies', withdraw: 'Zustimmung widerrufen',
     active: 'Die Besuchsstatistik ist erlaubt.', inactive: 'Die Besuchsstatistik ist deaktiviert.',
   },
   'fr-CH': {
-    settings: 'Réglages des cookies', heading: 'Mesure d’audience facultative',
-    description: 'Avec votre accord, nous comptons les étapes entre la fiche produit et la commande. Les statistiques ne contiennent pas vos coordonnées. Vous pouvez modifier ce choix à tout moment.',
-    summary: 'Avec votre accord, nous mesurons les étapes jusqu’à la commande.',
-    accept: 'Accepter les statistiques', decline: 'Seulement les cookies nécessaires', withdraw: 'Retirer mon accord',
-    active: 'La mesure d’audience est autorisée.', inactive: 'La mesure d’audience est désactivée.',
+    settings: 'Réglages des cookies', heading: 'Cookies et confidentialité',
+    summary: 'La boutique utilise des cookies nécessaires au fonctionnement du panier et de la commande. Les statistiques de visite sont facultatives et restent désactivées sans votre accord.',
+    accept: 'Autoriser les statistiques de visite', decline: 'Cookies nécessaires uniquement', withdraw: 'Retirer mon accord',
+    active: 'Les statistiques de visite sont autorisées.', inactive: 'Les statistiques de visite sont désactivées.',
   },
 };
 
@@ -87,13 +85,14 @@ export function analyticsPrompt(locale, choice, returnPath, settings = false) {
   const l = labels[locale];
   const title = settings ? 'h1' : 'h2';
   return `<section class="analytics-choice${settings ? '' : ' cookie-banner'}" aria-labelledby="cookie-choice-title"><${title} id="cookie-choice-title">${settings ? l.settings : l.heading}</${title}>
-    <p>${settings ? l.description : l.summary}</p>
+    <p>${l.summary}</p>
     ${settings && choice ? `<p>${choice === 'off' ? l.inactive : l.active}</p>` : ''}
     <form class="product-actions" method="post" action="/${locale}/analytics">
       <input type="hidden" name="return" value="${analyticsReturn(locale, returnPath)}">
       <button class="secondary" name="choice" value="accept">${l.accept}</button>
       <button class="secondary" name="choice" value="decline">${settings && uuid.test(choice) ? l.withdraw : l.decline}</button>
-    </form>${settings ? cookieDetails(locale) : `<a href="/${locale}/analytics">${l.settings}</a>`}</section>`;
+    </form>${settings ? `<a href="/${locale}/privacy">${legalTitle(locale, '/privacy')}</a>`
+      : `<a href="/${locale}/analytics">${l.settings}</a>`}</section>`;
 }
 
 export const analyticsLink = locale => `<a href="/${locale}/analytics">${labels[locale].settings}</a>`;

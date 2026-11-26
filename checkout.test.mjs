@@ -783,7 +783,20 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   count(await (await get(funnel, finance)).text(), 'Ficha de producto', 0);
   const visit = await get('/fr-CH/mobility-one');
   assert.equal(visit.headers.get('set-cookie'), null);
-  assert.match(await visit.text(), /Seulement les cookies nécessaires/);
+  for (const [locale, html, title, buttons] of [
+    ['fr-CH', await visit.text(), 'Cookies et confidentialit\u00e9',
+      ['Autoriser les statistiques de visite', 'Cookies n\u00e9cessaires uniquement']],
+    ['de-CH', await (await get('/de-CH/mobility-one')).text(), 'Cookies und Datenschutz',
+      ['Besuchsstatistik erlauben', 'Nur notwendige Cookies']],
+  ]) {
+    const banner = html.match(/<section class="analytics-choice cookie-banner"[\s\S]*?<\/section>/)?.[0];
+    assert.ok(banner?.includes(title));
+    assert.ok(banner.includes('class="secondary" name="choice" value="accept">' + buttons[0]));
+    assert.ok(banner.includes('class="secondary" name="choice" value="decline">' + buttons[1]));
+    assert.ok(banner.includes('/' + locale + '/analytics'));
+    const settings = await (await get('/' + locale + '/analytics')).text();
+    assert.ok(settings.includes('href="/' + locale + '/privacy"'));
+  }
   const reject = await post('/fr-CH/analytics', { choice: 'decline', return: '//example.com' });
   assert.equal(reject.headers.get('location'), '/fr-CH');
   const rejected = reject.headers.get('set-cookie').split(';')[0];

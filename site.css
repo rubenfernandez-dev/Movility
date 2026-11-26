@@ -569,7 +569,6 @@ footer{border-top:1px solid var(--line);color:var(--muted)}
 .cookie-banner h2,.cookie-banner p{margin:0 0 .3rem}
 .cookie-banner .product-actions{margin:.4rem 0;gap:.35rem}
 .cookie-banner button{padding:.4rem .75rem}
-.cookie-details{max-width:65ch;margin-top:1rem}
 .legal-editor textarea{display:block;width:100%;font:inherit;margin:.3rem 0 .8rem}
 .checkout-grid input[type=checkbox]{display:inline-block;width:auto;margin:0 .35rem 0 0}
 @media(max-width:36rem){
