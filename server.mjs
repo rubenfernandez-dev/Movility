@@ -1,3 +1,4 @@
+import { setupLegal, legalPaths, legalTitle, legalDraft, publishedLegal, saveLegal, legalAdmin, legalPage, footerGroups } from './legal.mjs';
 import { adminFragment, adminHtml, adminLanguage, adminLocale, adminPage, adminText, setAdminNavigation } from './admin-language.mjs';
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -5,11 +6,11 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 
 import { DatabaseSync } from 'node:sqlite';
 import { basename, join, resolve } from 'node:path';
 import { copy, page, money, methods, escapeHtml } from './views.mjs';
-import { navigation, homepage, productPage, cartPage, checkoutPage, orderPage,
+import { navigation, homepage, productPage, cartPage, checkoutPage as renderCheckoutPage, orderPage,
   productImage, sideImage, videoPath, captionsPath, transcriptPath } from './storefront.mjs';
 import { comparisonPage, viewerPage, modelPath, viewerScript } from './discovery.mjs';
 import { isPublicPage, pageMetadata, publicOrigin, sitemap } from './seo.mjs';
-import { information, informationLinks, informationPage } from './information.mjs';
+import { information, informationPage } from './information.mjs';
 import { discoveryAccessoriesImage, discoveryCompareImage, homeDiscovery } from './home-discovery.mjs';
 import { informationAdmin, informationAdminTitles, informationSettings, saveInformation, setupInformation } from './information-admin.mjs';
 import { contactInbox, readContact, saveContact, setupContact, updateContactStatus } from './contact.mjs';
@@ -26,7 +27,7 @@ import { setupInventory, purchasedLines, returnControls, inventoryPage, inventor
 import { setupAccounting, recordPayment, accountingFilters, accountingData, accountingPage, accountingCsv } from './accounting.mjs';
 import { setupSerials, shipmentSerials, readShipmentSerials, assignShipmentSerials, sameShipmentSerials,
   readReturnSerials, receiptMatches, validReturnSelection, markSerialsReceived, shipmentForm, serialSummary, serialLookup } from './serials.mjs';
-import { adminAuth, adminRouteAllowed, can, changeLocalAdminPassword, localAdminPassword, roleNames,
+import { adminAuth, adminRouteAllowed, can, changeLocalAdminPassword, encodeAdminPassword, localAdminPassword, roleNames,
   verifyLocalAdminPassword } from './admin-access.mjs';
 import { setupFunnel, purgeFunnel, analyticsChoice, updateAnalytics, recordFunnel,
   analyticsPrompt, analyticsReturn, analyticsLink, funnelReport } from './analytics.mjs';
@@ -71,10 +72,6 @@ const configuredAdmin = process.env.MOVILITY_ADMIN_PASSWORD;
 const fixedLocalPassword = !configuredAdmin && !process.env.MOVILITY_DB && CODESPACES !== 'true' && !siteOrigin && !stripe
   ? resolve('data/admin-password.txt') : '';
 let localCredential = fixedLocalPassword ? localAdminPassword(fixedLocalPassword) : null;
-const admin = configuredAdmin || (localCredential ? undefined : randomBytes(24).toString('base64url'));
-const adminRole = adminAuth({ admin, warehouse: process.env.MOVILITY_WAREHOUSE_PASSWORD,
-  support: process.env.MOVILITY_SUPPORT_PASSWORD, finance: process.env.MOVILITY_FINANCE_PASSWORD },
-  fixedLocalPassword ? () => localCredential : undefined);
 const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA busy_timeout = 5000;
@@ -178,6 +175,29 @@ for (const locale of Object.keys(copy)) {
   assets.set(captionsPath(locale), ['text/vtt; charset=utf-8', track]);
   assets.set(transcriptPath(locale), ['text/plain; charset=utf-8', text]);
 }
+const pilotPasswordChange = accountsEnabled && Boolean(configuredAdmin);
+if (pilotPasswordChange) {
+  db.exec(`CREATE TABLE IF NOT EXISTS pilot_admin_credential (
+    id INTEGER PRIMARY KEY CHECK (id = 1), credential TEXT NOT NULL
+  )`);
+}
+const readPilotCredential = pilotPasswordChange
+  ? db.prepare('SELECT credential FROM pilot_admin_credential WHERE id = 1') : null;
+const currentAdminCredential = () => pilotPasswordChange
+  ? readPilotCredential.get()?.credential ?? configuredAdmin : localCredential;
+const admin = configuredAdmin || (localCredential ? undefined : randomBytes(24).toString('base64url'));
+const adminRole = adminAuth({ admin: pilotPasswordChange ? undefined : admin,
+  warehouse: process.env.MOVILITY_WAREHOUSE_PASSWORD, support: process.env.MOVILITY_SUPPORT_PASSWORD,
+  finance: process.env.MOVILITY_FINANCE_PASSWORD },
+  pilotPasswordChange || fixedLocalPassword ? currentAdminCredential : undefined);
+
+const currentTermsVersion = () => publishedLegal(db, '/terms')?.version;
+const checkoutPage = (locale, cents, id, values, message, model, lines, stripeMethods, invalid) =>
+  renderCheckoutPage(locale, cents, id, values, message, model, lines, stripeMethods, invalid, currentTermsVersion());
+const saveOrderTerms = (id, version, locale) => {
+  if (version) db.prepare('INSERT INTO order_terms VALUES (?,?,?)').run(id, version, locale);
+};
+
 const transaction = (work) => {
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -208,6 +228,7 @@ transaction(() => {
   setupContact(db);
   setupFaq(db);
   setupInformation(db);
+  setupLegal(db);
   purgePush(db);
   purgeFunnel(db);
 });
@@ -587,6 +608,7 @@ const server = createServer(async (req, res) => {
         release: line => orderStock(line.sku, line.quantity, 'release', null),
         fulfill: (attempt, data) => {
           createPaidOrder(attempt.id, attempt.method, data.locale, data.email, data.address, data.lines, data.billing);
+          saveOrderTerms(attempt.id, data.termsVersion, data.locale);
           notice(attempt.id, 'paid');
         },
       }));
@@ -643,7 +665,7 @@ const server = createServer(async (req, res) => {
     const pushRoute = first === locale && second === 'orders' && orderIdPattern.test(third) && path === `/${locale}/orders/${third}/push`;
     const suffix = first === locale ? path.slice(locale.length + 1) : '';
     const modelRoute = /^\/models\/([a-z0-9][a-z0-9-]{1,23})(\/3d)?$/.exec(suffix);
-    const languagePath = isPublicPage(suffix) || ['/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
+    const languagePath = legalPaths.includes(suffix) || isPublicPage(suffix) || ['/cart', '/checkout', '/checkout/cart', '/analytics', '/account', '/guest-access', '/offers'].includes(suffix) ||
       modelRoute || shipmentRoute || /^\/orders\/[0-9a-f-]{36}$/.test(suffix)
       ? suffix : '';
     const view = searchParams.get('view');
@@ -668,16 +690,14 @@ const server = createServer(async (req, res) => {
       try { recordFunnel(db, consent, locale, stage); }
       catch (error) { console.error('Could not record analytics stage', error); }
     };
-    const render = (body, status = 200, feature = '') => send(res, status,
-      page(locale, t.title, body, navigation(locale, languagePath, languageQuery, cartUnits),
+    const render = (body, status = 200, feature = '', title = t.title) => send(res, status,
+      page(locale, title, body, navigation(locale, languagePath, languageQuery, cartUnits),
         discoverable && status === 200 ? pageMetadata(locale, suffix, siteOrigin, editorial &&
           [editorial['title_' + editorialLocale], editorial['intro_' + editorialLocale]]) : {}, {
           feature,
           storefront: true,
-          footer: informationLinks(locale) + ' · ' + analyticsLink(locale) + (accountsEnabled
-            ? ` · <a href="/${locale}/account">${locale === 'de-CH' ? 'Mein Konto' : 'Mon compte'}</a>
-              · <a href="/${locale}/offers">${locale === 'de-CH' ? 'Angebote' : 'Offres'}</a>` : ''),
-          prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute)
+          footer: footerGroups(locale, analyticsLink(locale), accountsEnabled),
+          prompt: !consent && !settings && req.method === 'GET' && status === 200 && (discoverable || modelRoute || legalPaths.includes(suffix))
             ? analyticsPrompt(locale, consent, path) : '',
         }), languagePath === '/movility-one/3d' || Boolean(modelRoute?.[2]), Boolean(push && orderPageRoute),
         path === `/${locale}`);
@@ -760,10 +780,29 @@ const server = createServer(async (req, res) => {
           return redirect(res, '/admin/contact');
         }
       }
+      if (role === 'admin' && path === '/admin/legal' && req.method === 'GET') return redirect(res, '/admin/legal/impressum');
+      const legalEditor = /^\/admin\/legal(\/(?:impressum|privacy|terms))(?:\/preview\/(de-CH|fr-CH))?$/.exec(path);
+      if (role === 'admin' && legalEditor) {
+        const [, legalPath, previewLocale] = legalEditor;
+        const seller = informationSettings(db, 'contact', process.env.MOVILITY_CONTACT_EMAIL);
+        if (req.method === 'GET' && previewLocale) {
+          res.setHeader('Referrer-Policy', 'no-referrer');
+          return send(res, 200, page(previewLocale, legalTitle(previewLocale, legalPath),
+            legalPage(previewLocale, legalPath, legalDraft(db, legalPath), seller)));
+        }
+        if (req.method === 'GET') return send(res, 200, adminPage('Contenidos legales',
+          legalAdmin(db, legalPath, searchParams.has('saved') ? 'saved' : '')));
+        if (req.method === 'POST' && !previewLocale) {
+          const fields = await form(req, 300000);
+          const result = transaction(() => saveLegal(db, legalPath, fields, seller));
+          return result === 'saved' ? redirect(res, path + '?saved=1') : send(res, result === 'invalid' ? 400 : 409,
+            adminPage('Contenidos legales', legalAdmin(db, legalPath, result, fields)));
+        }
+      }
       if (path === '/admin/security' && ['GET', 'POST'].includes(req.method)) {
         const security = (body, status = 200) => send(res, status, adminPage('Seguridad del panel',
           adminFragment('<p><a href="/admin">Volver a administración</a></p><h1>Seguridad del panel</h1>') + body));
-        if (!fixedLocalPassword) return security(
+        if (!fixedLocalPassword && !pilotPasswordChange) return security(
           adminFragment('<p>La contraseña de este entorno se gestiona en la configuración del servidor.</p>'), req.method === 'GET' ? 200 : 403);
         const editor = (message = '') => adminHtml`${message}<form class="confirmation" method="post" action="/admin/security">
           <label>Contraseña actual <input type="password" name="current" autocomplete="current-password" maxlength="256" required></label>
@@ -775,10 +814,18 @@ const server = createServer(async (req, res) => {
         const current = fields?.get('current');
         const password = fields?.get('password');
         const allowed = password && password.length >= 14 && password.length <= 128 && Buffer.byteLength(password) <= 256 &&
-          password.trim() === password && password !== current && password === fields.get('confirm') &&
-          verifyLocalAdminPassword(current, localCredential);
-        if (!allowed) return security(editor(adminFragment('<p class="form-error" role="alert">Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos campos.</p>')), 400);
-        localCredential = changeLocalAdminPassword(fixedLocalPassword, password);
+          password.trim() === password && password !== current && password === fields.get('confirm');
+        const updatePassword = () => {
+          if (!verifyLocalAdminPassword(current, currentAdminCredential())) return false;
+          if (pilotPasswordChange) {
+            db.prepare(`INSERT INTO pilot_admin_credential (id, credential) VALUES (1, ?)
+              ON CONFLICT(id) DO UPDATE SET credential = excluded.credential`).run(encodeAdminPassword(password));
+          } else {
+            localCredential = changeLocalAdminPassword(fixedLocalPassword, password);
+          }
+          return true;
+        };
+        if (!allowed || !(pilotPasswordChange ? transaction(updatePassword) : updatePassword())) return security(editor(adminFragment('<p class="form-error" role="alert">Comprueba la contraseña actual y que la nueva sea distinta y coincida en ambos campos.</p>')), 400);
         return security(adminFragment('<p class="form-success" role="status">Contraseña actualizada. Vuelve a entrar con la nueva clave.</p>'));
       }
       const docPath = /^\/admin\/([0-9a-f-]{36})\/document\/(invoice|credit)$/.exec(path);
@@ -1191,6 +1238,11 @@ const server = createServer(async (req, res) => {
         return redirect(res, path);
       }
     }
+    if (req.method === 'GET' && legalPaths.includes(suffix)) {
+      const version = suffix === '/terms' ? searchParams.get('version') : null;
+      const content = version === null || /^[1-9]\d{0,8}$/.test(version) ? publishedLegal(db, suffix, version) : null;
+      return render(legalPage(locale, suffix, content), content ? 200 : 404, '', legalTitle(locale, suffix));
+    }
     if (req.method === 'GET' && settings) return render(analyticsPrompt(locale, consent, path, true));
     if (req.method === 'POST' && settings) {
       const fields = await form(req);
@@ -1354,6 +1406,11 @@ const server = createServer(async (req, res) => {
         return render(checkoutPage(locale, cents, validId ? id : randomUUID(), values, t.invalid, selected, lines,
           stripeMethodsFor(stripe, cents), invalid), 400);
       }
+      const termsVersion = currentTermsVersion();
+      if (termsVersion && (fields.get('termsVersion') !== String(termsVersion) || fields.get('acceptTerms') !== '1')) {
+        const message = locale === 'de-CH' ? 'Bitte bestätige die aktuellen Verkaufsbedingungen.' : 'Veuillez accepter les conditions de vente en vigueur.';
+        return render(checkoutPage(locale, cents, id, values, message, selected, lines, stripeMethodsFor(stripe, cents)), 409);
+      }
       if (stripe) {
         const matchesQuote = items => basketCheckout ? fields.get('cartQuote') === cartQuote(items)
           : items.length === 1 && items[0].sku === (sku || coreSKU) && quotedPrice === String(items[0].cents);
@@ -1372,7 +1429,7 @@ const server = createServer(async (req, res) => {
           if (!matchesQuote(items)) return 'price';
           if (!stripeMethodsFor(stripe, cartTotal(items)).includes(method)) return 'method';
           const snapshot = items.map(({ sku, name, quantity, cents, requires_serial }) => ({ sku, name, quantity, cents, requires_serial }));
-          const attempt = reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot }, cartTotal(snapshot),
+          const attempt = reserveStripe(db, id, method, { locale, email, address, billing: billing.address, lines: snapshot, termsVersion }, cartTotal(snapshot),
             line => orderStock(line.sku, -line.quantity, 'reservation', null));
           checkoutAccess = issueCheckoutAccess(db, id);
           return attempt;
@@ -1405,6 +1462,7 @@ const server = createServer(async (req, res) => {
           if (!canCheckout(currentLines)) return 'out';
           if (fields.get('cartQuote') !== cartQuote(currentLines)) return 'price';
           createPaidOrder(id, method, locale, email, address, currentLines, billing.address);
+          saveOrderTerms(id, termsVersion, locale);
           for (const line of currentLines) {
             orderStock(line.sku, -line.quantity, 'order', id);
           }
@@ -1422,6 +1480,7 @@ const server = createServer(async (req, res) => {
         if (currentModel) db.prepare('INSERT INTO order_models VALUES (?, ?, ?, ?)').run(id, sku, currentModel.name, Number(isWheelchair(currentModel)));
         db.prepare('INSERT INTO delivery_addresses VALUES (?, ?, ?, ?, ?)').run(id, address.name, address.street, address.zip, address.city);
         saveBillingAddress(db, id, billing.address);
+        saveOrderTerms(id, termsVersion, locale);
         notice(id, 'paid');
         checkoutAccess = issueCheckoutAccess(db, id);
         return 'ok';

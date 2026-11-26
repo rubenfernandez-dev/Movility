@@ -1,3 +1,4 @@
+import { cookieDetails } from './legal.mjs';
 import { adminHtml, adminText } from './admin-language.mjs';
 import { randomUUID } from 'node:crypto';
 
@@ -61,20 +62,20 @@ export function recordFunnel(db, choice, locale, stage) {
 
 const labels = {
   'de-CH': {
-    settings: 'Analyse-Einstellungen', heading: 'Optionale Besuchsstatistik',
+    settings: 'Cookie-Einstellungen', heading: 'Optionale Besuchsstatistik',
     description: 'Mit deiner Zustimmung zählen wir die Schritte vom Produkt bis zur Bestellung. Die Statistik speichert keine Kontaktdaten. Die Einstellung kannst du jederzeit ändern.',
-    accept: 'Statistik erlauben', decline: 'Ohne Statistik fortfahren', withdraw: 'Zustimmung widerrufen',
+    accept: 'Statistik akzeptieren', decline: 'Nur notwendige', withdraw: 'Zustimmung widerrufen',
     active: 'Die Besuchsstatistik ist erlaubt.', inactive: 'Die Besuchsstatistik ist deaktiviert.',
   },
   'fr-CH': {
-    settings: 'Préférences de mesure d’audience', heading: 'Mesure d’audience facultative',
+    settings: 'Réglages des cookies', heading: 'Mesure d’audience facultative',
     description: 'Avec votre accord, nous comptons les étapes entre la fiche produit et la commande. Les statistiques ne contiennent pas vos coordonnées. Vous pouvez modifier ce choix à tout moment.',
-    accept: 'Autoriser les statistiques', decline: 'Continuer sans statistiques', withdraw: 'Retirer mon accord',
+    accept: 'Accepter les statistiques', decline: 'Seulement les cookies nécessaires', withdraw: 'Retirer mon accord',
     active: 'La mesure d’audience est autorisée.', inactive: 'La mesure d’audience est désactivée.',
   },
 };
 
-const paths = /^\/(de-CH|fr-CH)(?:\/(?:movility-one(?:\/3d)?|models\/[a-z0-9][a-z0-9-]{1,23}(?:\/3d)?|compare|cart|checkout(?:\/cart)?|analytics))?$/;
+const paths = /^\/(de-CH|fr-CH)(?:\/(?:movility-one(?:\/3d)?|models\/[a-z0-9][a-z0-9-]{1,23}(?:\/3d)?|compare|cart|checkout(?:\/cart)?|analytics|about|contact|delivery-returns-warranty|privacy|impressum|terms))?$/;
 export function analyticsReturn(locale, path) {
   return paths.exec(path)?.[1] === locale ? path : `/${locale}`;
 }
@@ -82,14 +83,14 @@ export function analyticsReturn(locale, path) {
 export function analyticsPrompt(locale, choice, returnPath, settings = false) {
   const l = labels[locale];
   const title = settings ? 'h1' : 'h2';
-  return `<section class="analytics-choice"><${title}>${settings ? l.settings : l.heading}</${title}>
+  return `<section class="analytics-choice${settings ? '' : ' cookie-banner'}" aria-labelledby="cookie-choice-title"><${title} id="cookie-choice-title">${settings ? l.settings : l.heading}</${title}>
     <p>${l.description}</p>
     ${settings && choice ? `<p>${choice === 'off' ? l.inactive : l.active}</p>` : ''}
     <form class="product-actions" method="post" action="/${locale}/analytics">
       <input type="hidden" name="return" value="${analyticsReturn(locale, returnPath)}">
       <button class="secondary" name="choice" value="accept">${l.accept}</button>
       <button class="secondary" name="choice" value="decline">${settings && uuid.test(choice) ? l.withdraw : l.decline}</button>
-    </form></section>`;
+    </form>${settings ? cookieDetails(locale) : `<a href="/${locale}/analytics">${l.settings}</a>`}</section>`;
 }
 
 export const analyticsLink = locale => `<a href="/${locale}/analytics">${labels[locale].settings}</a>`;

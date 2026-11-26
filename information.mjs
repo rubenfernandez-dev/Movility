@@ -53,11 +53,11 @@ export function informationPage(locale, suffix, settings = {}, contactState) {
   const title = settings['title_' + lang] ?? information[suffix][locale][0];
   const intro = settings['intro_' + lang] ?? information[suffix][locale][1];
   const blocks = informationBlocks[suffix.slice(1)]?.[locale].map(([heading, text], index) => [
-    settings['heading_' + lang + '_' + index] ?? heading, settings['body_' + lang + '_' + index] ?? text,
+    settings['heading_' + lang + '_' + index] ?? heading, settings['body_' + lang + '_' + index] ?? text, index,
   ]).filter(([heading, text]) => heading && text);
   if (suffix === '/delivery-returns-warranty') {
     return `<section class="section"><h1 class="page-title">${escapeHtml(title)}</h1><p class="lead information-text">${escapeHtml(intro)}</p>
-      ${blocks.map(([heading, text]) => `<h2>${escapeHtml(heading)}</h2><p class="information-text">${escapeHtml(text)}</p>`).join('')}
+      ${blocks.map(([heading, text, index]) => `<h2 id="${['delivery', 'returns', 'warranty'][index]}">${escapeHtml(heading)}</h2><p class="information-text">${escapeHtml(text)}</p>`).join('')}
       <p><a href="/${locale}/contact">${information['/contact'][locale][0]}</a></p></section>`;
   }
   const email = settings.email;
@@ -86,9 +86,4 @@ export function informationPage(locale, suffix, settings = {}, contactState) {
           <li><a href="/${locale}/delivery-returns-warranty">${information['/delivery-returns-warranty'][locale][0]}</a></li>
         </ul></aside></div>`;
   return `<section class="section"><h1 class="page-title">${escapeHtml(title)}</h1><p class="lead information-text">${escapeHtml(intro)}</p>${content}</section>`;
-}
-
-export function informationLinks(locale) {
-  return Object.entries(information).map(([route, labels]) =>
-    `<a href="/${locale}${route}">${escapeHtml(labels[locale][0])}</a>`).join(' · ');
 }

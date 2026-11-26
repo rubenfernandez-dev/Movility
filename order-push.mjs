@@ -1,5 +1,5 @@
 import { ECDH, randomUUID } from 'node:crypto';
-import { setVapidDetails, sendNotification } from 'web-push';
+import { generateVAPIDKeys, setVapidDetails, sendNotification } from 'web-push';
 import { escapeHtml } from './views.mjs';
 
 const hosts = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com', 'wns2-par02p.notify.windows.com']);
@@ -13,6 +13,12 @@ export function pushConfig(env) {
   if (!['simulated', 'web-push'].includes(mode)) throw new Error('Unknown MOVILITY_PUSH_MODE.');
   const publicKey = env.MOVILITY_PUSH_PUBLIC_KEY;
   const privateKey = env.MOVILITY_PUSH_PRIVATE_KEY;
+  if (mode === 'simulated') {
+    if (!publicKey && !privateKey) return { mode, publicKey: generateVAPIDKeys().publicKey };
+    if (!publicKey || !privateKey) throw new Error('Simulated push needs both VAPID keys or neither.');
+    setVapidDetails(env.MOVILITY_PUSH_SUBJECT || 'mailto:qa@example.invalid', publicKey, privateKey);
+    return { mode, publicKey };
+  }
   if (!publicKey || !privateKey || !env.MOVILITY_PUSH_SUBJECT) throw new Error('Web Push requires a VAPID key pair and contact.');
   setVapidDetails(env.MOVILITY_PUSH_SUBJECT, publicKey, privateKey);
   return { mode, publicKey };

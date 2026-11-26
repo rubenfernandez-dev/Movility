@@ -38,9 +38,13 @@ export function verifyLocalAdminPassword(password, credential) {
     : sameBytes(Buffer.from(password), Buffer.from(credential));
 }
 
-export function changeLocalAdminPassword(file, password) {
+export function encodeAdminPassword(password) {
   const salt = randomBytes(16);
-  const credential = 'scrypt$' + salt.toString('hex') + '$' + scryptSync(password, salt, 32).toString('hex');
+  return 'scrypt$' + salt.toString('hex') + '$' + scryptSync(password, salt, 32).toString('hex');
+}
+
+export function changeLocalAdminPassword(file, password) {
+  const credential = encodeAdminPassword(password);
   const temp = file + '.' + randomBytes(8).toString('hex') + '.tmp';
   writeFileSync(temp, credential + '\n', { flag: 'wx', mode: 0o600 });
   try {

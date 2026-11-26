@@ -52,5 +52,5 @@ ${extras.feature ? extras.feature + '<div class="home-content">' : ''}
 ${process.env.MOVILITY_STAGE === 'staging' ? `<p class="demo">${stagingNotice[locale]}</p>`
   : t && !extras.admin ? `<p class="demo">${t.demo}</p>` : ''}${extras.prompt || ''}${content}${extras.feature ? '</div>' : ''}</main>
 ${extras.sidebar ? '</div>' : ''}
-<footer>${(extras.admin ? adminFooter : pageFooter)[locale]}${extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
+<footer>${extras.storefront && extras.footer ? `<div class="storefront-footer"><p><a href="/${locale}">Movility</a></p><div class="storefront-footer-links">${extras.footer}</div></div>` : (extras.admin ? adminFooter : pageFooter)[locale]}${!extras.storefront && extras.footer ? ` · ${extras.footer}` : ''}</footer></body></html>`;
 }

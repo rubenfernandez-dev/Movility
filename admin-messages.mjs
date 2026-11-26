@@ -350,6 +350,12 @@ Comprueba el formato y el tamaño del archivo.|Prüfe Format und Grösse der Dat
 Volver al artículo|Zurück zum Artikel|Retour à l’article
 Revisa la selección y escribe cada condición en los dos idiomas.|Prüfe die Auswahl und gib jede Bedingung in beiden Sprachen ein.|Vérifiez la sélection et saisissez chaque condition dans les deux langues.
 Introduce una posición válida para una familia o un artículo existente.|Gib eine gültige Position für eine vorhandene Kategorie oder einen Artikel ein.|Saisissez une position valide pour une famille ou un article existant.
+Contenidos legales|Rechtliche Inhalte|Contenus juridiques
+Páginas legales|Rechtliche Seiten|Pages juridiques
+Solo borrador.|Nur Entwurf.|Brouillon uniquement.
+Revisa la dirección y el correo en|Prüfe Adresse und E-Mail unter|Vérifiez l’adresse et l’e-mail dans
+El borrador cambió. Vuelve a cargar el editor.|Der Entwurf wurde geändert. Lade den Editor neu.|Le brouillon a changé. Rechargez l’éditeur.
+Revisa ambos textos y confirma la revisión antes de publicar.|Prüfe beide Texte und bestätige dies vor der Veröffentlichung.|Relisez les deux textes et confirmez la vérification avant de publier.
 `.trim();
 
 export const adminMessages = new Map(messages.split('\n').map(line => {

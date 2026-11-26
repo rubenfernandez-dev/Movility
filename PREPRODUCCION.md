@@ -5,6 +5,15 @@ solo datos ficticios. Arranca con `npm run staging` y abre
 `http://127.0.0.1:3040`. La consola muestra la contraseña del usuario
 `admin`; para fijar una propia usa `MOVILITY_STAGING_ADMIN_PASSWORD`.
 Puedes cambiar el puerto con `MOVILITY_STAGING_PORT`.
+Para un VPS con el checkout de Git de solo lectura, configura
+`MOVILITY_STAGING_DB=/var/lib/mobility/staging.sqlite` en la unidad y concede
+escritura al usuario del servicio en `/var/lib/mobility`. La base y los medios
+subidos se guardan fuera del checkout, los medios en `staging.sqlite.media/`.
+Define `MOVILITY_STAGING_ORIGIN=https://mobility.wurfis.ch` y configura
+`MOVILITY_STAGING_ADMIN_PASSWORD` en el entorno privado de la unidad.
+En el piloto simulado, usa `simulated` en `MOVILITY_STAGING_PAYMENT_MODE`,
+`MOVILITY_STAGING_EMAIL_MODE` y `MOVILITY_STAGING_PUSH_MODE`.
+
 
 Las integraciones de pago, correo, transportista y push no envían datos
 externos desde esta instancia. La base persiste al reiniciar y queda fuera

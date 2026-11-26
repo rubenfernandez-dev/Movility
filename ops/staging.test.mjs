@@ -1,26 +1,41 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { stagingEnvironment } from './staging.mjs';
+import { fileURLToPath } from 'node:url';
 import { shipmentFromToken, shipmentPath } from '../tracking.mjs';
 
 test('staging keeps a simulated order after restart and ignores external integration settings', { timeout: 15000 }, async () => {
   const folder = mkdtempSync(join(tmpdir(), 'movility-staging-'));
   const database = join(folder, 'staging.sqlite');
-  const env = stagingEnvironment(database, 0, { ...process.env, MOVILITY_DB: ':memory:',
+  const origin = 'https://mobility.pilot.example';
+  const env = { ...process.env, MOVILITY_DB: ':memory:', MOVILITY_STAGING_DB: database,
+    MOVILITY_STAGING_ORIGIN: origin, MOVILITY_STAGING_PAYMENT_MODE: 'simulated',
+    MOVILITY_STAGING_EMAIL_MODE: 'simulated', MOVILITY_STAGING_PUSH_MODE: 'simulated',
     MOVILITY_PAYMENT_MODE: 'stripe-test', MOVILITY_EMAIL_MODE: 'resend-test', MOVILITY_PUSH_MODE: 'web-push',
-    MOVILITY_CARRIER_SECRET: 'not-a-production-secret', MOVILITY_STAGING_ADMIN_PASSWORD: 'staging-fixture' });
+    MOVILITY_CARRIER_SECRET: 'not-a-production-secret', MOVILITY_STAGING_ADMIN_PASSWORD: 'staging-fixture' };
   let child;
   async function start() {
-    child = spawn(process.execPath, ['server.mjs'], { env, stdio: ['ignore', 'pipe', 'inherit'] });
+    const socket = createServer().listen(0, '127.0.0.1');
+    await once(socket, 'listening');
+    const port = socket.address().port;
+    await new Promise((resolve, reject) => socket.close(error => error ? reject(error) : resolve()));
+    const launcher = fileURLToPath(new URL('./staging.mjs', import.meta.url));
+    child = spawn(process.execPath, ['--permission', '--allow-fs-read=*',
+      '--allow-fs-write=' + folder, '--allow-fs-write=' + join(folder, '*'), launcher], {
+      cwd: folder, env: { ...env, MOVILITY_STAGING_PORT: String(port) }, stdio: ['ignore', 'pipe', 'inherit'],
+    });
     const lines = createInterface({ input: child.stdout });
-    const [first] = await once(lines, 'line');
+    const [first] = await Promise.race([
+      once(lines, 'line'),
+      once(child, 'exit').then(([code]) => { throw new Error('Pilot launcher stopped before startup: ' + code); }),
+    ]);
     return first.split(' ')[1];
   }
   async function stop() {
@@ -36,6 +51,9 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.equal(health.status, 200);
     assert.equal(health.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await health.json(), { result: 'ok' });
+    assert.ok(existsSync(database));
+    const landing = await (await fetch(base + '/fr-CH')).text();
+    assert.ok(landing.includes('rel="canonical" href="' + origin + '/fr-CH"'));
     const checkout = await fetch(base + '/fr-CH/checkout');
     assert.equal(checkout.headers.get('x-robots-tag'), 'noindex, nofollow');
     const body = await checkout.text();
@@ -339,13 +357,71 @@ test('staging keeps a simulated order after restart and ignores external integra
     assert.match(item, /Matière : bois/);
     assert.match(item, /\/assets\/models\/home-11.jpg/);
     assert.equal((await fetch(restarted + '/assets/models/home-11.jpg')).headers.get('content-type'), 'image/jpeg');
+    for (const locale of ['de-CH', 'fr-CH']) {
+      const home = await (await fetch(restarted + '/' + locale)).text();
+      assert.match(home, /storefront-footer/);
+      assert.ok(home.includes('/' + locale + '/delivery-returns-warranty#returns'));
+      assert.match(home, /cookie-banner[\s\S]*value="accept"[\s\S]*value="decline"/);
+      const placeholder = await fetch(restarted + '/' + locale + '/privacy');
+      assert.equal(placeholder.status, 404);
+      assert.match(await placeholder.text(), /noch nicht|pas encore/);
+      const previewPath = restarted + '/admin/legal/privacy/preview/' + locale;
+      assert.equal((await fetch(previewPath)).status, 401);
+      const preview = await fetch(previewPath, { headers: admin });
+      assert.equal(preview.status, 200);
+      assert.match(await preview.text(), /Entwurfsvorschau|brouillon/);
+    }
+    const termsEditor = restarted + '/admin/legal/terms';
+    assert.equal((await submit(termsEditor, { revision: '0', de: 'DE fixture', fr: 'FR fixture', action: 'draft' }, admin)).status, 303);
+    assert.equal((await fetch(restarted + '/fr-CH/terms')).status, 404);
+    assert.equal((await submit(termsEditor, { revision: '1', de: 'DE fixture', fr: 'FR fixture', action: 'publish' }, admin)).status, 400);
+    assert.equal((await submit(termsEditor, { revision: '1', de: 'DE fixture', fr: 'FR fixture', action: 'publish', confirmed: '1' }, admin)).status, 303);
+    const version = await fetch(restarted + '/fr-CH/terms?version=1');
+    assert.equal(version.status, 200);
+    assert.match(await version.text(), /FR fixture/);
+    const checkoutWithTerms = await (await fetch(restarted + '/fr-CH/checkout?model=home-11')).text();
+    assert.match(checkoutWithTerms, /terms[?]version=1[\s\S]*value="paid"/);
+
+    const orderWithTerms = {
+      id: checkoutWithTerms.match(/name="id" value="([^"]+)"/)[1],
+      quotedPrice: checkoutWithTerms.match(/name="quotedPrice" value="([^"]+)"/)[1],
+      model: 'home-11', email: 'terms@example.com', name: 'Client Test', street: 'Rue Exemple 1',
+      zip: '1201', city: 'Geneve', method: 'Visa', result: 'paid', termsVersion: '1',
+    };
+    const purchasePath = restarted + '/fr-CH/checkout';
+    assert.equal((await submit(purchasePath, orderWithTerms)).status, 409);
+    assert.equal((await submit(purchasePath, { ...orderWithTerms, acceptTerms: '1' })).status, 303);
+    const termsDb = new DatabaseSync(database, { readOnly: true });
+    try {
+      const accepted = termsDb.prepare('SELECT version, locale FROM order_terms WHERE order_id=?').get(orderWithTerms.id);
+      assert.equal(accepted.version, 1);
+      assert.equal(accepted.locale, 'fr-CH');
+    } finally { termsDb.close(); }
+
+    const securityPath = restarted + '/admin/security';
+    const freshPassword = 'new-fixture-admin-password';
+    const newAdmin = { Authorization: 'Basic ' + Buffer.from('admin:' + freshPassword).toString('base64') };
+    assert.equal((await fetch(securityPath)).status, 401);
+    const security = await fetch(securityPath, { headers: admin });
+    assert.equal(security.status, 200);
+    assert.match(await security.text(), /autocomplete="current-password"/);
+    const fields = { password: freshPassword, confirm: freshPassword };
+    assert.equal((await submit(securityPath, { ...fields, current: 'incorrect' }, admin)).status, 400);
+    assert.equal((await submit(securityPath, { ...fields, current: 'staging-fixture' }, admin)).status, 200);
+    assert.equal((await fetch(restarted + '/admin', { headers: admin })).status, 401);
+    assert.equal((await fetch(restarted + '/admin', { headers: newAdmin })).status, 200);
+    await stop();
+    const rotated = await start();
+    assert.equal((await fetch(rotated + '/admin', { headers: admin })).status, 401);
+    assert.equal((await fetch(rotated + '/admin', { headers: newAdmin })).status, 200);
+    assert.equal((await fetch(rotated + '/admin/orders/' + id, { headers: newAdmin })).status, 200);
+    const restoredItem = await (await fetch(rotated + '/fr-CH/models/home-11')).text();
+    assert.match(restoredItem, /bois/);
+    const restoredPhoto = await fetch(rotated + '/assets/models/home-11.jpg');
+    assert.equal(restoredPhoto.status, 200);
+    assert.deepEqual(Buffer.from(await restoredPhoto.arrayBuffer()), readFileSync(join(database + '.media', 'home-11.jpg')));
   } finally {
     await stop();
-    unlinkSync(database);
-    if (existsSync(database + '.media')) {
-      unlinkSync(join(database + '.media', 'home-11.jpg'));
-      rmdirSync(database + '.media');
-    }
-    rmdirSync(folder);
+    rmSync(folder, { recursive: true, force: true });
   }
 });

@@ -583,7 +583,7 @@ test('French checkout, concurrent stock, shipment and idempotent refund', { time
   count(await (await get(funnel, finance)).text(), 'Ficha de producto', 0);
   const visit = await get('/fr-CH/movility-one');
   assert.equal(visit.headers.get('set-cookie'), null);
-  assert.match(await visit.text(), /Continuer sans statistiques/);
+  assert.match(await visit.text(), /Seulement les cookies nécessaires/);
   const reject = await post('/fr-CH/analytics', { choice: 'decline', return: '//example.com' });
   assert.equal(reject.headers.get('location'), '/fr-CH');
   const rejected = reject.headers.get('set-cookie').split(';')[0];

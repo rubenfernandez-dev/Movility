@@ -148,7 +148,7 @@ export function cartPage(locale, cents, available, model) {
       : button(href(locale, model ? '/models/' + model.sku : '/movility-one'), t.catalog)}</p></div></article>`;
 }
 
-export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines, stripeMethods, invalid = []) {
+export function checkoutPage(locale, cents, id, values = {}, message = '', model, lines, stripeMethods, invalid = [], termsVersion) {
   const l = labels[locale];
   const t = copy[locale];
   const german = locale === 'de-CH';
@@ -204,6 +204,14 @@ export function checkoutPage(locale, cents, id, values = {}, message = '', model
         return `<label class="option"><input type="radio" id="checkout-method${index ? '-' + index : ''}" name="method"
           value="${method}" ${values.method === method ? 'checked' : ''} required ${invalidAttrs('method')}> ${label}</label>`;
       }).join('')}</div></fieldset>
+      ${termsVersion ? `<div class="checkout-terms">
+        <input type="hidden" name="termsVersion" value="${termsVersion}">
+        <label><input type="checkbox" name="acceptTerms" value="1" required>
+          ${locale === 'de-CH' ? 'Ich akzeptiere die' : 'J’accepte les'}
+          <a href="/${locale}/terms?version=${termsVersion}" target="_blank" rel="noopener">${locale === 'de-CH'
+            ? 'Verkaufsbedingungen (neuer Tab)' : 'conditions de vente (nouvel onglet)'}</a>.
+        </label>
+      </div>` : ''}
       <div class="product-actions checkout-actions">${stripeMethods ? stripeMethods.length
         ? `<button name="result" value="stripe">${locale === 'de-CH' ? 'Weiter zu Stripe (Test)' : 'Continuer vers Stripe (test)'}</button>`
         : `<p>${locale === 'de-CH' ? 'Für diesen Betrag ist keine Testzahlungsart verfügbar.' : 'Aucun mode de paiement test disponible pour ce montant.'}</p>`
