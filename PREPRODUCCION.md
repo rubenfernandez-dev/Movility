@@ -317,3 +317,61 @@ con el pedido. Un abono total incluye el envío facturado originalmente.
 Las tarifas por familia, las excepciones por código postal o destino y
 la combinación de tarifas en carritos mixtos quedan pendientes de
 definición comercial antes de añadir esas reglas.
+
+## Despliegue automático desde GitHub Actions
+
+El flujo **Mobility pilot** ejecuta `npm ci` y `npm test` en cada push a
+`main`. También se puede ejecutar desde **Actions → Mobility pilot → Run
+workflow** seleccionando `main`. Solo se despliega el commit probado si
+sigue siendo la punta de `main` y el checkout del servidor está limpio.
+
+### Configuración inicial
+
+En GitHub, crea el entorno `mobility-pilot`, limita sus despliegues a
+`main` y añade estos secretos del entorno:
+
+| Secreto | Valor |
+| --- | --- |
+| `MOBILITY_SSH_HOST` | Host o IPv4 del VPS, sin URL ni puerto (SSH en 22). |
+| `MOBILITY_SSH_USER` | Usuario dedicado de despliegue en el VPS. |
+| `MOBILITY_SSH_PRIVATE_KEY` | Clave privada de ese usuario para Actions. |
+| `MOBILITY_SSH_KNOWN_HOSTS` | Línea de `known_hosts` para el host anterior. Verifica su huella mediante la consola del VPS antes de guardarla. |
+
+En el VPS:
+
+- Autoriza solo la clave pública de despliegue en el usuario dedicado.
+  El runner de GitHub debe poder llegar al puerto SSH. Conserva el
+  acceso HTTP existente del piloto.
+- Prepara un clon limpio en `/var/www/mobility-github` del que sea
+  propietario el usuario de despliegue. Verifica que `git fetch origin main`
+  funciona bajo dicho usuario sin pedir interacción (si el repositorio es
+  privado, configura credenciales de solo lectura en el VPS). Instala
+  Node 22, npm, Git, Bash, curl y flock para la sesión SSH no interactiva.
+- Asegura que `mobility.service` ya arranca desde
+  `/var/www/mobility-github`, con `node ops/staging.mjs` y
+  `/etc/mobility/staging.env` como archivo de entorno externo. Conserva
+  el puerto interno 3040, el origen HTTPS y los modos simulados. Usa
+  `/var/lib/mobility/staging.sqlite` y `staging.sqlite.media/` al lado
+  de la base. El usuario del servicio necesita acceso a esos archivos
+  y permiso de lectura y recorrido sobre el código y dependencias.
+- Concede al usuario de despliegue permiso de sudo sin contraseña
+  únicamente para reiniciar la unidad del piloto. Edita con `visudo`
+  y sustituye el usuario y, si corresponde, la ruta real de systemctl:
+
+  ```sudoers
+  mobility-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart mobility.service
+  ```
+
+### Primera ejecución
+
+Antes de iniciarla, comprueba que el servicio actual está sano en
+`http://127.0.0.1:3040/healthz` y guarda una copia de la base y medios.
+Después ejecuta el flujo para `main` y comprueba el SHA en el log y
+con `git -C /var/www/mobility-github rev-parse HEAD`. El despliegue
+usa ese SHA en modo HEAD separado para que una reversión pueda
+recuperar el commit anterior. Un directorio `node_modules` ausente o
+un lockfile distinto provocan `npm ci`; si la comprobación falla,
+el script recupera el código y las dependencias anteriores, reinicia
+la misma unidad y comprueba de nuevo la salud. El job queda marcado
+como fallido aunque la reversión tenga éxito. El flujo conserva el
+archivo de entorno, el volumen persistente, Nginx y el acceso privado.
